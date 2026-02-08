@@ -2,10 +2,8 @@
 
 import { ReactNode, useEffect } from 'react';
 import { useAuthStore } from '@/lib/auth-store';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, API_BASE_URL } from '@/lib/api-client';
 import { subscribeAuthEvents } from '@/lib/auth-events';
-
-const API_BASE_URL = 'http://127.0.0.1:8000/api/v1';
 
 interface Props {
   children: ReactNode;

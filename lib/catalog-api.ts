@@ -1,7 +1,5 @@
-import { apiFetch, type ApiError } from './api-client';
+import { apiFetch, API_BASE_URL, type ApiError } from './api-client';
 import { useAuthStore } from './auth-store';
-
-const API_BASE_URL = 'http://127.0.0.1:8000/api/v1';
 
 export interface CatalogItem {
   id: number;
