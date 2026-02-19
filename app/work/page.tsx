@@ -331,7 +331,10 @@ export default function WorkPage() {
               </select>
               <select
                 value={filters.priority ?? ''}
-                onChange={(e) => applyFilter('priority', (e.target.value || null) as WorkListFilters['priority'])}
+                onChange={(e) => {
+                  const nextPriority = e.target.value as '' | 'low' | 'medium' | 'high';
+                  applyFilter('priority', nextPriority === '' ? null : nextPriority);
+                }}
                 className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 {PRIORITY_OPTIONS.map((option) => (
@@ -498,7 +501,7 @@ export default function WorkPage() {
                           <div className="flex justify-end gap-2">
                             <select
                               value={w.status}
-                              onChange={(e) => void applyQuickStatus(w.id, e.target.value as Work['status'])}
+                              onChange={(e) => void applyQuickStatus(w.id, e.target.value as 'pending' | 'in_progress' | 'completed' | 'cancelled')}
                               className="rounded-lg border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary"
                             >
                               {STATUS_OPTIONS.filter((o) => o.value).map((o) => (

@@ -57,7 +57,10 @@ export default function AuthBootstrap({ children }: Props) {
                 (typeof payload.access_token === 'string' && payload.access_token) ||
                 (typeof payload.accessToken === 'string' && payload.accessToken) ||
                 null;
-              const user = payload.user ?? null;
+              const user =
+                payload.user && typeof payload.user === 'object'
+                  ? (payload.user as Record<string, unknown>)
+                  : null;
               const onboardingRequired =
                 (payload.onboarding_required as boolean | undefined) ??
                 (payload.onboardingRequired as boolean | undefined) ??
@@ -96,7 +99,7 @@ export default function AuthBootstrap({ children }: Props) {
           try {
             const me = await apiFetch('/auth/users/me', { method: 'GET' });
             if (isMounted) {
-              setUser(me as unknown);
+              setUser(me && typeof me === 'object' ? (me as Record<string, unknown>) : null);
             }
           } catch {
             // ignore errors from /auth/users/me

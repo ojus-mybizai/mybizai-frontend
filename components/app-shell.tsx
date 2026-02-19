@@ -33,7 +33,7 @@ type NavSection = {
 type NavEntry = NavItem | NavSection;
 
 function isNavItem(entry: NavEntry): entry is NavItem {
-  return (entry as NavItem).href !== undefined;
+  return typeof (entry as NavItem | undefined)?.href === 'string';
 }
 
 function buildNavItems(lmsEnabled: boolean, agentsEnabled: boolean): NavEntry[] {
@@ -82,7 +82,7 @@ function getTitle(pathname: string | null, navItems: NavEntry[]): string {
     if (!isNavItem(entry)) return false;
     return entry.href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(entry.href);
   });
-  return isNavItem(match as any) ? (match as NavItem).label : 'MyBizAI';
+  return match && isNavItem(match) ? match.label : 'MyBizAI';
 }
 
 export default function AppShell({ children }: AppShellProps) {

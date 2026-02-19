@@ -76,7 +76,10 @@ async function refreshAccessToken(): Promise<string | null> {
       (typeof payload.access_token === "string" && payload.access_token) ||
       (typeof payload.accessToken === "string" && payload.accessToken) ||
       null;
-    const user = payload.user ?? null;
+    const user =
+      payload.user && typeof payload.user === "object"
+        ? (payload.user as Record<string, unknown>)
+        : null;
     const onboardingRequired =
       (payload.onboarding_required as boolean | undefined) ??
       (payload.onboardingRequired as boolean | undefined) ??
