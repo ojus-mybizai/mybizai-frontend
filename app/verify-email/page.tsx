@@ -6,12 +6,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch, type ApiError } from '@/lib/api-client';
 import { useAuthStore } from '@/lib/auth-store';
 import { broadcastAuthEvent } from '@/lib/auth-events';
+import { resolvePostAuthRedirect } from '@/lib/post-auth-redirect';
 
 interface VerifyEmailResponse {
   access_token: string;
   token_type: string;
   refresh_token: string;
   onboarding_required: boolean;
+  default_business_id?: number | null;
+  default_role?: 'owner' | 'manager' | 'executive' | null;
+  has_active_business_access?: boolean;
 }
 
 function VerifyEmailForm() {
@@ -34,6 +38,9 @@ function VerifyEmailForm() {
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
   const setOnboardingRequired = useAuthStore((s) => s.setOnboardingRequired);
+  const setDefaultBusinessId = useAuthStore((s) => s.setDefaultBusinessId);
+  const setDefaultRole = useAuthStore((s) => s.setDefaultRole);
+  const setHasActiveBusinessAccess = useAuthStore((s) => s.setHasActiveBusinessAccess);
 
   useEffect(() => {
     if (!resendSeconds) return;
@@ -70,10 +77,16 @@ function VerifyEmailForm() {
       const accessToken = data.access_token || '';
       const refreshToken = data.refresh_token || '';
       const onboardingRequired = Boolean(data.onboarding_required);
+      const defaultBusinessId = data.default_business_id ?? null;
+      const defaultRole = data.default_role ?? null;
+      const hasActiveBusinessAccess = data.has_active_business_access ?? true;
 
       setAccessToken(accessToken || null);
       setUser(null);
       setOnboardingRequired(onboardingRequired);
+      setDefaultBusinessId(defaultBusinessId);
+      setDefaultRole(defaultRole);
+      setHasActiveBusinessAccess(hasActiveBusinessAccess);
       broadcastAuthEvent('login');
 
       if (typeof document !== 'undefined' && refreshToken) {
@@ -84,11 +97,13 @@ function VerifyEmailForm() {
         }
       }
 
-      if (onboardingRequired) {
-        router.replace('/onboarding');
-      } else {
-        router.replace(next || '/dashboard');
-      }
+      router.replace(
+        resolvePostAuthRedirect({
+          onboardingRequired,
+          next,
+          defaultRole,
+        }),
+      );
     } catch (err) {
       const apiError = err as ApiError;
       setError(apiError.message || 'Verification failed');

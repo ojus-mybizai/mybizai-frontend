@@ -14,11 +14,13 @@ import {
   listCatalogCategories,
   getCatalogStatsSummary,
   getCatalogBestSold,
+  getCatalogItemInsights,
   type CatalogItem,
   type CatalogItemCreate,
   type CatalogItemUpdate,
   type CatalogTemplate,
   type CatalogBestSoldItem,
+  type CatalogItemInsights,
   type ListCatalogParams,
 } from '@/lib/catalog-api';
 
@@ -42,6 +44,9 @@ interface CatalogState {
   } | null;
   statsError: string | null;
   bestSold: CatalogBestSoldItem[] | null;
+  itemInsights: CatalogItemInsights | null;
+  itemInsightsLoading: boolean;
+  itemInsightsError: string | null;
   list(params?: ListCatalogParams): Promise<void>;
   select(id: string): Promise<void>;
   create(input: CatalogItemCreate): Promise<CatalogItem>;
@@ -54,6 +59,7 @@ interface CatalogState {
   loadCategories(): Promise<void>;
   loadStats(): Promise<void>;
   loadBestSold(limit?: number): Promise<void>;
+  loadItemInsights(id: string, recentLimit?: number): Promise<void>;
   resetError(): void;
 }
 
@@ -71,6 +77,9 @@ export const useCatalogStore = create<CatalogState>((set, get) => ({
   stats: null,
   statsError: null,
   bestSold: null,
+  itemInsights: null,
+  itemInsightsLoading: false,
+  itemInsightsError: null,
 
   async list(params) {
     set({ loading: true, error: null });
@@ -213,8 +222,22 @@ export const useCatalogStore = create<CatalogState>((set, get) => ({
     }
   },
 
+  async loadItemInsights(id: string, recentLimit: number = 5) {
+    set({ itemInsightsLoading: true, itemInsightsError: null });
+    try {
+      const insights = await getCatalogItemInsights(Number(id), recentLimit);
+      set({ itemInsights: insights, itemInsightsLoading: false, itemInsightsError: null });
+    } catch (err) {
+      set({
+        itemInsightsLoading: false,
+        itemInsights: null,
+        itemInsightsError: err instanceof Error ? err.message : 'Could not load item insights',
+      });
+    }
+  },
+
   resetError() {
-    set({ error: null });
+    set({ error: null, itemInsightsError: null });
   },
 }));
 

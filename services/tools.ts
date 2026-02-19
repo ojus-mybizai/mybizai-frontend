@@ -4,6 +4,7 @@ export interface Tool {
   id: string;
   name: string;
   description: string;
+  executionMode?: 'realtime' | 'post_process' | 'batch';
   category: 'search' | 'crm' | 'ops' | 'custom';
   advanced?: {
     priority?: number;
@@ -17,6 +18,7 @@ type ApiTool = {
   description?: string | null;
   category?: string | null;
   enabled?: boolean;
+  execution_mode?: 'realtime' | 'post_process' | 'batch';
 };
 
 function mapTool(t: ApiTool): Tool {
@@ -28,6 +30,7 @@ function mapTool(t: ApiTool): Tool {
     id: String(t.id),
     name: t.name,
     description: t.description ?? '',
+    executionMode: t.execution_mode ?? 'realtime',
     category,
   };
 }

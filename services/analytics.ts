@@ -49,6 +49,27 @@ export interface AgentAnalyticsResponse {
   avg_sentiment?: number | null;
 }
 
+export interface ConversationAnalyticsResponse {
+  id: number;
+  conversation_id: number;
+  agent_id: number;
+  lead_id: number;
+  channel_id: number;
+  start_time: string;
+  end_time?: string | null;
+  first_response_time?: number | null;
+  avg_response_time?: number | null;
+  duration?: number | null;
+  message_count: number;
+  user_message_count: number;
+  agent_message_count: number;
+  status: string;
+  resolution_status?: string | null;
+  tool_calls: Array<Record<string, unknown>>;
+  sentiment_score?: number | null;
+  metadata: Record<string, unknown>;
+}
+
 export interface AgentsSummaryParams {
   start_date: string;
   end_date: string;
@@ -60,6 +81,16 @@ export interface AgentAnalyticsParams {
   start_date: string;
   end_date: string;
   group_by?: 'day' | 'week' | 'month';
+}
+
+export interface ConversationAnalyticsListParams {
+  start_date: string;
+  end_date: string;
+  agent_id?: number;
+  lead_id?: number;
+  status?: string;
+  resolution_status?: string;
+  limit?: number;
 }
 
 export interface AgentsByAgentParams {
@@ -106,5 +137,62 @@ export async function getAgentAnalytics(
   return apiFetch<AgentAnalyticsResponse[]>(
     `/analytics/agents/${agentId}?${q.toString()}`,
     { method: 'GET' }
+  );
+}
+
+export async function getConversationAnalytics(
+  conversationId: number | string,
+): Promise<ConversationAnalyticsResponse> {
+  return apiFetch<ConversationAnalyticsResponse>(
+    `/analytics/conversations/${conversationId}`,
+    { method: 'GET' },
+  );
+}
+
+export async function listConversationAnalytics(
+  params: ConversationAnalyticsListParams,
+): Promise<ConversationAnalyticsResponse[]> {
+  const q = new URLSearchParams();
+  q.set('start_date', params.start_date);
+  q.set('end_date', params.end_date);
+  if (params.agent_id !== undefined) q.set('agent_id', String(params.agent_id));
+  if (params.lead_id !== undefined) q.set('lead_id', String(params.lead_id));
+  if (params.status) q.set('status', params.status);
+  if (params.resolution_status) q.set('resolution_status', params.resolution_status);
+  if (params.limit !== undefined) q.set('limit', String(params.limit));
+  return apiFetch<ConversationAnalyticsResponse[]>(`/analytics/conversations?${q.toString()}`, {
+    method: 'GET',
+  });
+}
+
+export async function recalculateAgentAnalytics(
+  agentId: number | string,
+  params: { start_date: string; end_date: string },
+): Promise<{ status: string; processed_sessions: number }> {
+  const q = new URLSearchParams();
+  q.set('start_date', params.start_date);
+  q.set('end_date', params.end_date);
+  return apiFetch<{ status: string; processed_sessions: number }>(
+    `/analytics/agents/${agentId}/recalculate?${q.toString()}`,
+    { method: 'POST' },
+  );
+}
+
+export async function backfillAnalytics(params: {
+  start_date: string;
+  end_date: string;
+  agent_ids?: number[];
+  limit?: number;
+}): Promise<{ status: string; processed_sessions: number }> {
+  const q = new URLSearchParams();
+  q.set('start_date', params.start_date);
+  q.set('end_date', params.end_date);
+  if (params.agent_ids?.length) {
+    params.agent_ids.forEach((id) => q.append('agent_ids', String(id)));
+  }
+  if (params.limit !== undefined) q.set('limit', String(params.limit));
+  return apiFetch<{ status: string; processed_sessions: number }>(
+    `/analytics/backfill?${q.toString()}`,
+    { method: 'POST' },
   );
 }

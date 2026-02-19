@@ -335,6 +335,15 @@ export default function AgentsPage() {
                   {analyticsError}
                 </div>
               )}
+              {!analyticsLoading &&
+                !analyticsError &&
+                filteredAgents.length > 0 &&
+                Object.keys(agentSummaries).length === 0 && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+                    No agent analytics rows found for this range yet. Open an agent analytics page and
+                    use <span className="font-semibold">Recalculate now</span> to backfill from sessions.
+                  </div>
+                )}
 
               <div className="flex items-center justify-between text-xs text-text-secondary">
                 <span>

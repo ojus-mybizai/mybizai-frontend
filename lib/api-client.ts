@@ -36,9 +36,15 @@ async function buildError(response: Response): Promise<ApiError> {
 
   try {
     data = await response.json();
-    const maybeMsg = (data as any)?.message || (data as any)?.detail;
-    if (maybeMsg && typeof maybeMsg === "string") {
-      message = maybeMsg;
+    if (data && typeof data === "object") {
+      const payload = data as Record<string, unknown>;
+      const maybeMsg =
+        (typeof payload.message === "string" && payload.message) ||
+        (typeof payload.detail === "string" && payload.detail) ||
+        null;
+      if (maybeMsg) {
+        message = maybeMsg;
+      }
     }
   } catch {
     // ignore JSON parse errors
@@ -65,22 +71,45 @@ async function refreshAccessToken(): Promise<string | null> {
     }
 
     const data = await response.json();
-    const accessToken = (data as any).access_token || (data as any).accessToken || null;
-    const user = (data as any).user ?? null;
+    const payload = data as Record<string, unknown>;
+    const accessToken =
+      (typeof payload.access_token === "string" && payload.access_token) ||
+      (typeof payload.accessToken === "string" && payload.accessToken) ||
+      null;
+    const user = payload.user ?? null;
     const onboardingRequired =
-      (data as any).onboarding_required ?? (data as any).onboardingRequired ?? false;
+      (payload.onboarding_required as boolean | undefined) ??
+      (payload.onboardingRequired as boolean | undefined) ??
+      false;
+    const defaultBusinessId =
+      (payload.default_business_id as number | null | undefined) ??
+      (payload.defaultBusinessId as number | null | undefined) ??
+      null;
+    const defaultRole =
+      (payload.default_role as "owner" | "manager" | "executive" | null | undefined) ??
+      (payload.defaultRole as "owner" | "manager" | "executive" | null | undefined) ??
+      null;
+    const hasActiveBusinessAccess =
+      (payload.has_active_business_access as boolean | undefined) ??
+      (payload.hasActiveBusinessAccess as boolean | undefined) ??
+      true;
 
     const state = useAuthStore.getState();
     state.setAccessToken(accessToken);
     state.setUser(user);
     state.setOnboardingRequired(Boolean(onboardingRequired));
+    state.setDefaultBusinessId(
+      typeof defaultBusinessId === "number" ? defaultBusinessId : null
+    );
+    state.setDefaultRole(defaultRole);
+    state.setHasActiveBusinessAccess(Boolean(hasActiveBusinessAccess));
 
     if (typeof window !== "undefined") {
       broadcastAuthEvent("refresh");
     }
 
     return accessToken;
-  } catch (error) {
+  } catch {
     const state = useAuthStore.getState();
     state.logout();
     if (typeof window !== "undefined") {
@@ -111,7 +140,7 @@ export async function apiFetch<T>(
   }
 
   const state = useAuthStore.getState();
-  let token = state.accessToken;
+  const token = state.accessToken;
 
   if (auth && token) {
     headers.set("Authorization", `Bearer ${token}`);

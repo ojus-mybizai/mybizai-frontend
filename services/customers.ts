@@ -42,6 +42,10 @@ export interface Conversation {
   status: ConversationStatus;
   updatedAt: string;
   lastMessagePreview: string;
+  totalMessages?: number;
+  unreadCount?: number;
+  lastUserMessageAt?: string | null;
+  lastAgentMessageAt?: string | null;
 }
 
 export interface Message {
@@ -50,6 +54,20 @@ export interface Message {
   role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   timestamp: string;
+}
+
+export interface ConversationSession {
+  id: string;
+  status: 'active' | 'ended' | 'abandoned';
+  startedAt: string;
+  lastMessageAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  messagesCount: number;
+  summary: string | null;
+  leadScore: number | null;
+  sentiment: number | null;
+  actionsTaken?: Array<{ tool?: string; timestamp?: string | null }>;
 }
 
 export interface CustomerFilters {
@@ -109,6 +127,9 @@ type ConvoOut = {
   last_intent?: string | null;
   last_message_preview?: string | null;
   unread_count?: number | null;
+  total_messages?: number | null;
+  last_user_message_at?: string | null;
+  last_agent_message_at?: string | null;
 };
 
 export interface ConversationListFilters {
@@ -129,6 +150,20 @@ type PaginatedMessages = {
     content: string;
     timestamp: string;
   }>;
+};
+
+type SessionOut = {
+  id: number;
+  status: 'active' | 'ended' | 'abandoned';
+  started_at: string;
+  last_message_at?: string | null;
+  ended_at?: string | null;
+  duration_seconds?: number | null;
+  messages_count: number;
+  summary?: string | null;
+  lead_score?: number | null;
+  sentiment?: number | null;
+  actions_taken?: Array<{ tool?: string; timestamp?: string | null }>;
 };
 
 const EXTRA_DATA_SYSTEM_KEYS = [
@@ -331,6 +366,10 @@ function mapConvosToConversations(leadId: number, convos: ConvoOut[]): Conversat
     status: c.mode,
     updatedAt: c.updated_at ?? c.last_message_at ?? new Date().toISOString(),
     lastMessagePreview: c.last_message_preview ?? c.summary ?? '—',
+    totalMessages: c.total_messages ?? 0,
+    unreadCount: c.unread_count ?? 0,
+    lastUserMessageAt: c.last_user_message_at ?? null,
+    lastAgentMessageAt: c.last_agent_message_at ?? null,
   }));
 }
 
@@ -446,6 +485,28 @@ export async function listMessages(conversationId: string): Promise<Message[]> {
     content: m.content,
     timestamp: m.timestamp,
   }));
+}
+
+function mapSession(s: SessionOut): ConversationSession {
+  return {
+    id: String(s.id),
+    status: s.status,
+    startedAt: s.started_at,
+    lastMessageAt: s.last_message_at ?? null,
+    endedAt: s.ended_at ?? null,
+    durationSeconds: s.duration_seconds ?? null,
+    messagesCount: s.messages_count ?? 0,
+    summary: s.summary ?? null,
+    leadScore: typeof s.lead_score === 'number' ? s.lead_score : null,
+    sentiment: typeof s.sentiment === 'number' ? s.sentiment : null,
+    actionsTaken: s.actions_taken ?? [],
+  };
+}
+
+export async function listConversationSessions(conversationId: string): Promise<ConversationSession[]> {
+  const convoId = Number(conversationId);
+  const rows = await apiFetch<SessionOut[]>(`/convo/${convoId}/sessions`, { method: 'GET' });
+  return (rows ?? []).map(mapSession);
 }
 
 export async function appendMessage(conversationId: string, role: Message['role'], content: string): Promise<Message> {

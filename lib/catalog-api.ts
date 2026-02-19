@@ -106,6 +106,25 @@ export interface CatalogBestSoldItem {
   revenue?: number;
 }
 
+export interface CatalogItemRecentOrder {
+  order_id: number;
+  created_at: string;
+  status: string;
+  payment_status: string;
+  quantity: number;
+  revenue: number;
+  currency: string;
+}
+
+export interface CatalogItemInsights {
+  catalog_item_id: number;
+  order_count: number;
+  total_quantity_sold: number;
+  total_revenue: number;
+  last_sold_at: string | null;
+  recent_orders: CatalogItemRecentOrder[];
+}
+
 export interface ImageUploadResponse {
   url: string;
   filename: string;
@@ -189,6 +208,12 @@ export async function getCatalogBestSold(limit: number = 5): Promise<CatalogBest
   const q = new URLSearchParams();
   q.set('limit', String(limit));
   return apiFetch<CatalogBestSoldItem[]>(`/catalog/stats/best_sold?${q.toString()}`, { method: 'GET' });
+}
+
+export async function getCatalogItemInsights(id: number, recentLimit: number = 5): Promise<CatalogItemInsights> {
+  const q = new URLSearchParams();
+  q.set('recent_limit', String(recentLimit));
+  return apiFetch<CatalogItemInsights>(`/catalog/${id}/insights?${q.toString()}`, { method: 'GET' });
 }
 
 export async function listCatalogTemplates(): Promise<CatalogTemplate[]> {

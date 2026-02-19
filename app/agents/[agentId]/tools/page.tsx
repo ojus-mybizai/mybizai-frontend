@@ -20,7 +20,8 @@ export default function AgentToolsPage() {
     list: s.list,
   }));
 
-  const [selection, setSelection] = useState<string[]>([]);
+  const [selectionByAgent, setSelectionByAgent] = useState<Record<string, string[]>>({});
+  const [toolRulesByAgent, setToolRulesByAgent] = useState<Record<string, Record<string, string>>>({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -28,13 +29,32 @@ export default function AgentToolsPage() {
     void listTools();
   }, [listTools]);
 
-  useEffect(() => {
-    if (current) {
-      setSelection(current.toolIds);
-    }
-  }, [current]);
-
   const disabled = useMemo(() => current?.status === 'active', [current?.status]);
+  const realtimeTools = useMemo(
+    () => tools.filter((t) => (t.executionMode ?? 'realtime') === 'realtime'),
+    [tools],
+  );
+  const backgroundTools = useMemo(
+    () => tools.filter((t) => (t.executionMode ?? 'realtime') === 'post_process'),
+    [tools],
+  );
+  const batchTools = useMemo(
+    () => tools.filter((t) => (t.executionMode ?? 'realtime') === 'batch'),
+    [tools],
+  );
+  const selection = useMemo(() => {
+    if (!current) return [];
+    return selectionByAgent[current.id] ?? current.toolIds;
+  }, [current, selectionByAgent]);
+  const toolRules = useMemo(() => {
+    if (!current) return {};
+    if (toolRulesByAgent[current.id]) return toolRulesByAgent[current.id];
+    const initialRules: Record<string, string> = {};
+    for (const assignment of current.toolAssignments || []) {
+      initialRules[assignment.toolId] = assignment.ruleText || '';
+    }
+    return initialRules;
+  }, [current, toolRulesByAgent]);
 
   if ((agentLoading || toolLoading) && !current) {
     return <LoadingSkeleton count={3} />;
@@ -44,14 +64,35 @@ export default function AgentToolsPage() {
   }
 
   const handleToggle = (id: string, next: boolean) => {
-    setSelection((prev) => (next ? [...new Set([...prev, id])] : prev.filter((t) => t !== id)));
+    if (!current) return;
+    setSelectionByAgent((prev) => {
+      const active = prev[current.id] ?? current.toolIds;
+      const nextSelection = next ? [...new Set([...active, id])] : active.filter((t) => t !== id);
+      return { ...prev, [current.id]: nextSelection };
+    });
+  };
+
+  const handleRuleChange = (id: string, next: string) => {
+    if (!current) return;
+    setToolRulesByAgent((prev) => {
+      const active = prev[current.id] ?? {};
+      return { ...prev, [current.id]: { ...active, [id]: next } };
+    });
   };
 
   const handleSave = async () => {
     if (!current) return;
     setSaving(true);
     setMessage(null);
-    await saveTools(current.id, selection);
+    const toolConfigs = selection.reduce<Record<string, { rule_text?: string; enabled: boolean }>>((acc, toolId) => {
+      const ruleText = (toolRules[toolId] || '').trim();
+      acc[toolId] = {
+        enabled: true,
+        ...(ruleText ? { rule_text: ruleText } : {}),
+      };
+      return acc;
+    }, {});
+    await saveTools(current.id, selection, toolConfigs);
     setSaving(false);
     setMessage('Saved');
   };
@@ -76,16 +117,61 @@ export default function AgentToolsPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {tools.map((tool) => (
-            <ToolRow
-              key={tool.id}
-              tool={tool}
-              enabled={selection.includes(tool.id)}
-              onToggle={handleToggle}
-              disabled={disabled}
-            />
-          ))}
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-text-primary">Realtime tools</h3>
+            {realtimeTools.length === 0 ? (
+              <div className="text-xs text-text-secondary">No realtime tools available.</div>
+            ) : (
+              realtimeTools.map((tool) => (
+                <ToolRow
+                  key={tool.id}
+                  tool={tool}
+                  enabled={selection.includes(tool.id)}
+                  ruleText={toolRules[tool.id] || ''}
+                  onRuleTextChange={handleRuleChange}
+                  onToggle={handleToggle}
+                  disabled={disabled}
+                />
+              ))
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-text-primary">Background tools</h3>
+            {backgroundTools.length === 0 ? (
+              <div className="text-xs text-text-secondary">No background tools available.</div>
+            ) : (
+              backgroundTools.map((tool) => (
+                <ToolRow
+                  key={tool.id}
+                  tool={tool}
+                  enabled={selection.includes(tool.id)}
+                  ruleText={toolRules[tool.id] || ''}
+                  onRuleTextChange={handleRuleChange}
+                  onToggle={handleToggle}
+                  disabled={disabled}
+                />
+              ))
+            )}
+          </div>
+
+          {batchTools.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-text-primary">Batch tools</h3>
+              {batchTools.map((tool) => (
+                <ToolRow
+                  key={tool.id}
+                  tool={tool}
+                  enabled={selection.includes(tool.id)}
+                  ruleText={toolRules[tool.id] || ''}
+                  onRuleTextChange={handleRuleChange}
+                  onToggle={handleToggle}
+                  disabled={disabled}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

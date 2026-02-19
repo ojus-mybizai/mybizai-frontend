@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAgentStore } from '@/lib/agent-store';
-import { getAgentAnalytics } from '@/services/analytics';
+import { getAgentAnalytics, recalculateAgentAnalytics } from '@/services/analytics';
 
 const AgentAnalyticsCharts = dynamic(
   () => import('@/components/agents/agent-analytics-charts'),
@@ -31,6 +31,8 @@ export default function AgentAnalyticsPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] =
     useState<Awaited<ReturnType<typeof getAgentAnalytics>> | null>(null);
+  const [recalcLoading, setRecalcLoading] = useState(false);
+  const [recalcMessage, setRecalcMessage] = useState<string | null>(null);
 
   const fetchAnalytics = useCallback(async () => {
     if (!agentId) return;
@@ -59,6 +61,24 @@ export default function AgentAnalyticsPage() {
     setAppliedStartDate(startDate);
     setAppliedEndDate(endDate);
     await fetchAnalytics();
+  };
+
+  const recalcNow = async () => {
+    if (!agentId) return;
+    setRecalcLoading(true);
+    setRecalcMessage(null);
+    try {
+      const res = await recalculateAgentAnalytics(agentId, {
+        start_date: `${appliedStartDate}T00:00:00`,
+        end_date: `${appliedEndDate}T23:59:59`,
+      });
+      setRecalcMessage(`Recalculated ${res.processed_sessions ?? 0} sessions. Refreshing analytics...`);
+      await fetchAnalytics();
+    } catch (e) {
+      setRecalcMessage((e as Error).message ?? 'Failed to recalculate analytics.');
+    } finally {
+      setRecalcLoading(false);
+    }
   };
 
   const applyPresetDays = async (days: number) => {
@@ -162,10 +182,21 @@ export default function AgentAnalyticsPage() {
             >
               {loading ? 'Loading…' : 'Apply'}
             </button>
+            <button
+              type="button"
+              onClick={() => void recalcNow()}
+              disabled={recalcLoading}
+              className="rounded-md border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+            >
+              {recalcLoading ? 'Recalculating…' : 'Recalculate now'}
+            </button>
           </div>
           <div className="text-xs text-text-secondary">
             Showing {appliedStartDate} to {appliedEndDate}
           </div>
+          {recalcMessage && (
+            <div className="text-xs text-text-secondary">{recalcMessage}</div>
+          )}
         </div>
       </div>
 
@@ -263,8 +294,8 @@ export default function AgentAnalyticsPage() {
 
       {!loading && data?.length === 0 && !error && (
         <div className="rounded-2xl border border-border-color bg-card-bg p-8 text-center text-sm text-text-secondary">
-          No analytics data for this period. Try a different range, or deploy the agent to start
-          collecting activity.
+          No analytics data for this period yet. Click <strong>Recalculate now</strong> to backfill
+          from sessions. If this stays empty, verify the `session_analytics` queue worker is running.
         </div>
       )}
     </div>

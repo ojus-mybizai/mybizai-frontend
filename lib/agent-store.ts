@@ -15,6 +15,7 @@ import {
   updateAgent,
   type CreateAgentInput,
   type UpdateAgentInput,
+  type BindToolConfigInput,
 } from '@/services/agents';
 
 interface AgentState {
@@ -30,7 +31,7 @@ interface AgentState {
   remove(id: string): Promise<void>;
   setStatus(id: string, status: AgentStatus): Promise<Agent>;
   saveChannels(id: string, channelIds: string[]): Promise<Agent | null>;
-  saveTools(id: string, toolIds: string[]): Promise<Agent | null>;
+  saveTools(id: string, toolIds: string[], toolConfigs?: Record<string, BindToolConfigInput>): Promise<Agent | null>;
   saveKB(id: string, kbIds: string[]): Promise<Agent | null>;
   resetError(): void;
   setLastAgentId(id: string | null): void;
@@ -82,7 +83,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   async update(id, input) {
     set({ loading: true, error: null });
     try {
-      const updated = await updateAgent(id, input);
+      const payload: UpdateAgentInput = { ...input };
+      const updated = await updateAgent(id, payload);
       set({
         agents: get().agents.map((a) => (a.id === id ? updated : a)),
         current: updated,
@@ -148,10 +150,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
   },
 
-  async saveTools(id, toolIds) {
+  async saveTools(id, toolIds, toolConfigs) {
     set({ loading: true, error: null });
     try {
-      await bindTools(id, toolIds);
+      await bindTools(id, toolIds, toolConfigs);
       const refreshed = await getAgent(id);
       if (refreshed) {
         set({

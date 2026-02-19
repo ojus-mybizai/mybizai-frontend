@@ -70,7 +70,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="text-xl font-semibold text-text-primary sm:text-2xl">Dashboard</h2>
               <p className="mt-1 text-base text-text-secondary">
-                See what&apos;s happening across leads, orders, work, and your team.
+                See what&apos;s happening across customers, orders, tasks, and your team.
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -85,13 +85,31 @@ export default function DashboardPage() {
 
           {(lmsEnabled || agentsEnabled) && (
             <div className="flex flex-wrap gap-2">
+              <Link
+                href="/catalog"
+                className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
+              >
+                Catalog &amp; Stock
+              </Link>
+              <Link
+                href="/orders"
+                className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
+              >
+                Orders &amp; Bookings
+              </Link>
               {lmsEnabled && (
                 <>
                   <Link
                     href="/customers"
                     className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
                   >
-                    Leads / Customers
+                    Customers
+                  </Link>
+                  <Link
+                    href="/conversations"
+                    className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
+                  >
+                    Conversations
                   </Link>
                   <Link
                     href="/channels"

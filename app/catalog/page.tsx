@@ -7,6 +7,7 @@ import { CatalogFilters } from '@/components/catalog/catalog-filters';
 import { AvailabilityBadge } from '@/components/catalog/availability-badge';
 import { PriceDisplay } from '@/components/catalog/price-display';
 import ConfirmDialog from '@/components/catalog/confirm-dialog';
+import { updateCatalogItem } from '@/lib/catalog-api';
 import { useCatalogStore } from '@/lib/catalog-store';
 import type { ListCatalogParams as FilterType } from '@/lib/catalog-api';
 
@@ -51,6 +52,10 @@ export default function CatalogPage() {
   const [filters, setFilters] = useState<FilterType>({ page: 1, per_page: PAGE_SIZE });
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [stockDrafts, setStockDrafts] = useState<Record<number, string>>({});
+  const [stockSaving, setStockSaving] = useState<Record<number, boolean>>({});
+  const [stockErrors, setStockErrors] = useState<Record<number, string | null>>({});
+  const [stockUpdated, setStockUpdated] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     void loadCategories();
@@ -82,6 +87,76 @@ export default function CatalogPage() {
     await remove(deleteId);
     setDeleteId(null);
     void list(filters);
+  };
+
+  const baseStockText = (item: { stock: number | null }) =>
+    item.stock == null ? '' : String(item.stock);
+
+  const currentDraft = (itemId: number, fallback: string) =>
+    stockDrafts[itemId] !== undefined ? stockDrafts[itemId] : fallback;
+
+  const parseStockValue = (raw: string): { ok: true; value: number | null } | { ok: false; message: string } => {
+    const value = raw.trim();
+    if (!value) return { ok: true, value: null };
+    if (!/^\d+$/.test(value)) {
+      return { ok: false, message: 'Use whole numbers only (0 or more).' };
+    }
+    return { ok: true, value: Number(value) };
+  };
+
+  const adjustDraft = (itemId: number, base: string, delta: number) => {
+    const current = currentDraft(itemId, base);
+    const parsed = parseStockValue(current);
+    const numeric = parsed.ok ? Math.max(0, parsed.value ?? 0) : 0;
+    const next = Math.max(0, numeric + delta);
+    setStockDrafts((prev) => ({ ...prev, [itemId]: String(next) }));
+    setStockErrors((prev) => ({ ...prev, [itemId]: null }));
+    setStockUpdated((prev) => ({ ...prev, [itemId]: false }));
+  };
+
+  const cancelDraft = (itemId: number, base: string) => {
+    setStockDrafts((prev) => ({ ...prev, [itemId]: base }));
+    setStockErrors((prev) => ({ ...prev, [itemId]: null }));
+    setStockUpdated((prev) => ({ ...prev, [itemId]: false }));
+  };
+
+  const saveStock = async (item: { id: number; stock: number | null }) => {
+    const base = baseStockText(item);
+    const draft = currentDraft(item.id, base);
+    const parsed = parseStockValue(draft);
+    if (!parsed.ok) {
+      setStockErrors((prev) => ({ ...prev, [item.id]: parsed.message }));
+      return;
+    }
+
+    if (parsed.value === item.stock) {
+      setStockErrors((prev) => ({ ...prev, [item.id]: null }));
+      return;
+    }
+
+    setStockSaving((prev) => ({ ...prev, [item.id]: true }));
+    setStockErrors((prev) => ({ ...prev, [item.id]: null }));
+    setStockUpdated((prev) => ({ ...prev, [item.id]: false }));
+
+    try {
+      await updateCatalogItem(item.id, { stock: parsed.value });
+      setStockDrafts((prev) => ({ ...prev, [item.id]: parsed.value == null ? '' : String(parsed.value) }));
+      setStockUpdated((prev) => ({ ...prev, [item.id]: true }));
+      setTimeout(() => {
+        setStockUpdated((prev) => ({ ...prev, [item.id]: false }));
+      }, 1500);
+      void list(filters);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not update stock.';
+      const hint =
+        /conflict|409/i.test(message)
+          ? ' Another stock update happened recently. Refresh and try again.'
+          : '';
+      setStockErrors((prev) => ({ ...prev, [item.id]: `${message}${hint}` }));
+      setStockDrafts((prev) => ({ ...prev, [item.id]: base }));
+    } finally {
+      setStockSaving((prev) => ({ ...prev, [item.id]: false }));
+    }
   };
 
   const isEmpty = !loading && items.length === 0;
@@ -248,7 +323,68 @@ export default function CatalogPage() {
                         <AvailabilityBadge value={item.availability} />
                       </td>
                       <td className="px-4 py-3 text-text-secondary">
-                        {item.type === 'product' ? item.stock ?? '—' : 'N/A'}
+                        {item.type === 'product' ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => adjustDraft(item.id, baseStockText(item), -1)}
+                                disabled={!!stockSaving[item.id]}
+                                className="rounded border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+                                aria-label={`Decrease stock for ${item.name}`}
+                              >
+                                -1
+                              </button>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={currentDraft(item.id, baseStockText(item))}
+                                onChange={(e) => {
+                                  setStockDrafts((prev) => ({ ...prev, [item.id]: e.target.value }));
+                                  setStockErrors((prev) => ({ ...prev, [item.id]: null }));
+                                  setStockUpdated((prev) => ({ ...prev, [item.id]: false }));
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    void saveStock(item);
+                                  }
+                                  if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    cancelDraft(item.id, baseStockText(item));
+                                  }
+                                }}
+                                className="w-16 rounded border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                                aria-label={`Stock for ${item.name}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => adjustDraft(item.id, baseStockText(item), 1)}
+                                disabled={!!stockSaving[item.id]}
+                                className="rounded border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+                                aria-label={`Increase stock for ${item.name}`}
+                              >
+                                +1
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void saveStock(item)}
+                                disabled={!!stockSaving[item.id]}
+                                className="rounded border border-border-color bg-bg-primary px-2 py-1 text-xs font-medium text-text-primary hover:bg-bg-secondary disabled:opacity-50"
+                              >
+                                {stockSaving[item.id] ? 'Saving…' : 'Save'}
+                              </button>
+                            </div>
+                            {stockErrors[item.id] && (
+                              <div className="text-[11px] text-red-600">{stockErrors[item.id]}</div>
+                            )}
+                            {stockUpdated[item.id] && !stockErrors[item.id] && (
+                              <div className="text-[11px] text-emerald-600">Updated</div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-text-secondary">Not applicable</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1 text-[11px] text-text-secondary">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ProtectedShell from '@/components/protected-shell';
@@ -8,8 +8,10 @@ import ModuleGuard from '@/components/module-guard';
 import { AssignWorkModal } from '@/components/work/assign-work-modal';
 import { useAuthStore } from '@/lib/auth-store';
 import {
+  bulkUpdateWork,
   listWork,
   getWorkStats,
+  updateWork,
   type Work,
   type WorkStats,
   type WorkType,
@@ -26,6 +28,12 @@ const STATUS_OPTIONS = [
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
+const PRIORITY_OPTIONS: Array<{ value: '' | 'low' | 'medium' | 'high'; label: string }> = [
+  { value: '', label: 'All priorities' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
 
 function formatDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -38,9 +46,16 @@ function statusLabel(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function priorityBadge(priority: string): string {
+  if (priority === 'high') return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300';
+  if (priority === 'low') return 'bg-slate-100 text-slate-700 dark:bg-slate-900/40 dark:text-slate-300';
+  return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
+}
+
 export default function WorkPage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user as { id?: number; businesses?: { role?: string }[] } | null);
+  const currentUserId = user?.id ?? null;
   const role = user?.businesses?.[0]?.role ?? 'owner';
   const canAssign = role === 'owner' || role === 'manager';
   const canManageTypes = role === 'owner' || role === 'manager';
@@ -51,14 +66,23 @@ export default function WorkPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [types, setTypes] = useState<WorkType[]>([]);
   const [employees, setEmployees] = useState<{ user_id: number; name: string }[]>([]);
+  const [selectedWorkIds, setSelectedWorkIds] = useState<number[]>([]);
+  const [bulkStatus, setBulkStatus] = useState<'pending' | 'in_progress' | 'completed' | 'cancelled' | ''>('');
+  const [bulkAssigneeId, setBulkAssigneeId] = useState<number | null>(null);
   const [filters, setFilters] = useState<WorkListFilters>({
     page: 1,
     per_page: PER_PAGE,
     status: null,
     work_type_id: null,
     assigned_to_id: null,
+    priority: null,
+    overdue: null,
+    q: null,
   });
   const [assignModalOpen, setAssignModalOpen] = useState(false);
 
@@ -73,6 +97,7 @@ export default function WorkPage() {
 
   const loadList = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await listWork({
         page: filters.page ?? 1,
@@ -80,12 +105,17 @@ export default function WorkPage() {
         status: filters.status || undefined,
         work_type_id: filters.work_type_id ?? undefined,
         assigned_to_id: filters.assigned_to_id ?? undefined,
+        priority: filters.priority ?? undefined,
+        overdue: filters.overdue ?? undefined,
+        q: (filters.q || '').trim() || undefined,
       });
       setItems(res.items);
       setTotal(res.total);
       setPage(res.page);
       setTotalPages(res.total_pages);
+      setSelectedWorkIds((prev) => prev.filter((id) => res.items.some((w) => w.id === id)));
     } catch {
+      setError('Failed to load work items. Try again.');
       setItems([]);
       setTotal(0);
       setPage(1);
@@ -93,7 +123,7 @@ export default function WorkPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters.page, filters.per_page, filters.status, filters.work_type_id, filters.assigned_to_id]);
+  }, [filters.page, filters.per_page, filters.status, filters.work_type_id, filters.assigned_to_id, filters.priority, filters.overdue, filters.q]);
 
   useEffect(() => {
     void loadStats();
@@ -105,11 +135,90 @@ export default function WorkPage() {
 
   useEffect(() => {
     listWorkTypes().then(setTypes).catch(() => setTypes([]));
-    listEmployees().then((list) => setEmployees(list.map((e) => ({ user_id: e.user_id, name: e.name || e.email })))).catch(() => setEmployees([]));
+    listEmployees()
+      .then((list) =>
+        setEmployees(
+          list
+            .filter((e) => e.id === 0 || e.is_active)
+            .map((e) => ({ user_id: e.user_id, name: e.name || e.email })),
+        ),
+      )
+      .catch(() => setEmployees([]));
   }, []);
 
-  const applyFilter = (key: keyof WorkListFilters, value: number | string | null) => {
+  const applyFilter = (key: keyof WorkListFilters, value: number | string | boolean | null) => {
     setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
+  };
+
+  const selectedCount = selectedWorkIds.length;
+  const allVisibleSelected = useMemo(
+    () => items.length > 0 && items.every((w) => selectedWorkIds.includes(w.id)),
+    [items, selectedWorkIds],
+  );
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedWorkIds((prev) => prev.filter((id) => !items.some((w) => w.id === id)));
+      return;
+    }
+    setSelectedWorkIds((prev) => Array.from(new Set([...prev, ...items.map((w) => w.id)])));
+  };
+
+  const toggleSelectOne = (workId: number) => {
+    setSelectedWorkIds((prev) => (prev.includes(workId) ? prev.filter((id) => id !== workId) : [...prev, workId]));
+  };
+
+  const applyQuickStatus = async (workId: number, status: 'pending' | 'in_progress' | 'completed' | 'cancelled') => {
+    try {
+      const updated = await updateWork(workId, { status });
+      setItems((prev) => prev.map((item) => (item.id === workId ? updated : item)));
+      setNotice(`Work #${workId} updated.`);
+      setError(null);
+      void loadStats();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update work status.');
+    }
+  };
+
+  const assignToMe = async (workId: number) => {
+    if (!currentUserId) return;
+    try {
+      const updated = await updateWork(workId, { assigned_to_id: currentUserId });
+      setItems((prev) => prev.map((item) => (item.id === workId ? updated : item)));
+      setNotice(`Work #${workId} assigned to you.`);
+      setError(null);
+      void loadStats();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to assign work.');
+    }
+  };
+
+  const runBulkUpdate = async () => {
+    if (!selectedWorkIds.length) return;
+    if (!bulkStatus && bulkAssigneeId == null) {
+      setError('Pick a bulk status or assignee first.');
+      return;
+    }
+    setBulkBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await bulkUpdateWork({
+        work_ids: selectedWorkIds,
+        status: bulkStatus || undefined,
+        assigned_to_id: bulkAssigneeId ?? undefined,
+      });
+      setSelectedWorkIds([]);
+      setBulkStatus('');
+      setBulkAssigneeId(null);
+      setNotice('Bulk update applied.');
+      void loadList();
+      void loadStats();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bulk update failed.');
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const isEmpty = !loading && items.length === 0;
@@ -145,6 +254,17 @@ export default function WorkPage() {
                 )}
               </div>
             </div>
+
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                {error}
+              </div>
+            )}
+            {notice && !error && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                {notice}
+              </div>
+            )}
 
             {stats && (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -209,6 +329,30 @@ export default function WorkPage() {
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
+              <select
+                value={filters.priority ?? ''}
+                onChange={(e) => applyFilter('priority', (e.target.value || null) as WorkListFilters['priority'])}
+                className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {PRIORITY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <label className="inline-flex items-center gap-2 rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={filters.overdue === true}
+                  onChange={(e) => applyFilter('overdue', e.target.checked ? true : null)}
+                />
+                Overdue only
+              </label>
+              <input
+                type="text"
+                value={filters.q ?? ''}
+                onChange={(e) => applyFilter('q', e.target.value || null)}
+                placeholder="Search title or notes"
+                className="min-w-[220px] rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              />
               {canAssign && (
                 <select
                   value={filters.assigned_to_id ?? ''}
@@ -221,7 +365,59 @@ export default function WorkPage() {
                   ))}
                 </select>
               )}
+              <button
+                type="button"
+                onClick={() => setFilters({
+                  page: 1,
+                  per_page: PER_PAGE,
+                  status: null,
+                  work_type_id: null,
+                  assigned_to_id: null,
+                  priority: null,
+                  overdue: null,
+                  q: null,
+                })}
+                className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm font-semibold text-text-secondary hover:border-accent hover:text-text-primary"
+              >
+                Reset
+              </button>
             </div>
+
+            {selectedCount > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-color bg-card-bg px-4 py-3">
+                <span className="text-sm font-semibold text-text-primary">{selectedCount} selected</span>
+                <select
+                  value={bulkStatus}
+                  onChange={(e) => setBulkStatus(e.target.value as typeof bulkStatus)}
+                  className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="">Bulk status</option>
+                  {STATUS_OPTIONS.filter((o) => o.value).map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                {canAssign && (
+                  <select
+                    value={bulkAssigneeId ?? ''}
+                    onChange={(e) => setBulkAssigneeId(e.target.value ? Number(e.target.value) : null)}
+                    className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                  >
+                    <option value="">Bulk assignee</option>
+                    {employees.map((emp) => (
+                      <option key={emp.user_id} value={emp.user_id}>{emp.name}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void runBulkUpdate()}
+                  className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {bulkBusy ? 'Applying...' : 'Apply bulk update'}
+                </button>
+              </div>
+            )}
 
             {loading && <div className="text-base text-text-secondary">Loading work…</div>}
 
@@ -246,9 +442,13 @@ export default function WorkPage() {
                 <table className="min-w-full divide-y divide-border-color">
                   <thead className="bg-bg-secondary">
                     <tr>
+                      <th className="px-4 py-2.5 text-left">
+                        <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} />
+                      </th>
                       <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Title / Type</th>
                       <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Assigned to</th>
                       <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Status</th>
+                      <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Priority</th>
                       <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Due date</th>
                       <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Lead</th>
                       <th className="px-4 py-2.5 text-right text-sm font-semibold text-text-secondary">Actions</th>
@@ -257,6 +457,13 @@ export default function WorkPage() {
                   <tbody className="divide-y divide-border-color">
                     {items.map((w) => (
                       <tr key={w.id} className="hover:bg-bg-secondary/60">
+                        <td className="px-4 py-2.5">
+                          <input
+                            type="checkbox"
+                            checked={selectedWorkIds.includes(w.id)}
+                            onChange={() => toggleSelectOne(w.id)}
+                          />
+                        </td>
                         <td className="px-4 py-2.5">
                           <div className="text-base font-medium text-text-primary">{w.title || w.work_type_name}</div>
                           <div className="text-sm text-text-secondary">{w.work_type_name}</div>
@@ -272,6 +479,11 @@ export default function WorkPage() {
                             {statusLabel(w.status)}
                           </span>
                         </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${priorityBadge(w.priority)}`}>
+                            {w.priority}
+                          </span>
+                        </td>
                         <td className="px-4 py-2.5 text-sm text-text-secondary">{formatDate(w.due_date)}</td>
                         <td className="px-4 py-2.5">
                           {w.lead_id ? (
@@ -283,13 +495,33 @@ export default function WorkPage() {
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => router.push(`/work/${w.id}`)}
-                            className="rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-sm font-semibold text-text-primary hover:border-accent"
-                          >
-                            View
-                          </button>
+                          <div className="flex justify-end gap-2">
+                            <select
+                              value={w.status}
+                              onChange={(e) => void applyQuickStatus(w.id, e.target.value as Work['status'])}
+                              className="rounded-lg border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary"
+                            >
+                              {STATUS_OPTIONS.filter((o) => o.value).map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                            {canAssign && currentUserId != null && (
+                              <button
+                                type="button"
+                                onClick={() => void assignToMe(w.id)}
+                                className="rounded-lg border border-border-color bg-bg-primary px-2 py-1 text-xs font-semibold text-text-primary hover:border-accent"
+                              >
+                                Assign me
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/work/${w.id}`)}
+                              className="rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-sm font-semibold text-text-primary hover:border-accent"
+                            >
+                              Open
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

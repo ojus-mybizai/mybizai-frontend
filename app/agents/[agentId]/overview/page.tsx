@@ -3,10 +3,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CapabilityToggle } from '@/components/agents/capability-toggle';
 import { DeployButton } from '@/components/agents/deploy-button';
 import { useAgentStore } from '@/lib/agent-store';
-import type { ReplyMode } from '@/services/agents';
+import type { AgentEscalationPolicy, AgentGuardrailRules, AgentReplyFormat, ReplyLength, ReplyMode } from '@/services/agents';
 import {
   getAgentFollowupSettings,
   listAgentFollowupRules,
@@ -21,6 +20,69 @@ const REPLY_MODE_OPTIONS: { value: ReplyMode; label: string; description: string
   { value: 'template_only', label: 'Template only', description: 'Use only message templates. If no match, send a short fallback.' },
   { value: 'ai_only', label: 'AI only', description: 'Always use the AI to generate replies (no templates).' },
 ];
+
+const REPLY_LENGTH_OPTIONS: ReplyLength[] = ['short', 'medium', 'long'];
+const REPLY_LANGUAGE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'auto', label: 'Auto-detect user language' },
+  { value: 'en', label: 'English' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'ta', label: 'Tamil' },
+  { value: 'te', label: 'Telugu' },
+  { value: 'ar', label: 'Arabic' },
+];
+
+function ListFieldEditor({
+  label,
+  value,
+  placeholder,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string[];
+  placeholder: string;
+  disabled?: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-medium text-text-primary">{label}</div>
+      <div className="space-y-2">
+        {value.map((item, idx) => (
+          <div key={`${label}-${idx}`} className="flex gap-2">
+            <input
+              value={item}
+              disabled={disabled}
+              onChange={(e) => {
+                const next = [...value];
+                next[idx] = e.target.value;
+                onChange(next);
+              }}
+              placeholder={placeholder}
+              className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(value.filter((_, i) => i !== idx))}
+              className="rounded-md border border-border-color px-3 py-2 text-xs text-text-secondary hover:border-red-400 hover:text-red-500 disabled:opacity-60"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange([...value, ''])}
+        className="rounded-md border border-border-color px-3 py-1.5 text-xs font-semibold text-text-secondary hover:border-accent hover:text-text-primary disabled:opacity-60"
+      >
+        Add rule
+      </button>
+    </div>
+  );
+}
 
 export default function AgentOverviewPage() {
   const router = useRouter();
@@ -37,15 +99,23 @@ export default function AgentOverviewPage() {
   const [instructions, setInstructions] = useState('');
   const [model, setModel] = useState(MODELS[0]);
   const [replyMode, setReplyMode] = useState<ReplyMode>('auto');
-  const [caps, setCaps] = useState<Record<string, boolean>>({
-    orders: false,
-    appointments: false,
-    catalog: false,
-    catalog_lookup: false,
-    knowledge_base_lookup: false,
-    summarization: false,
-    lead_scoring: false,
+  const [personaName, setPersonaName] = useState('');
+  const [replyLanguage, setReplyLanguage] = useState('auto');
+  const [replyFormat, setReplyFormat] = useState<AgentReplyFormat>({ maxLength: 'short', useBullets: false, useEmojis: false });
+  const [guardrailRules, setGuardrailRules] = useState<AgentGuardrailRules>({
+    neverDo: [],
+    alwaysDo: [],
+    prohibitedTopics: [],
+    offTopicMessage: '',
   });
+  const [escalationPolicy, setEscalationPolicy] = useState<AgentEscalationPolicy>({
+    enabled: false,
+    triggers: [],
+    message: '',
+  });
+  const [openingMessage, setOpeningMessage] = useState('');
+  const [fallbackMessage, setFallbackMessage] = useState('');
+  const [businessContextHint, setBusinessContextHint] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [followupSettings, setFollowupSettings] = useState<{ enabled: boolean; default_mode: FollowUpMode }>({
@@ -63,13 +133,27 @@ export default function AgentOverviewPage() {
     setInstructions(current.instructions);
     setModel(current.model);
     setReplyMode(current.replyMode ?? 'auto');
-    // Ensure capabilities match backend schema - only include allowed capabilities
-    const allowedCaps = ['orders', 'appointments', 'catalog', 'catalog_lookup', 'knowledge_base_lookup', 'summarization', 'lead_scoring'];
-    const filteredCaps: Record<string, boolean> = {};
-    allowedCaps.forEach(key => {
-      filteredCaps[key] = current.capabilities?.[key] || false;
+    setPersonaName(current.personaName ?? '');
+    setReplyLanguage(current.replyLanguage ?? 'auto');
+    setReplyFormat({
+      maxLength: current.replyFormat?.maxLength ?? 'short',
+      useBullets: Boolean(current.replyFormat?.useBullets),
+      useEmojis: Boolean(current.replyFormat?.useEmojis),
     });
-    setCaps(filteredCaps);
+    setGuardrailRules({
+      neverDo: current.guardrailRules?.neverDo ?? [],
+      alwaysDo: current.guardrailRules?.alwaysDo ?? [],
+      prohibitedTopics: current.guardrailRules?.prohibitedTopics ?? [],
+      offTopicMessage: current.guardrailRules?.offTopicMessage ?? '',
+    });
+    setEscalationPolicy({
+      enabled: Boolean(current.escalationPolicy?.enabled),
+      triggers: current.escalationPolicy?.triggers ?? [],
+      message: current.escalationPolicy?.message ?? '',
+    });
+    setOpeningMessage(current.openingMessage ?? '');
+    setFallbackMessage(current.fallbackMessage ?? '');
+    setBusinessContextHint(current.businessContextHint ?? '');
   }, [current]);
 
   useEffect(() => {
@@ -90,9 +174,10 @@ export default function AgentOverviewPage() {
         });
         setFollowupRules(rules);
       })
-      .catch((e: any) => {
+      .catch((e: unknown) => {
         if (cancelled) return;
-        setRulesError(e?.message ?? 'Failed to load follow-up configuration');
+        const message = e instanceof Error ? e.message : 'Failed to load follow-up configuration';
+        setRulesError(message);
       })
       .finally(() => {
         if (!cancelled) setRulesLoading(false);
@@ -123,20 +208,33 @@ export default function AgentOverviewPage() {
       return;
     }
     try {
-      // Filter capabilities to only include allowed ones
-      const allowedCaps = ['orders', 'appointments', 'catalog', 'catalog_lookup', 'knowledge_base_lookup', 'summarization', 'lead_scoring'];
-      const filteredCaps: Record<string, boolean> = {};
-      allowedCaps.forEach(key => {
-        filteredCaps[key] = caps[key] || false;
-      });
-
       await update(current.id, {
         name: name.trim(),
         tone: tone.trim(),
         instructions,
         model,
         reply_mode: replyMode,
-        capabilities: filteredCaps,
+        personaName: personaName.trim() || undefined,
+        replyLanguage,
+        replyFormat: {
+          maxLength: replyFormat.maxLength ?? 'short',
+          useBullets: Boolean(replyFormat.useBullets),
+          useEmojis: Boolean(replyFormat.useEmojis),
+        },
+        guardrailRules: {
+          neverDo: (guardrailRules.neverDo ?? []).map((x) => x.trim()).filter(Boolean),
+          alwaysDo: (guardrailRules.alwaysDo ?? []).map((x) => x.trim()).filter(Boolean),
+          prohibitedTopics: (guardrailRules.prohibitedTopics ?? []).map((x) => x.trim()).filter(Boolean),
+          offTopicMessage: guardrailRules.offTopicMessage?.trim() || '',
+        },
+        escalationPolicy: {
+          enabled: Boolean(escalationPolicy.enabled),
+          triggers: (escalationPolicy.triggers ?? []).map((x) => x.trim()).filter(Boolean),
+          message: escalationPolicy.message?.trim() || '',
+        },
+        openingMessage: openingMessage.trim() || undefined,
+        fallbackMessage: fallbackMessage.trim() || undefined,
+        businessContextHint: businessContextHint.trim() || undefined,
       });
       setMessage('Saved');
     } catch (err) {
@@ -260,60 +358,184 @@ export default function AgentOverviewPage() {
           </p>
         </div>
 
-        <div className="space-y-2">
-          <div className="text-sm font-semibold text-text-primary">Capabilities</div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <CapabilityToggle
-              label="Orders"
-              description="Handle order management and processing."
-              checked={caps.orders || false}
-              onChange={(next) => setCaps((c) => ({ ...c, orders: next }))}
-              disabled={disabled}
-            />
-            <CapabilityToggle
-              label="Appointments"
-              description="Schedule and manage appointments."
-              checked={caps.appointments || false}
-              onChange={(next) => setCaps((c) => ({ ...c, appointments: next }))}
-              disabled={disabled}
-            />
-            <CapabilityToggle
-              label="Catalog"
-              description="Access and manage product catalog."
-              checked={caps.catalog || false}
-              onChange={(next) => setCaps((c) => ({ ...c, catalog: next }))}
-              disabled={disabled}
-            />
-            <CapabilityToggle
-              label="Catalog Lookup"
-              description="Search and retrieve catalog items."
-              checked={caps.catalog_lookup || false}
-              onChange={(next) => setCaps((c) => ({ ...c, catalog_lookup: next }))}
-              disabled={disabled}
-            />
-            <CapabilityToggle
-              label="Knowledge Base Lookup"
-              description="Search and retrieve information from knowledge bases."
-              checked={caps.knowledge_base_lookup || false}
-              onChange={(next) => setCaps((c) => ({ ...c, knowledge_base_lookup: next }))}
-              disabled={disabled}
-            />
-            <CapabilityToggle
-              label="Summarization"
-              description="Summarize conversations and content."
-              checked={caps.summarization || false}
-              onChange={(next) => setCaps((c) => ({ ...c, summarization: next }))}
-              disabled={disabled}
-            />
-            <CapabilityToggle
-              label="Lead Scoring"
-              description="Score and qualify leads automatically."
-              checked={caps.lead_scoring || false}
-              onChange={(next) => setCaps((c) => ({ ...c, lead_scoring: next }))}
-              disabled={disabled}
-            />
-          </div>
+        <div className="rounded-md border border-border-color bg-bg-primary px-3 py-2 text-xs text-text-secondary">
+          Tool behavior is now configured from the <strong>Tools</strong> tab (realtime/background with rules).
         </div>
+
+        <details className="rounded-xl border border-border-color bg-bg-primary p-4" open>
+          <summary className="cursor-pointer text-sm font-semibold text-text-primary">Reply Format &amp; Language</summary>
+          <div className="mt-3 space-y-4">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">Persona name</label>
+              <input
+                value={personaName}
+                onChange={(e) => setPersonaName(e.target.value)}
+                disabled={disabled}
+                placeholder="e.g. Riya from MyBiz"
+                className="w-full rounded-md border border-border-color bg-card-bg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">Reply language</label>
+              <select
+                value={replyLanguage}
+                onChange={(e) => setReplyLanguage(e.target.value)}
+                disabled={disabled}
+                className="w-full rounded-md border border-border-color bg-card-bg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+              >
+                {REPLY_LANGUAGE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-text-primary">Reply length</div>
+              <div className="flex flex-wrap gap-2">
+                {REPLY_LENGTH_OPTIONS.map((len) => (
+                  <button
+                    key={len}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setReplyFormat((prev) => ({ ...prev, maxLength: len }))}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      (replyFormat.maxLength ?? 'short') === len
+                        ? 'bg-accent text-white'
+                        : 'border border-border-color bg-card-bg text-text-secondary hover:border-accent hover:text-text-primary'
+                    }`}
+                  >
+                    {len.charAt(0).toUpperCase() + len.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={Boolean(replyFormat.useBullets)}
+                  onChange={(e) => setReplyFormat((prev) => ({ ...prev, useBullets: e.target.checked }))}
+                  disabled={disabled}
+                />
+                Use bullets in replies
+              </label>
+              <label className="flex items-center gap-2 text-sm text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={Boolean(replyFormat.useEmojis)}
+                  onChange={(e) => setReplyFormat((prev) => ({ ...prev, useEmojis: e.target.checked }))}
+                  disabled={disabled}
+                />
+                Allow emojis
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <details className="rounded-xl border border-border-color bg-bg-primary p-4" open>
+          <summary className="cursor-pointer text-sm font-semibold text-text-primary">Guardrails</summary>
+          <div className="mt-3 space-y-4">
+            <ListFieldEditor
+              label="Never do"
+              value={guardrailRules.neverDo ?? []}
+              placeholder="e.g. Never promise delivery date without checking tools"
+              disabled={disabled}
+              onChange={(next) => setGuardrailRules((prev) => ({ ...prev, neverDo: next }))}
+            />
+            <ListFieldEditor
+              label="Always do"
+              value={guardrailRules.alwaysDo ?? []}
+              placeholder="e.g. Confirm customer requirement before recommending"
+              disabled={disabled}
+              onChange={(next) => setGuardrailRules((prev) => ({ ...prev, alwaysDo: next }))}
+            />
+            <ListFieldEditor
+              label="Prohibited topics"
+              value={guardrailRules.prohibitedTopics ?? []}
+              placeholder="e.g. Politics, competitor comparison"
+              disabled={disabled}
+              onChange={(next) => setGuardrailRules((prev) => ({ ...prev, prohibitedTopics: next }))}
+            />
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">Off-topic reply message</label>
+              <textarea
+                value={guardrailRules.offTopicMessage ?? ''}
+                onChange={(e) => setGuardrailRules((prev) => ({ ...prev, offTopicMessage: e.target.value }))}
+                disabled={disabled}
+                rows={3}
+                placeholder="I can help with this business only. Please share your product/service requirement."
+                className="w-full rounded-md border border-border-color bg-card-bg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+              />
+            </div>
+          </div>
+        </details>
+
+        <details className="rounded-xl border border-border-color bg-bg-primary p-4" open>
+          <summary className="cursor-pointer text-sm font-semibold text-text-primary">Escalation &amp; Messages</summary>
+          <div className="mt-3 space-y-4">
+            <label className="flex items-center gap-2 text-sm text-text-primary">
+              <input
+                type="checkbox"
+                checked={Boolean(escalationPolicy.enabled)}
+                onChange={(e) => setEscalationPolicy((prev) => ({ ...prev, enabled: e.target.checked }))}
+                disabled={disabled}
+              />
+              Enable escalation to human handoff
+            </label>
+            <ListFieldEditor
+              label="Escalation triggers"
+              value={escalationPolicy.triggers ?? []}
+              placeholder="e.g. angry, refund, complaint"
+              disabled={disabled}
+              onChange={(next) => setEscalationPolicy((prev) => ({ ...prev, triggers: next }))}
+            />
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">Escalation message</label>
+              <textarea
+                value={escalationPolicy.message ?? ''}
+                onChange={(e) => setEscalationPolicy((prev) => ({ ...prev, message: e.target.value }))}
+                disabled={disabled}
+                rows={3}
+                placeholder="I am connecting you with a human team member for better assistance."
+                className="w-full rounded-md border border-border-color bg-card-bg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">Opening message</label>
+              <textarea
+                value={openingMessage}
+                onChange={(e) => setOpeningMessage(e.target.value)}
+                disabled={disabled}
+                rows={2}
+                placeholder="Hi! I am Riya from MyBiz. How can I help you today?"
+                className="w-full rounded-md border border-border-color bg-card-bg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">Fallback message</label>
+              <textarea
+                value={fallbackMessage}
+                onChange={(e) => setFallbackMessage(e.target.value)}
+                disabled={disabled}
+                rows={2}
+                placeholder="I do not have verified data for that yet. I can check it for you now."
+                className="w-full rounded-md border border-border-color bg-card-bg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">Business context hint</label>
+              <textarea
+                value={businessContextHint}
+                onChange={(e) => setBusinessContextHint(e.target.value)}
+                disabled={disabled}
+                rows={3}
+                placeholder="e.g. We offer free installation, 1-year warranty, EMI available"
+                className="w-full rounded-md border border-border-color bg-card-bg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+              />
+            </div>
+          </div>
+        </details>
 
         <div className="flex gap-3">
           <button
@@ -356,8 +578,9 @@ export default function AgentOverviewPage() {
                     await import('@/services/followups').then(({ updateAgentFollowupSettings }) =>
                       updateAgentFollowupSettings(current.id, { enabled: nextEnabled }),
                     );
-                  } catch (e) {
-                    setRulesError((e as any)?.message ?? 'Failed to update follow-up settings');
+                  } catch (e: unknown) {
+                    const message = e instanceof Error ? e.message : 'Failed to update follow-up settings';
+                    setRulesError(message);
                   }
                 }}
                 className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
@@ -390,8 +613,9 @@ export default function AgentOverviewPage() {
                         await import('@/services/followups').then(({ updateAgentFollowupSettings }) =>
                           updateAgentFollowupSettings(current.id, { default_mode: mode }),
                         );
-                      } catch (e) {
-                        setRulesError((e as any)?.message ?? 'Failed to update follow-up settings');
+                      } catch (e: unknown) {
+                        const message = e instanceof Error ? e.message : 'Failed to update follow-up settings';
+                        setRulesError(message);
                       }
                     }}
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${

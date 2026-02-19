@@ -45,6 +45,7 @@ export interface ListOrdersParams {
   status?: OrderStatus;
   payment_status?: PaymentStatus;
   contact_id?: number;
+  lead_id?: number;
 }
 
 export async function listOrders(params: ListOrdersParams = {}): Promise<Order[]> {
@@ -52,6 +53,7 @@ export async function listOrders(params: ListOrdersParams = {}): Promise<Order[]
   if (params.status) search.set('status', params.status);
   if (params.payment_status) search.set('payment_status', params.payment_status);
   if (params.contact_id) search.set('contact_id', String(params.contact_id));
+  if (params.lead_id) search.set('lead_id', String(params.lead_id));
 
   const qs = search.toString();
   const path = qs ? `/orders/?${qs}` : '/orders/';

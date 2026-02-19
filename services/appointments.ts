@@ -37,6 +37,7 @@ export interface AppointmentUpdatePayload {
 export interface ListAppointmentsParams {
   status?: AppointmentStatus;
   contact_id?: number;
+  lead_id?: number;
   date_from?: string;
   date_to?: string;
 }
@@ -45,6 +46,7 @@ export async function listAppointments(params: ListAppointmentsParams = {}): Pro
   const search = new URLSearchParams();
   if (params.status) search.set('status', params.status);
   if (params.contact_id !== undefined) search.set('contact_id', String(params.contact_id));
+  if (params.lead_id !== undefined) search.set('lead_id', String(params.lead_id));
   if (params.date_from) search.set('date_from', params.date_from);
   if (params.date_to) search.set('date_to', params.date_to);
 

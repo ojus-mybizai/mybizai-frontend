@@ -185,7 +185,35 @@ export default function ReportsPage() {
               <div className="text-base text-text-secondary py-8">Loading reports…</div>
             )}
             {!dashboardLoading && dashboard && (
-              <ReportChartsOverview dashboard={dashboard} />
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-lg border border-border-color bg-bg-primary p-3">
+                    <div className="text-xs text-text-secondary">Action: follow up new leads</div>
+                    <div className="mt-1 text-lg font-semibold text-text-primary">
+                      {dashboard.leads.by_status.new ?? 0}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border-color bg-bg-primary p-3">
+                    <div className="text-xs text-text-secondary">Action: out-of-stock items</div>
+                    <div className="mt-1 text-lg font-semibold text-text-primary">
+                      {dashboard.catalog.by_availability.out_of_stock ?? 0}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border-color bg-bg-primary p-3">
+                    <div className="text-xs text-text-secondary">Action: pending orders</div>
+                    <div className="mt-1 text-lg font-semibold text-text-primary">
+                      {(dashboard.orders.by_status.pending ?? 0) + (dashboard.orders.by_status.confirmed ?? 0)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border-color bg-bg-primary p-3">
+                    <div className="text-xs text-text-secondary">Action: open work tasks</div>
+                    <div className="mt-1 text-lg font-semibold text-text-primary">
+                      {(dashboard.work.by_status.todo ?? 0) + (dashboard.work.by_status.in_progress ?? 0)}
+                    </div>
+                  </div>
+                </div>
+                <ReportChartsOverview dashboard={dashboard} />
+              </>
             )}
           </section>
 
@@ -302,7 +330,11 @@ export default function ReportsPage() {
                   <tbody className="divide-y divide-border-color">
                     {filteredRows.map((r) => (
                       <tr key={r.user_id} className="hover:bg-bg-secondary/60">
-                        <td className="px-4 py-2.5 text-base font-medium text-text-primary">{r.name}</td>
+                        <td className="px-4 py-2.5 text-base font-medium">
+                          <Link href={`/employees/${r.id}`} className="text-text-primary hover:text-accent">
+                            {r.name}
+                          </Link>
+                        </td>
                         <td className="px-4 py-2.5 text-sm text-text-primary">{r.email}</td>
                         <td className="px-4 py-2.5 text-sm text-text-primary">{ROLE_LABELS[r.role] ?? r.role}</td>
                         <td className="px-4 py-2.5 text-sm">

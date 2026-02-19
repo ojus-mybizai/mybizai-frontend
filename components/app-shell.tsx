@@ -38,40 +38,39 @@ function isNavItem(entry: NavEntry): entry is NavItem {
 
 function buildNavItems(lmsEnabled: boolean, agentsEnabled: boolean): NavEntry[] {
   const items: NavEntry[] = [
-    { kind: 'section', label: 'Core' },
+    { kind: 'section', label: 'Foundation' },
     { label: 'Dashboard', href: '/dashboard', short: 'DB' },
-    { label: 'Catalog', href: '/catalog', short: 'CT' },
-    { label: 'Orders / Bookings', href: '/orders', short: 'OR' },
-    { label: 'Storefront', href: '/storefront/settings', short: 'SF' },
+    { label: 'Catalog & Stock', href: '/catalog', short: 'CT' },
+    { label: 'Orders & Bookings', href: '/orders', short: 'OR' },
     { label: 'Reports', href: '/reports', short: 'RP' },
     { label: 'Settings', href: '/settings', short: 'ST' },
   ];
 
-  items.push({ kind: 'section', label: 'LMS' });
-  items.push({ label: 'Channels', href: '/channels', short: 'CH' });
-  items.push({ label: 'Leads', href: '/customers', short: 'LD' });
-  items.push({ label: 'Conversations', href: '/conversations', short: 'CV' });
-  items.push({ label: 'Work', href: '/work', short: 'WK' });
-  items.push({ label: 'Employees', href: '/employees', short: 'EM' });
+  if (lmsEnabled) {
+    items.push({ label: 'Customers', href: '/customers', short: 'CU' });
+    items.push({ label: 'Conversations', href: '/conversations', short: 'CV' });
+    items.push({ label: 'Channels', href: '/channels', short: 'CH' });
+    items.push({ label: 'Work & Tasks', href: '/work', short: 'WK' });
+    items.push({ label: 'Employees', href: '/employees', short: 'EM' });
+  }
+
+  items.push({ kind: 'section', label: 'Purchased Modules' });
+  items.push({ label: 'Storefront', href: '/storefront/settings', short: 'SF' });
 
   if (agentsEnabled) {
-    items.push({ kind: 'section', label: 'Agents' });
     items.push({
       label: 'Business Agents',
       href: '/agents',
       short: 'BA',
       children: [
-        { label: 'All agents', href: '/agents', group: 'manage' },
-        { label: 'New agent', href: '/agents/new', group: 'manage' },
-        { label: 'Last opened agent', href: '/agents', group: 'workspace', isLastAgent: true },
-        { label: 'Templates', href: '/lead-templates', group: 'analytics' },
-        { label: 'Analytics', href: '/analytics', group: 'analytics' },
-        { label: 'Message templates', href: '/agents/templates', group: 'analytics' },
+        { label: 'All Agents', href: '/agents', group: 'manage' },
+        { label: 'New Agent', href: '/agents/new', group: 'manage' },
+        { label: 'Last Opened Agent', href: '/agents', group: 'workspace', isLastAgent: true },
+        { label: 'Lead Templates', href: '/lead-templates', group: 'analytics' },
+        { label: 'Agent Analytics', href: '/analytics', group: 'analytics' },
+        { label: 'Message Templates', href: '/agents/templates', group: 'analytics' },
       ],
     });
-    items.push({ label: 'Deploy', href: '/deploy', short: 'DP' });
-    items.push({ label: 'Templates', href: '/lead-templates', short: 'TP' });
-    items.push({ label: 'Analytics', href: '/analytics', short: 'AN' });
   }
 
   return items;
@@ -140,7 +139,7 @@ export default function AppShell({ children }: AppShellProps) {
             return (
               <div
                 key={`section-${entry.label}`}
-                className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary"
+                className="mt-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary"
               >
                 {entry.label}
               </div>
@@ -205,7 +204,7 @@ export default function AppShell({ children }: AppShellProps) {
                     const isDisabledLast = child.isLastAgent && !lastAgentId;
                     const label =
                       child.isLastAgent && !lastAgentId
-                        ? 'Last opened agent (none yet)'
+                        ? 'Last Opened Agent (none yet)'
                         : child.label;
                     return (
                       <button

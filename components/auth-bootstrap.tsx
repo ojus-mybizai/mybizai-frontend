@@ -13,6 +13,9 @@ export default function AuthBootstrap({ children }: Props) {
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
   const setOnboardingRequired = useAuthStore((s) => s.setOnboardingRequired);
+  const setDefaultBusinessId = useAuthStore((s) => s.setDefaultBusinessId);
+  const setDefaultRole = useAuthStore((s) => s.setDefaultRole);
+  const setHasActiveBusinessAccess = useAuthStore((s) => s.setHasActiveBusinessAccess);
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const setInitialized = useAuthStore((s) => s.setInitialized);
   const logout = useAuthStore((s) => s.logout);
@@ -49,15 +52,38 @@ export default function AuthBootstrap({ children }: Props) {
 
             if (response.ok) {
               const data = await response.json();
-              const accessToken = (data as any).access_token || (data as any).accessToken || null;
-              const user = (data as any).user ?? null;
+              const payload = data as Record<string, unknown>;
+              const accessToken =
+                (typeof payload.access_token === 'string' && payload.access_token) ||
+                (typeof payload.accessToken === 'string' && payload.accessToken) ||
+                null;
+              const user = payload.user ?? null;
               const onboardingRequired =
-                (data as any).onboarding_required ?? (data as any).onboardingRequired ?? false;
+                (payload.onboarding_required as boolean | undefined) ??
+                (payload.onboardingRequired as boolean | undefined) ??
+                false;
+              const defaultBusinessId =
+                (payload.default_business_id as number | null | undefined) ??
+                (payload.defaultBusinessId as number | null | undefined) ??
+                null;
+              const defaultRole =
+                (payload.default_role as 'owner' | 'manager' | 'executive' | null | undefined) ??
+                (payload.defaultRole as 'owner' | 'manager' | 'executive' | null | undefined) ??
+                null;
+              const hasActiveBusinessAccess =
+                (payload.has_active_business_access as boolean | undefined) ??
+                (payload.hasActiveBusinessAccess as boolean | undefined) ??
+                true;
 
               if (isMounted) {
                 setAccessToken(accessToken);
                 setUser(user);
                 setOnboardingRequired(Boolean(onboardingRequired));
+                setDefaultBusinessId(
+                  typeof defaultBusinessId === 'number' ? defaultBusinessId : null,
+                );
+                setDefaultRole(defaultRole);
+                setHasActiveBusinessAccess(Boolean(hasActiveBusinessAccess));
               }
             }
           } catch {
@@ -70,7 +96,7 @@ export default function AuthBootstrap({ children }: Props) {
           try {
             const me = await apiFetch('/auth/users/me', { method: 'GET' });
             if (isMounted) {
-              setUser(me as any);
+              setUser(me as unknown);
             }
           } catch {
             // ignore errors from /auth/users/me
@@ -95,7 +121,17 @@ export default function AuthBootstrap({ children }: Props) {
       isMounted = false;
       unsubscribe();
     };
-  }, [isInitialized, setAccessToken, setUser, setOnboardingRequired, setInitialized, logout]);
+  }, [
+    isInitialized,
+    setAccessToken,
+    setUser,
+    setOnboardingRequired,
+    setDefaultBusinessId,
+    setDefaultRole,
+    setHasActiveBusinessAccess,
+    setInitialized,
+    logout,
+  ]);
 
   return <>{children}</>;
 }

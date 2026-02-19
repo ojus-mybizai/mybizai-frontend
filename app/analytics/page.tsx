@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import ProtectedShell from '@/components/protected-shell';
 import ModuleGuard from '@/components/module-guard';
-import { getAgentsSummary } from '@/services/analytics';
+import {
+  backfillAnalytics,
+  getAgentsSummary,
+  listConversationAnalytics,
+  type ConversationAnalyticsResponse,
+} from '@/services/analytics';
 
 function formatDate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -15,19 +20,31 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof getAgentsSummary>> | null>(null);
+  const [conversationRows, setConversationRows] = useState<ConversationAnalyticsResponse[]>([]);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
 
   const fetchSummary = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await getAgentsSummary({
-        start_date: `${startDate}T00:00:00`,
-        end_date: `${endDate}T23:59:59`,
-      });
-      setSummary(res);
+      const [summaryRes, conversationRes] = await Promise.all([
+        getAgentsSummary({
+          start_date: `${startDate}T00:00:00`,
+          end_date: `${endDate}T23:59:59`,
+        }),
+        listConversationAnalytics({
+          start_date: `${startDate}T00:00:00`,
+          end_date: `${endDate}T23:59:59`,
+          limit: 50,
+        }),
+      ]);
+      setSummary(summaryRes);
+      setConversationRows(conversationRes);
     } catch (e) {
       setError((e as Error).message ?? 'Failed to load analytics');
       setSummary(null);
+      setConversationRows([]);
     } finally {
       setLoading(false);
     }
@@ -70,8 +87,39 @@ export default function AnalyticsPage() {
               >
                 {loading ? 'Loading…' : 'Apply'}
               </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setBackfilling(true);
+                  setBackfillMessage(null);
+                  try {
+                    const res = await backfillAnalytics({
+                      start_date: `${startDate}T00:00:00`,
+                      end_date: `${endDate}T23:59:59`,
+                      limit: 2000,
+                    });
+                    setBackfillMessage(
+                      `Backfill complete. Processed ${res.processed_sessions ?? 0} sessions.`,
+                    );
+                    await fetchSummary();
+                  } catch (e) {
+                    setBackfillMessage((e as Error).message ?? 'Backfill failed.');
+                  } finally {
+                    setBackfilling(false);
+                  }
+                }}
+                disabled={backfilling}
+                className="rounded-md border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+              >
+                {backfilling ? 'Backfilling…' : 'Backfill'}
+              </button>
             </div>
           </div>
+          {backfillMessage && (
+            <div className="rounded-md border border-border-color bg-card-bg px-3 py-2 text-xs text-text-secondary">
+              {backfillMessage}
+            </div>
+          )}
 
           {error && (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
@@ -87,6 +135,47 @@ export default function AnalyticsPage() {
 
           {!loading && summary && (
             <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-border-color bg-card-bg px-4 py-3">
+                  <div className="text-xs font-medium text-text-secondary mb-1">
+                    Leads needing follow-up
+                  </div>
+                  <div className="text-xl font-semibold text-text-primary">
+                    {conversationRows.filter((c) => c.status !== 'resolved').length}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border-color bg-card-bg px-4 py-3">
+                  <div className="text-xs font-medium text-text-secondary mb-1">
+                    Slow-response conversations (&gt; 10s)
+                  </div>
+                  <div className="text-xl font-semibold text-text-primary">
+                    {
+                      conversationRows.filter(
+                        (c) => (c.avg_response_time ?? 0) > 10,
+                      ).length
+                    }
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border-color bg-card-bg px-4 py-3">
+                  <div className="text-xs font-medium text-text-secondary mb-1">Escalated</div>
+                  <div className="text-xl font-semibold text-text-primary">
+                    {
+                      conversationRows.filter(
+                        (c) => (c.resolution_status ?? '').toLowerCase() === 'escalated',
+                      ).length
+                    }
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border-color bg-card-bg px-4 py-3">
+                  <div className="text-xs font-medium text-text-secondary mb-1">
+                    Total tool calls
+                  </div>
+                  <div className="text-xl font-semibold text-text-primary">
+                    {conversationRows.reduce((sum, c) => sum + (c.tool_calls?.length ?? 0), 0)}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-xl border border-border-color bg-card-bg px-4 py-3">
                   <div className="text-xs font-medium text-text-secondary mb-1">Total agents</div>
@@ -146,6 +235,44 @@ export default function AnalyticsPage() {
                   </table>
                 </div>
               )}
+
+              <div className="rounded-xl border border-border-color bg-card-bg overflow-hidden">
+                <h3 className="text-sm font-semibold text-text-primary p-4 border-b border-border-color">
+                  Conversation analytics (latest in range)
+                </h3>
+                {conversationRows.length === 0 ? (
+                  <div className="p-4 text-sm text-text-secondary">
+                    No conversation analytics rows for this range yet.
+                  </div>
+                ) : (
+                  <table className="min-w-full divide-y divide-border-color">
+                    <thead className="bg-bg-secondary text-xs uppercase text-text-secondary">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Conversation</th>
+                        <th className="px-4 py-3 text-left">Status</th>
+                        <th className="px-4 py-3 text-left">Avg response</th>
+                        <th className="px-4 py-3 text-left">Messages</th>
+                        <th className="px-4 py-3 text-left">Tool calls</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-color text-sm">
+                      {conversationRows.slice(0, 10).map((c) => (
+                        <tr key={c.id}>
+                          <td className="px-4 py-3 text-text-primary">#{c.conversation_id}</td>
+                          <td className="px-4 py-3 text-text-secondary capitalize">{c.status}</td>
+                          <td className="px-4 py-3 text-text-secondary">
+                            {c.avg_response_time != null ? `${c.avg_response_time.toFixed(1)}s` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-text-secondary">{c.message_count}</td>
+                          <td className="px-4 py-3 text-text-secondary">
+                            {c.tool_calls?.length ?? 0}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </>
           )}
         </div>

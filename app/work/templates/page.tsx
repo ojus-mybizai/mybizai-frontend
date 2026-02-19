@@ -6,23 +6,42 @@ import ProtectedShell from '@/components/protected-shell';
 import ModuleGuard from '@/components/module-guard';
 import { useAuthStore } from '@/lib/auth-store';
 import {
+  createWorkFromTemplate,
+  createWorkTemplate,
   listWorkTypes,
+  listWorkTemplates,
   createWorkType,
+  deleteWorkTemplate,
   updateWorkType,
+  updateWorkTemplate,
+  type WorkTemplate,
   type WorkType,
 } from '@/services/work';
+import { listEmployees, type Employee } from '@/services/employees';
+import { useRouter } from 'next/navigation';
 
 export default function WorkTemplatesPage() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user as { businesses?: { role?: string }[] } | null);
   const role = user?.businesses?.[0]?.role ?? 'owner';
   const canEdit = role === 'owner' || role === 'manager';
 
+  const [templates, setTemplates] = useState<WorkTemplate[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [types, setTypes] = useState<WorkType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [templateName, setTemplateName] = useState('');
+  const [templateTypeId, setTemplateTypeId] = useState<number | null>(null);
+  const [templateAssignedToId, setTemplateAssignedToId] = useState<number | null>(null);
+  const [templateDueDays, setTemplateDueDays] = useState<string>('');
+  const [templateTitle, setTemplateTitle] = useState('');
+  const [templateNotes, setTemplateNotes] = useState('');
+  const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
@@ -32,10 +51,17 @@ export default function WorkTemplatesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await listWorkTypes();
-      setTypes(data);
+      const [typeData, templateData, employeeData] = await Promise.all([
+        listWorkTypes(),
+        listWorkTemplates(),
+        listEmployees(),
+      ]);
+      setTypes(typeData);
+      setTemplates(templateData);
+      setEmployees(employeeData);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load work types');
+      setTemplates([]);
       setTypes([]);
     } finally {
       setLoading(false);
@@ -68,6 +94,7 @@ export default function WorkTemplatesPage() {
         description: editDescription.trim() || null,
       });
       cancelEdit();
+      setNotice('Work type updated.');
       void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update');
@@ -88,9 +115,100 @@ export default function WorkTemplatesPage() {
       setNewName('');
       setNewDescription('');
       setShowAdd(false);
+      setNotice('Work type created.');
       void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create work type');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetTemplateForm = () => {
+    setTemplateName('');
+    setTemplateTypeId(null);
+    setTemplateAssignedToId(null);
+    setTemplateDueDays('');
+    setTemplateTitle('');
+    setTemplateNotes('');
+    setEditingTemplateId(null);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim() || templateTypeId == null) {
+      setError('Template name and work type are required.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      if (editingTemplateId != null) {
+        await updateWorkTemplate(editingTemplateId, {
+          name: templateName.trim(),
+          work_type_id: templateTypeId,
+          default_assigned_to_id: templateAssignedToId,
+          default_due_days: templateDueDays ? Number(templateDueDays) : null,
+          default_title: templateTitle.trim() || null,
+          default_notes: templateNotes.trim() || null,
+        });
+        setNotice('Template updated.');
+      } else {
+        await createWorkTemplate({
+          name: templateName.trim(),
+          work_type_id: templateTypeId,
+          default_assigned_to_id: templateAssignedToId,
+          default_due_days: templateDueDays ? Number(templateDueDays) : null,
+          default_title: templateTitle.trim() || null,
+          default_notes: templateNotes.trim() || null,
+          is_active: true,
+        });
+        setNotice('Template created.');
+      }
+      resetTemplateForm();
+      void load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save template');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEditTemplate = (template: WorkTemplate) => {
+    setEditingTemplateId(template.id);
+    setTemplateName(template.name);
+    setTemplateTypeId(template.work_type_id);
+    setTemplateAssignedToId(template.default_assigned_to_id);
+    setTemplateDueDays(template.default_due_days == null ? '' : String(template.default_due_days));
+    setTemplateTitle(template.default_title || '');
+    setTemplateNotes(template.default_notes || '');
+  };
+
+  const handleDeleteTemplate = async (template: WorkTemplate) => {
+    if (!confirm(`Delete template "${template.name}"?`)) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await deleteWorkTemplate(template.id);
+      setNotice('Template deleted.');
+      void load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete template');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateFromTemplate = async (template: WorkTemplate) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await createWorkFromTemplate(template.id, {
+        priority: 'medium',
+      });
+      setNotice(`Work created from template "${template.name}".`);
+      router.push(`/work/${created.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create work from template');
     } finally {
       setSaving(false);
     }
@@ -135,6 +253,112 @@ export default function WorkTemplatesPage() {
                 {error}
               </div>
             )}
+            {notice && !error && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                {notice}
+              </div>
+            )}
+
+            <div className="rounded-xl border border-border-color bg-card-bg p-4">
+              <h3 className="text-sm font-semibold text-text-primary">Work templates</h3>
+              <p className="mt-1 text-sm text-text-secondary">Reusable assignment blueprints for repeated tasks.</p>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input
+                  type="text"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="Template name"
+                  className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary"
+                />
+                <select
+                  value={templateTypeId ?? ''}
+                  onChange={(e) => setTemplateTypeId(e.target.value ? Number(e.target.value) : null)}
+                  className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary"
+                >
+                  <option value="">Default work type</option>
+                  {types.filter((t) => t.is_active).map((type) => (
+                    <option key={type.id} value={type.id}>{type.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={templateAssignedToId ?? ''}
+                  onChange={(e) => setTemplateAssignedToId(e.target.value ? Number(e.target.value) : null)}
+                  className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary"
+                >
+                  <option value="">Default assignee (optional)</option>
+                  {employees.map((emp) => (
+                    <option key={emp.user_id} value={emp.user_id}>{emp.name || emp.email}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  value={templateDueDays}
+                  onChange={(e) => setTemplateDueDays(e.target.value)}
+                  placeholder="Default due offset (days)"
+                  className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary"
+                />
+                <input
+                  type="text"
+                  value={templateTitle}
+                  onChange={(e) => setTemplateTitle(e.target.value)}
+                  placeholder="Default title (optional)"
+                  className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary md:col-span-2"
+                />
+                <textarea
+                  value={templateNotes}
+                  onChange={(e) => setTemplateNotes(e.target.value)}
+                  placeholder="Default notes (optional)"
+                  rows={3}
+                  className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary md:col-span-2"
+                />
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleSaveTemplate()}
+                  disabled={saving}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {editingTemplateId != null ? 'Update template' : 'Create template'}
+                </button>
+                {editingTemplateId != null && (
+                  <button
+                    type="button"
+                    onClick={resetTemplateForm}
+                    className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary"
+                  >
+                    Cancel edit
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border-color bg-card-bg">
+              <div className="border-b border-border-color px-4 py-3 text-sm font-semibold text-text-secondary">Saved templates</div>
+              <div className="divide-y divide-border-color">
+                {templates.map((template) => (
+                  <div key={template.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-base font-semibold text-text-primary">{template.name}</div>
+                      <div className="text-sm text-text-secondary">
+                        {template.work_type_name}
+                        {template.default_assigned_to_name ? ` · ${template.default_assigned_to_name}` : ''}
+                        {template.default_due_days != null ? ` · +${template.default_due_days} days` : ''}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => handleEditTemplate(template)} className="rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-xs font-semibold text-text-primary">Edit</button>
+                      <button type="button" onClick={() => void handleCreateFromTemplate(template)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white">Use template</button>
+                      <button type="button" onClick={() => void handleDeleteTemplate(template)} className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-300">Delete</button>
+                    </div>
+                  </div>
+                ))}
+                {templates.length === 0 && !loading && (
+                  <div className="px-4 py-8 text-center text-sm text-text-secondary">No templates yet.</div>
+                )}
+              </div>
+            </div>
 
             {showAdd && (
               <div className="rounded-xl border border-border-color bg-card-bg p-4">

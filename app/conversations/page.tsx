@@ -8,12 +8,16 @@ import { ConversationRowSkeleton } from '@/components/conversations/Conversation
 import {
   listAllConversations,
   listMessages,
+  listConversationSessions,
   appendMessage,
+  recalcConversationAnalytics,
   toggleConversationStatus,
   type InboxConversation,
   type Message,
+  type ConversationSession,
   type ConversationListFilters,
 } from '@/services/customers';
+import { getConversationAnalytics, type ConversationAnalyticsResponse } from '@/services/analytics';
 
 function formatTime(dateStr: string | undefined): string {
   if (!dateStr) return '—';
@@ -46,6 +50,14 @@ function getInitials(name: string | undefined, fallback: string): string {
   return name.charAt(0).toUpperCase();
 }
 
+function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null || Number.isNaN(seconds)) return '—';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  if (mins <= 0) return `${secs}s`;
+  return `${mins}m ${secs}s`;
+}
+
 const CHANNEL_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'All' },
   { value: 'whatsapp', label: 'WhatsApp' },
@@ -72,8 +84,13 @@ export function ConversationsView({ initialConversationId }: { initialConversati
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [sessions, setSessions] = useState<ConversationSession[]>([]);
+  const [conversationAnalytics, setConversationAnalytics] = useState<ConversationAnalyticsResponse | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [loadingConversationAnalytics, setLoadingConversationAnalytics] = useState(false);
+  const [recalculatingConversationAnalytics, setRecalculatingConversationAnalytics] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [input, setInput] = useState('');
   const [channelFilter, setChannelFilter] = useState('');
@@ -130,6 +147,47 @@ export function ConversationsView({ initialConversationId }: { initialConversati
       })
       .finally(() => {
         if (!cancelled) setLoadingMessages(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setSessions([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSessions(true);
+    listConversationSessions(selectedId)
+      .then((rows) => {
+        if (!cancelled) setSessions(rows);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSessions(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setConversationAnalytics(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingConversationAnalytics(true);
+    getConversationAnalytics(selectedId)
+      .then((row) => {
+        if (!cancelled) setConversationAnalytics(row);
+      })
+      .catch(() => {
+        if (!cancelled) setConversationAnalytics(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingConversationAnalytics(false);
       });
     return () => {
       cancelled = true;
@@ -295,7 +353,7 @@ export function ConversationsView({ initialConversationId }: { initialConversati
                             setShowChatPanel(true);
                             setTimeout(() => chatHeaderRef.current?.focus({ preventScroll: true }), 0);
                           }}
-                          aria-selected={isSelected}
+                          aria-pressed={isSelected}
                           className={`flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors min-h-[44px] ${
                             isSelected
                               ? 'border-l-4 border-l-(--accent) bg-(--accent-soft)'
@@ -405,6 +463,98 @@ export function ConversationsView({ initialConversationId }: { initialConversati
                 </div>
 
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <div className="border-b border-border-color bg-bg-primary/60 p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                      Session timeline
+                    </div>
+                    {loadingConversationAnalytics ? (
+                      <div className="mb-2 text-xs text-text-secondary">Loading conversation analytics…</div>
+                    ) : conversationAnalytics ? (
+                      <div className="mb-2 space-y-2 rounded-md border border-border-color bg-card-bg p-2 text-xs text-text-secondary">
+                        <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
+                          <div>
+                            <span className="block text-[11px] uppercase tracking-wide">Messages</span>
+                            <span className="font-semibold text-text-primary">
+                              {conversationAnalytics.message_count} total
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[11px] uppercase tracking-wide">Response</span>
+                            <span className="font-semibold text-text-primary">
+                              {conversationAnalytics.avg_response_time != null
+                                ? `${conversationAnalytics.avg_response_time.toFixed(1)}s avg`
+                                : '—'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[11px] uppercase tracking-wide">First reply</span>
+                            <span className="font-semibold text-text-primary">
+                              {conversationAnalytics.first_response_time != null
+                                ? `${conversationAnalytics.first_response_time.toFixed(1)}s`
+                                : '—'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[11px] uppercase tracking-wide">Status</span>
+                            <span className="font-semibold capitalize text-text-primary">
+                              {conversationAnalytics.status}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            disabled={recalculatingConversationAnalytics}
+                            onClick={async () => {
+                              if (!selectedId) return;
+                              setRecalculatingConversationAnalytics(true);
+                              try {
+                                await recalcConversationAnalytics(selectedId);
+                                const updated = await getConversationAnalytics(selectedId);
+                                setConversationAnalytics(updated);
+                              } finally {
+                                setRecalculatingConversationAnalytics(false);
+                              }
+                            }}
+                            className="rounded-md border border-border-color bg-bg-primary px-2 py-1 text-[11px] font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+                          >
+                            {recalculatingConversationAnalytics ? 'Recalculating…' : 'Recalculate'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mb-2 text-xs text-text-secondary">
+                        Conversation analytics not generated yet. Session timeline is still available.
+                      </div>
+                    )}
+                    {loadingSessions ? (
+                      <div className="text-xs text-text-secondary">Loading sessions…</div>
+                    ) : sessions.length === 0 ? (
+                      <div className="text-xs text-text-secondary">
+                        No sessions found for this conversation yet.
+                      </div>
+                    ) : (
+                      <div className="max-h-32 space-y-1 overflow-y-auto pr-1">
+                        {sessions.map((session) => (
+                          <div
+                            key={session.id}
+                            className="rounded-md border border-border-color bg-card-bg px-2 py-1.5 text-xs text-text-secondary"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-text-primary">Session #{session.id}</span>
+                              <span className="capitalize">{session.status}</span>
+                            </div>
+                            <div className="mt-0.5">
+                              {new Date(session.startedAt).toLocaleString()} · {formatDuration(session.durationSeconds)} · {session.messagesCount} msgs
+                            </div>
+                            {session.summary && (
+                              <div className="mt-0.5 line-clamp-1 text-text-secondary">{session.summary}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex-1 space-y-3 overflow-y-auto bg-(--bg-secondary)/50 p-4">
                     {loadingMessages ? (
                       <div className="space-y-3" aria-label="Loading messages">

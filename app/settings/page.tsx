@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import ProtectedShell from '@/components/protected-shell';
+import { SettingsKnowledgeBaseTab } from '@/components/settings/knowledge-base-tab';
 import {
   changePassword,
   getCustomRoles,
@@ -27,7 +28,13 @@ import {
   updateRoleAssignments,
 } from '@/services/settings';
 
-type TabKey = 'profile' | 'workspace' | 'business' | 'roles' | 'notifications';
+type TabKey =
+  | 'profile'
+  | 'workspace'
+  | 'business'
+  | 'roles'
+  | 'knowledge_base'
+  | 'notifications';
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<TabKey>('profile');
@@ -450,6 +457,7 @@ export default function SettingsPage() {
                 { key: 'workspace', label: 'Workspace' },
                 { key: 'business', label: 'Business' },
                 { key: 'roles', label: 'Team & roles' },
+                { key: 'knowledge_base', label: 'Knowledge Base' },
                 { key: 'notifications', label: 'Notifications' },
               ].map((t) => (
                 <button
@@ -1282,6 +1290,8 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+
+          {tab === 'knowledge_base' && <SettingsKnowledgeBaseTab />}
         </div>
     </ProtectedShell>
   );

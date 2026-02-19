@@ -25,16 +25,23 @@ function persistAccessToken(token: string | null): void {
   }
 }
 
-export type User = any;
+export type User = Record<string, unknown> | null;
+export type DefaultRole = "owner" | "manager" | "executive" | null;
 
 export interface AuthState {
   accessToken: string | null;
-  user: User | null;
+  user: User;
   onboardingRequired: boolean;
+  defaultBusinessId: number | null;
+  defaultRole: DefaultRole;
+  hasActiveBusinessAccess: boolean;
   isInitialized: boolean;
   setAccessToken: (token: string | null) => void;
-  setUser: (user: User | null) => void;
+  setUser: (user: User) => void;
   setOnboardingRequired: (value: boolean) => void;
+  setDefaultBusinessId: (value: number | null) => void;
+  setDefaultRole: (value: DefaultRole) => void;
+  setHasActiveBusinessAccess: (value: boolean) => void;
   setInitialized: (value: boolean) => void;
   logout: (broadcast?: boolean) => void;
 }
@@ -43,17 +50,30 @@ export const useAuthStore = create<AuthState>((set: (partial: Partial<AuthState>
   accessToken: getStoredAccessToken(),
   user: null,
   onboardingRequired: false,
+  defaultBusinessId: null,
+  defaultRole: null,
+  hasActiveBusinessAccess: true,
   isInitialized: false,
   setAccessToken: (token: string | null) => {
     persistAccessToken(token);
     set({ accessToken: token });
   },
-  setUser: (user: User | null) => set({ user }),
+  setUser: (user: User) => set({ user }),
   setOnboardingRequired: (value: boolean) => set({ onboardingRequired: value }),
+  setDefaultBusinessId: (value: number | null) => set({ defaultBusinessId: value }),
+  setDefaultRole: (value: DefaultRole) => set({ defaultRole: value }),
+  setHasActiveBusinessAccess: (value: boolean) => set({ hasActiveBusinessAccess: value }),
   setInitialized: (value: boolean) => set({ isInitialized: value }),
   logout: (broadcast: boolean = true) => {
     persistAccessToken(null);
-    set({ accessToken: null, user: null, onboardingRequired: false });
+    set({
+      accessToken: null,
+      user: null,
+      onboardingRequired: false,
+      defaultBusinessId: null,
+      defaultRole: null,
+      hasActiveBusinessAccess: false,
+    });
     if (broadcast && typeof window !== "undefined") {
       broadcastAuthEvent("logout");
     }

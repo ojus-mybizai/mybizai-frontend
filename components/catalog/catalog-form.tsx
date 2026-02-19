@@ -11,6 +11,7 @@ import {
   createCatalogItem,
   updateCatalogItem,
   deleteCatalogItem,
+  listCatalogCategories,
 } from '@/lib/catalog-api';
 import ImageUploader from './image-uploader';
 import TagInput from './tag-input';
@@ -37,7 +38,6 @@ export default function CatalogForm({ mode, item, templates }: CatalogFormProps)
     'available',
   );
   const [type, setType] = useState<'product' | 'service'>('product');
-  const [sku, setSku] = useState('');
   const [stock, setStock] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -53,6 +53,8 @@ export default function CatalogForm({ mode, item, templates }: CatalogFormProps)
   const [success, setSuccess] = useState<string | null>(null);
   const [templateOptions, setTemplateOptions] = useState<CatalogTemplate[]>(templates || []);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [categorySuggestions, setCategorySuggestions] = useState<string[]>([]);
 
   useEffect(() => {
     setTemplateOptions(templates || []);
@@ -63,6 +65,24 @@ export default function CatalogForm({ mode, item, templates }: CatalogFormProps)
   );
 
   useEffect(() => {
+    let active = true;
+    const loadCategories = async () => {
+      try {
+        const response = await listCatalogCategories();
+        if (!active) return;
+        setCategorySuggestions(Array.isArray(response.categories) ? response.categories : []);
+      } catch {
+        if (!active) return;
+        setCategorySuggestions([]);
+      }
+    };
+    loadCategories();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!item) return;
     setName(item.name || '');
     setDescription(item.description ?? '');
@@ -71,7 +91,6 @@ export default function CatalogForm({ mode, item, templates }: CatalogFormProps)
     setCurrency(item.currency || 'INR');
     setAvailability(item.availability);
     setType(item.type);
-    setSku(item.sku ?? '');
     setStock(item.stock != null ? String(item.stock) : '');
     setLowStockThreshold(item.low_stock_threshold != null ? String(item.low_stock_threshold) : '');
     setTags(item.tags ?? []);
@@ -125,7 +144,6 @@ export default function CatalogForm({ mode, item, templates }: CatalogFormProps)
       currency: currency || 'INR',
       availability,
       type,
-      sku: sku.trim() || null,
       stock: type === 'product' ? stockValue : null,
       low_stock_threshold: type === 'product' ? lowStockValue : null,
       tags: tags.length ? tags : undefined,
@@ -193,116 +211,133 @@ export default function CatalogForm({ mode, item, templates }: CatalogFormProps)
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
-            <div className="space-y-3">
+        <div className="space-y-6">
+          <div className="rounded-md border border-border-color bg-bg-secondary/40 px-3 py-2 text-sm text-text-secondary">
+            Add minimum details now, complete advanced details later.
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium text-text-primary">Quick entry</h2>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-text-primary">Name *</label>
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1">
-                <label className="block text-sm font-medium text-text-primary">Name *</label>
+                <label className="block text-sm font-medium text-text-primary">Price *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-text-primary">Currency</label>
                 <input
                   type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  maxLength={3}
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value.toUpperCase())}
                   className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
                 />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-text-primary">Description</label>
-                <textarea
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-text-primary">Category</label>
-                  <input
-                    type="text"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-text-primary">Availability</label>
-                  <select
-                    value={availability}
-                    onChange={(e) => setAvailability(e.target.value as any)}
-                    className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                  >
-                    <option value="available">Available</option>
-                    <option value="out_of_stock">Out of stock</option>
-                    <option value="discontinued">Discontinued</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-text-primary">Type</label>
-                  <select
-                    value={type}
-                    onChange={(e) => setType(e.target.value as any)}
-                    className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                  >
-                    <option value="product">Product</option>
-                    <option value="service">Service</option>
-                  </select>
-                </div>
               </div>
             </div>
 
-            <div className="space-y-3">
-              <h2 className="text-sm font-medium text-text-primary">Pricing & stock</h2>
-              <div className="grid gap-4 md:grid-cols-4">
-                <div className="space-y-1 md:col-span-2">
-                  <label className="block text-sm font-medium text-text-primary">Price *</label>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-text-primary">Type</label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as 'product' | 'service')}
+                  className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="product">Product</option>
+                  <option value="service">Service</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-text-primary">Category</label>
+                <input
+                  type="text"
+                  list="catalog-category-options"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="Choose or type a category"
+                  className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+                <datalist id="catalog-category-options">
+                  {categorySuggestions.map((categoryOption) => (
+                    <option key={categoryOption} value={categoryOption} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-text-primary">Availability</label>
+                <select
+                  value={availability}
+                  onChange={(e) =>
+                    setAvailability(
+                      e.target.value as 'available' | 'out_of_stock' | 'discontinued',
+                    )
+                  }
+                  className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="available">Available</option>
+                  <option value="out_of_stock">Out of stock</option>
+                  <option value="discontinued">Discontinued</option>
+                </select>
+              </div>
+            </div>
+
+            {type === 'product' && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-text-primary">Stock</label>
                   <input
                     type="number"
-                    step="0.01"
                     min="0"
-                    required
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-text-primary">Currency</label>
-                  <input
-                    type="text"
-                    maxLength={3}
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                    className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-text-primary">SKU</label>
-                  <input
-                    type="text"
-                    value={sku}
-                    onChange={(e) => setSku(e.target.value)}
+                    value={stock}
+                    onChange={(e) => setStock(e.target.value)}
                     className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
               </div>
+            )}
+          </div>
 
-              {type === 'product' && (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <label className="block text-sm font-medium text-text-primary">Stock</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={stock}
-                      onChange={(e) => setStock(e.target.value)}
-                      className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                    />
-                  </div>
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((prev) => !prev)}
+              className="inline-flex items-center rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
+            >
+              {showAdvanced ? 'Hide advanced details' : 'Show advanced details'}
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-5 rounded-md border border-border-color bg-bg-secondary/30 p-4">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-text-primary">Description</label>
+                  <textarea
+                    rows={3}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+
+                {type === 'product' && (
                   <div className="space-y-1">
                     <label className="block text-sm font-medium text-text-primary">
                       Low stock threshold
@@ -315,73 +350,73 @@ export default function CatalogForm({ mode, item, templates }: CatalogFormProps)
                       className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
                     />
                   </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-text-primary">Tags</label>
+                  <TagInput
+                    value={tags}
+                    onChange={setTags}
+                    placeholder="Add tags like summer, veg, discount"
+                  />
                 </div>
-              )}
-            </div>
 
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-text-primary">Tags</label>
-                <TagInput
-                  value={tags}
-                  onChange={setTags}
-                  placeholder="Add tags like summer, veg, discount"
-                />
-              </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-sm font-medium text-text-primary">Template</label>
+                    <button
+                      type="button"
+                      onClick={() => setTemplateModalOpen(true)}
+                      className="text-xs font-medium text-accent hover:underline"
+                    >
+                      Create template
+                    </button>
+                  </div>
+                  <select
+                    value={templateId ?? ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setTemplateId(value ? Number(value) : null);
+                    }}
+                    className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                  >
+                    <option value="">No template</option>
+                    {templateOptions.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-text-primary">Variants (JSON)</label>
-                <VariantsEditor value={variants} onChange={setVariants} />
-              </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-text-primary">Images</label>
+                    <span className="text-[11px] text-text-secondary">
+                      First image is used as cover
+                    </span>
+                  </div>
+                  <ImageUploader images={images} onChange={setImages} />
+                </div>
 
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-text-primary">Metadata</label>
-                <MetadataEditor
-                  value={metadata}
-                  onChange={setMetadata}
-                  templateKeys={currentTemplate?.extra_metadata}
-                  contextKey={item ? `item-${item.id}` : `mode-${mode}`}
-                />
-              </div>
-            </div>
-          </div>
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-text-primary">
+                    Variants (options)
+                  </label>
+                  <VariantsEditor value={variants} onChange={setVariants} />
+                </div>
 
-          <div className="space-y-6">
-            <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <label className="block text-sm font-medium text-text-primary">Template</label>
-                <button
-                  type="button"
-                  onClick={() => setTemplateModalOpen(true)}
-                  className="text-xs font-medium text-accent hover:underline"
-                >
-                  Create template
-                </button>
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-text-primary">Metadata</label>
+                  <MetadataEditor
+                    value={metadata}
+                    onChange={setMetadata}
+                    templateKeys={currentTemplate?.extra_metadata}
+                    contextKey={item ? `item-${item.id}` : `mode-${mode}`}
+                  />
+                </div>
               </div>
-              <select
-                value={templateId ?? ''}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setTemplateId(value ? Number(value) : null);
-                }}
-                className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                <option value="">No template</option>
-                {templateOptions.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-text-primary">Images</label>
-                <span className="text-[11px] text-text-secondary">First image is used as cover</span>
-              </div>
-              <ImageUploader images={images} onChange={setImages} />
-            </div>
+            )}
           </div>
         </div>
 
@@ -415,7 +450,7 @@ export default function CatalogForm({ mode, item, templates }: CatalogFormProps)
                   ? 'Creating...'
                   : 'Saving...'
                 : mode === 'create'
-                ? 'Create item'
+                ? 'Create product'
                 : 'Save changes'}
             </button>
           </div>
