@@ -93,15 +93,18 @@ export default function CustomerProfilePage() {
   const [creating, setCreating] = useState(false);
   const [createFormData, setCreateFormData] = useState<{
     agent_id: number | '';
+    channel_id: number | '';
     message_text: string;
     scheduled_at: string;
     delivery_mode: 'auto' | 'manual';
   }>({
     agent_id: '',
+    channel_id: '',
     message_text: '',
-    scheduled_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16), // Default to tomorrow
-    delivery_mode: 'auto', // Automatic = sent at scheduled time by worker; Manual = you must click Send now
+    scheduled_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
+    delivery_mode: 'auto',
   });
+  const linkedChannels = currentCustomer?.linkedChannels ?? [];
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -953,48 +956,52 @@ export default function CustomerProfilePage() {
                           Upcoming and completed follow-up messages. <strong>Automatic</strong> = sent at scheduled time; <strong>Manual</strong> = click &quot;Send now&quot; when ready. Overdue = scheduled time has passed.
                         </p>
                       </div>
-                      {agentsEnabled && agents.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setShowCreateForm(!showCreateForm)}
-                          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-                        >
-                          {showCreateForm ? 'Cancel' : 'Create follow-up'}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCreateForm(!showCreateForm);
+                          if (!showCreateForm && linkedChannels.length === 1) {
+                            setCreateFormData((prev) => ({ ...prev, channel_id: linkedChannels[0].channel_id }));
+                          }
+                        }}
+                        className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+                      >
+                        {showCreateForm ? 'Cancel' : 'Create follow-up'}
+                      </button>
                     </div>
 
-                    {/* Create follow-up form */}
-                    {showCreateForm && agentsEnabled && agents.length > 0 && (
+                    {/* Create follow-up form — no agent required */}
+                    {showCreateForm && (
                       <div className="rounded-xl border border-border-color bg-card-bg p-4">
                         <h3 className="mb-3 text-sm font-semibold text-text-primary">Create manual follow-up</h3>
                         <div className="space-y-3">
-                          {currentCustomer.channel && (
+                          {linkedChannels.length > 0 ? (
+                            <div>
+                              <label htmlFor="create-channel" className="block text-sm font-medium text-text-secondary">
+                                Channel <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                id="create-channel"
+                                value={createFormData.channel_id || ''}
+                                onChange={(e) =>
+                                  setCreateFormData({ ...createFormData, channel_id: e.target.value ? Number(e.target.value) : '' })
+                                }
+                                className="mt-1 w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                              >
+                                <option value="">Select channel...</option>
+                                {linkedChannels.map((lc) => (
+                                  <option key={lc.channel_id} value={lc.channel_id}>
+                                    {channelLabel(lc.channel_type)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : currentCustomer?.channel ? (
                             <div className="rounded-md border border-border-color bg-bg-secondary px-3 py-2 text-sm text-text-secondary">
                               Channel: <span className="font-medium text-text-primary">{channelLabel(currentCustomer.channel)}</span>
-                              {' '}(from lead&apos;s channel)
+                              {' '}(channel_id will be resolved from conversation when available)
                             </div>
-                          )}
-                          <div>
-                            <label htmlFor="create-agent" className="block text-sm font-medium text-text-secondary">
-                              Agent <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                              id="create-agent"
-                              value={createFormData.agent_id}
-                              onChange={(e) =>
-                                setCreateFormData({ ...createFormData, agent_id: e.target.value ? Number(e.target.value) : '' })
-                              }
-                              className="mt-1 w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-                            >
-                              <option value="">Select an agent...</option>
-                              {agents.map((agent) => (
-                                <option key={agent.id} value={agent.id}>
-                                  {agent.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                          ) : null}
                           <div>
                             <label htmlFor="create-message" className="block text-sm font-medium text-text-secondary">
                               Message <span className="text-red-500">*</span>
@@ -1050,8 +1057,13 @@ export default function CustomerProfilePage() {
                             <button
                               type="button"
                               onClick={async () => {
-                                if (!id || !createFormData.agent_id || !createFormData.message_text.trim()) {
-                                  setFollowupsError('Please fill in all required fields.');
+                                const needsChannel = linkedChannels.length > 0;
+                                if (!id || !createFormData.message_text.trim()) {
+                                  setFollowupsError('Message is required.');
+                                  return;
+                                }
+                                if (needsChannel && !createFormData.channel_id) {
+                                  setFollowupsError('Please select a channel.');
                                   return;
                                 }
                                 setCreating(true);
@@ -1060,22 +1072,23 @@ export default function CustomerProfilePage() {
                                 setActionNotice(null);
                                 try {
                                   const payload: FollowUpMessageCreate = {
-                                    agent_id: createFormData.agent_id as number,
                                     lead_id: Number(id),
                                     message_text: createFormData.message_text.trim(),
                                     scheduled_at: new Date(createFormData.scheduled_at).toISOString(),
                                     delivery_mode: createFormData.delivery_mode,
-                                    channel_type: currentCustomer.channel || null,
+                                    channel_id: createFormData.channel_id || undefined,
+                                    channel_type: currentCustomer?.channel || null,
                                   };
+                                  if (createFormData.agent_id) payload.agent_id = createFormData.agent_id as number;
                                   await createFollowup(payload);
                                   setShowCreateForm(false);
                                   setCreateFormData({
                                     agent_id: '',
+                                    channel_id: '',
                                     message_text: '',
                                     scheduled_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
                                     delivery_mode: 'auto',
                                   });
-                                  // Reload follow-ups
                                   const leadId = Number(id);
                                   if (Number.isFinite(leadId)) {
                                     const items = await listFollowups({ lead_id: leadId });
@@ -1088,7 +1101,11 @@ export default function CustomerProfilePage() {
                                   setCreating(false);
                                 }
                               }}
-                              disabled={creating || !createFormData.agent_id || !createFormData.message_text.trim()}
+                              disabled={
+                                creating ||
+                                !createFormData.message_text.trim() ||
+                                (linkedChannels.length > 0 && !createFormData.channel_id)
+                              }
                               className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                             >
                               {creating ? 'Creating…' : 'Create follow-up'}
@@ -1099,6 +1116,7 @@ export default function CustomerProfilePage() {
                                 setShowCreateForm(false);
                                 setCreateFormData({
                                   agent_id: '',
+                                  channel_id: '',
                                   message_text: '',
                                   scheduled_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
                                   delivery_mode: 'auto',

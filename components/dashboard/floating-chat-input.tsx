@@ -14,6 +14,13 @@ const SCOPE_OPTIONS = [
   { mention: '@channels', model: 'channels', label: 'Channels' },
 ] as const;
 
+export interface DatasheetScopeOption {
+  mention: string;
+  model: string;
+  label: string;
+  dynamicModelId: number;
+}
+
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const DOC_TYPES = [
   'application/pdf',
@@ -24,14 +31,14 @@ const DOC_TYPES = [
 const ACCEPT = [...IMAGE_TYPES, ...DOC_TYPES].join(',');
 
 function getActiveScope(value: string): string | null {
-  const match = value.trimStart().match(/^@(\w+)\s*/);
+  const match = value.trimStart().match(/^@([\w-]+)\s*/);
   return match ? match[1].toLowerCase() : null;
 }
 
 function applyScopeClick(value: string, model: string): string {
   const mention = `@${model} `;
   const trimmed = value.trimStart();
-  const match = trimmed.match(/^@\w+\s*/);
+  const match = trimmed.match(/^@[\w-]+\s*/);
   if (match) {
     return mention + trimmed.slice(match[0].length);
   }
@@ -39,10 +46,10 @@ function applyScopeClick(value: string, model: string): string {
   return mention + value;
 }
 
-/** Returns true if cursor is right after @ or in @foo (scope mention). */
+/** Returns true if cursor is right after @ or in @foo / @datasheet-5 (scope mention). */
 function getScopeQuery(value: string, caretIndex: number): { show: boolean; query: string } {
   const beforeCaret = value.slice(0, caretIndex);
-  const atMatch = beforeCaret.match(/@(\w*)$/);
+  const atMatch = beforeCaret.match(/@([\w-]*)$/);
   if (!atMatch) return { show: false, query: '' };
   return { show: true, query: (atMatch[1] || '').toLowerCase() };
 }
@@ -58,9 +65,21 @@ interface FloatingChatInputProps {
   onChange: (value: string) => void;
   onSend: (message: string, attachments?: File[]) => void;
   isLoading: boolean;
+  datasheetScopes?: DatasheetScopeOption[];
 }
 
-export default function FloatingChatInput({ value, onChange, onSend, isLoading }: FloatingChatInputProps) {
+const allScopeOptions = (
+  base: readonly { mention: string; model: string; label: string }[],
+  datasheet: DatasheetScopeOption[]
+): { mention: string; model: string; label: string }[] => [...base, ...datasheet];
+
+export default function FloatingChatInput({
+  value,
+  onChange,
+  onSend,
+  isLoading,
+  datasheetScopes = [],
+}: FloatingChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [scopeOpen, setScopeOpen] = useState(false);
@@ -69,12 +88,14 @@ export default function FloatingChatInput({ value, onChange, onSend, isLoading }
   const [caretPos, setCaretPos] = useState(0);
   const activeScope = getActiveScope(value);
 
+  const scopeOptions = allScopeOptions(SCOPE_OPTIONS, datasheetScopes);
   const { show: showScopePopover, query: scopeQuery } = getScopeQuery(value, caretPos);
   const filteredScopes = scopeQuery
-    ? SCOPE_OPTIONS.filter(
-        (o) => o.model.startsWith(scopeQuery) || o.mention.toLowerCase().includes(scopeQuery)
+    ? scopeOptions.filter(
+        (o) =>
+          o.model.toLowerCase().startsWith(scopeQuery) || o.mention.toLowerCase().includes(scopeQuery)
       )
-    : SCOPE_OPTIONS;
+    : scopeOptions;
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = event.target.value;
@@ -93,7 +114,7 @@ export default function FloatingChatInput({ value, onChange, onSend, isLoading }
         setScopeOpen(false);
         return;
       }
-      const start = value.slice(0, caretPos).replace(/@\w*$/, '');
+      const start = value.slice(0, caretPos).replace(/@[\w-]*$/, '');
       const end = value.slice(caretPos);
       const newValue = start + mention + end;
       onChange(newValue);

@@ -78,11 +78,12 @@ function buildNavItems(lmsEnabled: boolean, agentsEnabled: boolean): NavEntry[] 
 
 function getTitle(pathname: string | null, navItems: NavEntry[]): string {
   if (!pathname) return 'MyBizAI';
-  const match = navItems.find((entry) => {
-    if (!isNavItem(entry)) return false;
-    return entry.href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(entry.href);
+  const items = navItems.filter(isNavItem);
+  const match = items.find((entry) => {
+    if (entry.href === '/dashboard') return pathname === '/dashboard';
+    return pathname.startsWith(entry.href);
   });
-  return match && isNavItem(match) ? match.label : 'MyBizAI';
+  return match ? match.label : 'MyBizAI';
 }
 
 export default function AppShell({ children }: AppShellProps) {

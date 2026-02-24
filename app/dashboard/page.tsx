@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import ProtectedShell from '@/components/protected-shell';
 import type { DashboardMessage } from '@/components/dashboard/types';
+import type { DatasheetScopeOption } from '@/components/dashboard/floating-chat-input';
 import ViewToggle from '@/components/dashboard/view-toggle';
 import MetricsView from '@/components/dashboard/metrics-view';
 import ChatView from '@/components/dashboard/chat-view';
@@ -12,6 +13,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useDashboardStats } from '@/lib/use-dashboard-stats';
 import { useReportsDashboard } from '@/lib/use-reports-dashboard';
 import { sendDashboardChat } from '@/services/dashboard';
+import { listModels } from '@/services/dynamic-data';
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user as { businesses?: Array<{ lms_enabled?: boolean; agents_enabled?: boolean }> } | null);
@@ -24,6 +26,22 @@ export default function DashboardPage() {
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [datasheetModels, setDatasheetModels] = useState<Awaited<ReturnType<typeof listModels>>>([]);
+
+  useEffect(() => {
+    if (view === 'chat') {
+      listModels()
+        .then(setDatasheetModels)
+        .catch(() => setDatasheetModels([]));
+    }
+  }, [view]);
+
+  const datasheetScopeOptions: DatasheetScopeOption[] = datasheetModels.map((m) => ({
+    mention: `@datasheet-${m.id}`,
+    model: `datasheet-${m.id}`,
+    label: `Data: ${m.display_name}`,
+    dynamicModelId: m.id,
+  }));
 
   const handleSend = async (message?: string, attachments?: File[]) => {
     const trimmed = (message ?? inputValue).trim();
@@ -41,9 +59,18 @@ export default function DashboardPage() {
     setView('chat');
     setIsLoading(true);
 
+    const datasheetMatch = trimmed.match(/@datasheet-(\d+)/);
+    const activeDatasheetId =
+      datasheetMatch != null ? parseInt(datasheetMatch[1], 10) : undefined;
+
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const { reply } = await sendDashboardChat(trimmed || ' ', history, attachments);
+      const { reply } = await sendDashboardChat(
+        trimmed || ' ',
+        history,
+        attachments,
+        activeDatasheetId
+      );
 
       const aiMessage: DashboardMessage = {
         id: `assistant-${Date.now()}`,
@@ -150,6 +177,7 @@ export default function DashboardPage() {
             onChange={setInputValue}
             onSend={(msg, files) => handleSend(msg, files)}
             isLoading={isLoading}
+            datasheetScopes={datasheetScopeOptions}
           />
         </div>
     </ProtectedShell>

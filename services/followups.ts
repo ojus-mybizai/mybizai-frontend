@@ -7,7 +7,7 @@ export type TemplateType = 'llm' | 'template' | 'mixed';
 export interface FollowUpMessage {
   id: number;
   business_id: number;
-  agent_id: number;
+  agent_id?: number | null;
   lead_id: number;
   conversation_id?: number | null;
   session_id?: number | null;
@@ -33,7 +33,7 @@ export interface FollowUpListResponse {
 export interface FollowUpRule {
   id: number;
   business_id: number;
-  agent_id: number;
+  agent_id?: number | null;
   name: string;
   description?: string | null;
   is_active: boolean;
@@ -61,6 +61,7 @@ export interface FollowUpRuleCreate {
   template_id?: number | null;
   llm_preset?: string | null;
   generation_config?: Record<string, any>;
+  agent_id?: number | null;
 }
 
 export interface FollowUpRuleUpdate extends Partial<FollowUpRuleCreate> {}
@@ -108,6 +109,36 @@ export async function updateAgentFollowupSettings(
   });
 }
 
+/** List follow-up rules for the business, optionally filtered by agent */
+export async function listFollowupRules(params?: { agent_id?: number }): Promise<FollowUpRule[]> {
+  const q = new URLSearchParams();
+  if (params?.agent_id != null) q.set('agent_id', String(params.agent_id));
+  const url = q.toString() ? `/followups/rules?${q.toString()}` : '/followups/rules';
+  return apiFetch<FollowUpRule[]>(url, { method: 'GET' });
+}
+
+export async function createFollowupRule(payload: FollowUpRuleCreate): Promise<FollowUpRule> {
+  return apiFetch<FollowUpRule>('/followups/rules', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateFollowupRule(
+  ruleId: number,
+  payload: FollowUpRuleUpdate,
+): Promise<FollowUpRule> {
+  return apiFetch<FollowUpRule>(`/followups/rules/${ruleId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteFollowupRule(ruleId: number): Promise<void> {
+  await apiFetch<void>(`/followups/rules/${ruleId}`, { method: 'DELETE' });
+}
+
+/** Legacy: list rules for a specific agent */
 export async function listAgentFollowupRules(agentId: number | string): Promise<FollowUpRule[]> {
   return apiFetch<FollowUpRule[]>(`/followups/agents/${agentId}/rules`, {
     method: 'GET',
@@ -142,7 +173,7 @@ export async function deleteAgentFollowupRule(agentId: number | string, ruleId: 
 }
 
 export interface FollowUpMessageCreate {
-  agent_id: number;
+  agent_id?: number | null;
   lead_id: number;
   message_text: string;
   scheduled_at: string; // ISO datetime string

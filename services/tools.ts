@@ -5,7 +5,7 @@ export interface Tool {
   name: string;
   description: string;
   executionMode?: 'realtime' | 'post_process' | 'batch';
-  category: 'search' | 'crm' | 'ops' | 'custom';
+  category: 'search' | 'crm' | 'ops' | 'custom' | 'datasheet';
   advanced?: {
     priority?: number;
     rateLimitPerMin?: number;
@@ -24,7 +24,15 @@ type ApiTool = {
 function mapTool(t: ApiTool): Tool {
   const rawCat = (t.category ?? '').toLowerCase();
   const category: Tool['category'] =
-    rawCat === 'search' ? 'search' : rawCat === 'crm' ? 'crm' : rawCat === 'ops' ? 'ops' : 'custom';
+    rawCat === 'search'
+      ? 'search'
+      : rawCat === 'crm'
+        ? 'crm'
+        : rawCat === 'ops'
+          ? 'ops'
+          : rawCat === 'datasheet'
+            ? 'datasheet'
+            : 'custom';
 
   return {
     id: String(t.id),

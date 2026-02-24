@@ -5,10 +5,10 @@ import { EmptyState } from '@/components/agents/empty-state';
 import { LoadingSkeleton } from '@/components/agents/loading-skeleton';
 import { useAgentStore } from '@/lib/agent-store';
 import {
-  listAgentFollowupRules,
-  createAgentFollowupRule,
-  updateAgentFollowupRule,
-  deleteAgentFollowupRule,
+  listFollowupRules,
+  createFollowupRule,
+  updateFollowupRule,
+  deleteFollowupRule,
   type FollowUpRule,
   type FollowUpRuleCreate,
   type FollowUpMode,
@@ -79,11 +79,10 @@ export default function AgentFollowUpsPage() {
   const [templatesLoading, setTemplatesLoading] = useState(false);
 
   const loadRules = useCallback(async () => {
-    if (!current) return;
     try {
       setRulesLoading(true);
       setRulesError(null);
-      const data = await listAgentFollowupRules(current.id);
+      const data = await listFollowupRules(current ? { agent_id: Number(current.id) } : undefined);
       setRules(data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load follow-up rules';
@@ -91,7 +90,7 @@ export default function AgentFollowUpsPage() {
     } finally {
       setRulesLoading(false);
     }
-  }, [current]);
+  }, [current?.id]);
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -198,7 +197,6 @@ export default function AgentFollowUpsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!current) return;
     if (!validateForm()) return;
 
     setSaving(true);
@@ -208,13 +206,14 @@ export default function AgentFollowUpsPage() {
         ...formData,
         conditions: conditionsJson.trim() ? JSON.parse(conditionsJson) : undefined,
         generation_config: generationConfigJson.trim() ? JSON.parse(generationConfigJson) : undefined,
+        agent_id: current ? Number(current.id) : undefined,
       };
 
       if (editingRule) {
-        await updateAgentFollowupRule(current.id, editingRule.id, payload);
+        await updateFollowupRule(editingRule.id, payload);
         setMessage('Rule updated successfully');
       } else {
-        await createAgentFollowupRule(current.id, payload);
+        await createFollowupRule(payload);
         setMessage('Rule created successfully');
       }
 
@@ -229,11 +228,10 @@ export default function AgentFollowUpsPage() {
   };
 
   const handleDelete = async (rule: FollowUpRule) => {
-    if (!current) return;
     if (!confirm(`Delete rule "${rule.name}"? This action cannot be undone.`)) return;
 
     try {
-      await deleteAgentFollowupRule(current.id, rule.id);
+      await deleteFollowupRule(rule.id);
       setMessage('Rule deleted successfully');
       await loadRules();
     } catch (err) {
@@ -243,9 +241,8 @@ export default function AgentFollowUpsPage() {
   };
 
   const handleToggleActive = async (rule: FollowUpRule) => {
-    if (!current) return;
     try {
-      await updateAgentFollowupRule(current.id, rule.id, { is_active: !rule.is_active });
+      await updateFollowupRule(rule.id, { is_active: !rule.is_active });
       await loadRules();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to update rule';
