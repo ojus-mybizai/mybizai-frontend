@@ -38,6 +38,12 @@ export interface WorkspaceUpdate {
   working_hours?: Record<string, any>;
 }
 
+/** Payload to enable/disable LMS and Agents modules (owner only). */
+export interface BusinessModulesUpdate {
+  lms_enabled?: boolean;
+  agents_enabled?: boolean;
+}
+
 export interface RoleDefinition {
   key: string;
   name: string;

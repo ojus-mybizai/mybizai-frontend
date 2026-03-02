@@ -99,15 +99,15 @@ export function ToolRow({
         </button>
       </div>
 
-      {enabled && (
+      {onRuleTextChange && (
         <div className="mt-3">
           <label className="text-[11px] font-medium text-text-secondary">
-            Tool rule (optional) — use Save below to apply
+            When to use this tool (optional) — instruction for the AI; save below to apply
           </label>
           <textarea
             value={ruleText ?? ''}
             disabled={disabled}
-            onChange={(e) => onRuleTextChange?.(tool.id, e.target.value)}
+            onChange={(e) => onRuleTextChange(tool.id, e.target.value)}
             rows={2}
             placeholder={
               mode === 'post_process'

@@ -10,6 +10,37 @@ export interface ApiError extends Error {
   data?: unknown;
 }
 
+/** Build a user-friendly message from API error (supports detail as string or object). */
+export function formatApiErrorDetail(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (err && typeof err === "object" && "data" in err) {
+    const data = (err as ApiError).data;
+    if (data && typeof data === "object" && data !== null) {
+      const payload = data as Record<string, unknown>;
+      const detail = payload.detail;
+      if (typeof detail === "string") return detail;
+      if (detail && typeof detail === "object") {
+        const d = detail as Record<string, unknown>;
+        const msg = typeof d.message === "string" ? d.message : null;
+        const invalidIds = d.invalid_tool_ids;
+        if (Array.isArray(invalidIds) && invalidIds.length > 0) {
+          const suffix = ` Invalid tool IDs: ${invalidIds.join(", ")}.`;
+          return (msg ?? "One or more tools not found or are disabled") + suffix;
+        }
+        if (msg) return msg;
+        const errors = d.errors;
+        if (Array.isArray(errors) && errors.length > 0) {
+          const first = errors[0];
+          if (typeof first === "string") return first;
+          if (first && typeof first === "object" && "error" in first)
+            return String((first as { error: unknown }).error);
+        }
+      }
+    }
+  }
+  return msg;
+}
+
 export interface RequestOptions extends RequestInit {
   auth?: boolean;
 }

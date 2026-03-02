@@ -40,6 +40,7 @@ function buildNavItems(lmsEnabled: boolean, agentsEnabled: boolean): NavEntry[] 
   const items: NavEntry[] = [
     { kind: 'section', label: 'Foundation' },
     { label: 'Dashboard', href: '/dashboard', short: 'DB' },
+    { label: 'Data Sheet', href: '/data-sheet', short: 'DS' },
     { label: 'Catalog & Stock', href: '/catalog', short: 'CT' },
     { label: 'Orders & Bookings', href: '/orders', short: 'OR' },
     { label: 'Reports', href: '/reports', short: 'RP' },

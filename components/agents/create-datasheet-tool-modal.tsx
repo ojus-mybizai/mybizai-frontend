@@ -7,6 +7,7 @@ import {
   type DynamicModel,
   type DynamicField,
 } from '@/services/dynamic-data';
+import { formatApiErrorDetail } from '@/lib/api-client';
 import {
   createDataSheetTool,
   type DataSheetToolCreate,
@@ -138,7 +139,7 @@ export function CreateDataSheetToolModal({
       onCreated();
       handleClose();
     } catch (err) {
-      setError((err as Error).message);
+      setError(formatApiErrorDetail(err));
     } finally {
       setSubmitting(false);
     }

@@ -11,12 +11,11 @@ declare global {
         opts: { scope: string }
       ) => void;
     };
+    fbAsyncInit?: () => void;
   }
 }
 
-// Use a Facebook Graph API version that is known to be supported by the JS SDK.
-// Backend HTTP calls can use a different version; the SDK only needs any valid one.
-const GRAPH_API_VERSION = 'v19.0';
+const GRAPH_API_VERSION = 'v18.0';
 
 export function FacebookSDKLoader() {
   useEffect(() => {
@@ -26,29 +25,40 @@ export function FacebookSDKLoader() {
       return;
     }
 
+    const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+    if (!appId) {
+      return;
+    }
+
+    // SDK expects #fb-root; create it if missing
+    if (!document.getElementById('fb-root')) {
+      const root = document.createElement('div');
+      root.id = 'fb-root';
+      document.body.insertBefore(root, document.body.firstChild);
+    }
+
+    // Official pattern: define fbAsyncInit BEFORE loading the script.
+    // The SDK calls fbAsyncInit when it's ready; only then is window.FB available and init valid.
+    window.fbAsyncInit = function () {
+      if (!window.FB) return;
+      try {
+        window.FB.init({
+          appId,
+          cookie: true,
+          xfbml: true,
+          version: GRAPH_API_VERSION,
+        });
+      } catch (e) {
+        console.warn('[FacebookSDK] init failed:', e);
+      }
+    };
+
     const script = document.createElement('script');
-    script.src = 'https://connect.facebook.net/en_US/sdk.js';
     script.async = true;
     script.defer = true;
     script.crossOrigin = 'anonymous';
-    script.onload = () => {
-      if (!window.FB) return;
-      const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
-      if (!appId) {
-        // Fail silently in UI; configuration will be handled by ops.
-        return;
-      }
-      window.FB.init({
-        appId,
-        cookie: true,
-        xfbml: true,
-        version: GRAPH_API_VERSION,
-      });
-    };
-
+    script.src = `https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=${GRAPH_API_VERSION}`;
     document.body.appendChild(script);
-
-    // No cleanup needed; SDK is singleton on the page.
   }, []);
 
   return null;

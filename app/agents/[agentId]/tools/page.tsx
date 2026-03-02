@@ -11,6 +11,7 @@ import { CreateDataSheetToolModal } from '@/components/agents/create-datasheet-t
 import { useAgentStore } from '@/lib/agent-store';
 import { useToolStore } from '@/lib/tool-store';
 import { useDataSheetToolStore } from '@/lib/datasheet-tool-store';
+import { formatApiErrorDetail } from '@/lib/api-client';
 import { listModels } from '@/services/dynamic-data';
 import type { DataSheetToolOut } from '@/services/datasheet-tools';
 import type { DynamicModel } from '@/services/dynamic-data';
@@ -19,10 +20,12 @@ export default function AgentToolsPage() {
   const params = useParams();
   const agentId = (params?.agentId as string) ?? '';
 
-  const { current, loading: agentLoading, saveTools } = useAgentStore((s) => ({
+  const { current, loading: agentLoading, saveTools, error: agentError, resetError } = useAgentStore((s) => ({
     current: s.current,
     loading: s.loading,
     saveTools: s.saveTools,
+    error: s.error,
+    resetError: s.resetError,
   }));
   const { tools, loading: toolLoading, list: listTools } = useToolStore((s) => ({
     tools: s.tools,
@@ -45,6 +48,7 @@ export default function AgentToolsPage() {
   const [toolRulesByAgent, setToolRulesByAgent] = useState<Record<string, Record<string, string>>>({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [systemToolsCollapsed, setSystemToolsCollapsed] = useState(false);
   const [systemToolSearch, setSystemToolSearch] = useState('');
@@ -60,6 +64,12 @@ export default function AgentToolsPage() {
       listModels().then(setModels).catch(() => setModels([]));
     }
   }, [dsTools.length]);
+
+  useEffect(() => {
+    if (message !== 'Saved') return;
+    const t = setTimeout(() => setMessage(null), 3000);
+    return () => clearTimeout(t);
+  }, [message]);
 
   const disabled = useMemo(() => current?.status === 'active', [current?.status]);
 
@@ -129,6 +139,10 @@ export default function AgentToolsPage() {
     }
     return false;
   }, [current, selectionByAgent, toolRulesByAgent]);
+
+  useEffect(() => {
+    if (hasUnsavedChanges) setMessage(null);
+  }, [hasUnsavedChanges]);
 
   const handleToggle = useCallback(
     (id: string, next: boolean) => {
@@ -206,6 +220,7 @@ export default function AgentToolsPage() {
     if (!current) return;
     setSaving(true);
     setMessage(null);
+    setSaveError(null);
     const toolConfigs = selection.reduce<
       Record<string, { rule_text?: string; enabled: boolean }>
     >((acc, toolId) => {
@@ -216,10 +231,31 @@ export default function AgentToolsPage() {
       };
       return acc;
     }, {});
-    await saveTools(current.id, selection, toolConfigs);
-    setSaving(false);
-    setMessage('Saved');
+    try {
+      await saveTools(current.id, selection, toolConfigs);
+      setMessage('Saved');
+    } catch (err) {
+      setSaveError(formatApiErrorDetail(err));
+    } finally {
+      setSaving(false);
+    }
   }, [current, saveTools, selection, toolRules]);
+
+  const handleDiscard = useCallback(() => {
+    if (!current) return;
+    setSelectionByAgent((prev) => {
+      const next = { ...prev };
+      delete next[current.id];
+      return next;
+    });
+    setToolRulesByAgent((prev) => {
+      const next = { ...prev };
+      delete next[current.id];
+      return next;
+    });
+    setSaveError(null);
+    setMessage(null);
+  }, [current]);
 
   const handleCreated = useCallback(() => {
     void listDataSheetTools();
@@ -237,6 +273,23 @@ export default function AgentToolsPage() {
 
   return (
     <div className="space-y-6">
+      {(saveError || agentError) && (
+        <div className="flex items-start justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
+          <span>{saveError ?? agentError ?? ''}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setSaveError(null);
+              resetError();
+            }}
+            className="shrink-0 rounded p-1 hover:bg-red-200/50 dark:hover:bg-red-900/30"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {message && (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
           {message}
@@ -244,16 +297,26 @@ export default function AgentToolsPage() {
       )}
 
       {hasUnsavedChanges && (
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-xl border border-border-color bg-card-bg px-4 py-3 shadow-sm">
+        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-color bg-card-bg px-4 py-3 shadow-sm">
           <span className="text-sm text-text-secondary">You have unsaved changes.</span>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving || disabled}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-          >
-            {disabled ? 'Pause agent to save' : saving ? 'Saving…' : 'Save'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDiscard}
+              disabled={disabled}
+              className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-bg-secondary disabled:opacity-60"
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saving || disabled}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+            >
+              {disabled ? 'Pause agent to save' : saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -369,7 +432,7 @@ export default function AgentToolsPage() {
       </section>
 
       {!hasUnsavedChanges && (
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => void handleSave()}

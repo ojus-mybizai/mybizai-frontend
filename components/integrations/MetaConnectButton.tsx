@@ -29,42 +29,57 @@ export function MetaConnectButton({ channel, onConnected }: MetaConnectButtonPro
     setError(null);
 
     if (typeof window === 'undefined' || !window.FB) {
-      setError('Facebook SDK not loaded yet. Please wait a moment and try again.');
+      const hasAppId = typeof process.env.NEXT_PUBLIC_FACEBOOK_APP_ID === 'string' && process.env.NEXT_PUBLIC_FACEBOOK_APP_ID.length > 0;
+      setError(
+        hasAppId
+          ? 'Facebook SDK not loaded yet. Refresh the page and try again.'
+          : 'Facebook SDK not available. Add NEXT_PUBLIC_FACEBOOK_APP_ID to .env.local and restart the dev server.'
+      );
       return;
     }
 
     setLoading(true);
 
-    window.FB.login((response) => {
-      (async () => {
-        try {
-          if (!response.authResponse) {
-            setError('Login was cancelled or failed.');
-            return;
+    try {
+      window.FB.login((response) => {
+        (async () => {
+          try {
+            if (!response.authResponse) {
+              setError('Login was cancelled or failed.');
+              return;
+            }
+
+            const accessToken = response.authResponse.accessToken;
+
+            await apiFetch('/auth/facebook/exchange', {
+              method: 'POST',
+              body: JSON.stringify({
+                accessToken,
+                state: { channel },
+              }),
+            });
+
+            if (onConnected) {
+              onConnected();
+            }
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : 'Something went wrong while connecting the channel.';
+            setError(message);
+          } finally {
+            setLoading(false);
           }
-
-          const accessToken = response.authResponse.accessToken;
-
-          await apiFetch('/auth/facebook/exchange', {
-            method: 'POST',
-            body: JSON.stringify({
-              accessToken,
-              state: { channel },
-            }),
-          });
-
-          if (onConnected) {
-            onConnected();
-          }
-        } catch (err) {
-          const message =
-            err instanceof Error ? err.message : 'Something went wrong while connecting the channel.';
-          setError(message);
-        } finally {
-          setLoading(false);
-        }
-      })();
-    }, { scope: getScope(channel) });
+        })();
+      }, { scope: getScope(channel) });
+    } catch (err) {
+      setLoading(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('init') && msg.includes('version')) {
+        setError('Meta login is not ready. Refresh the page and try again, or check that NEXT_PUBLIC_FACEBOOK_APP_ID is set.');
+      } else {
+        setError(msg || 'Failed to open Meta login.');
+      }
+    }
   };
 
   const label = `Connect ${channel.charAt(0).toUpperCase()}${channel.slice(1)}`;
