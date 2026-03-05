@@ -61,8 +61,10 @@ function buildNavItems(
     { kind: 'section', label: 'Foundation' },
     { label: 'Dashboard', href: '/dashboard', short: 'DB', icon: LayoutDashboard },
     { label: 'Data Sheet', href: '/data-sheet', short: 'DS', icon: Sheet },
-    { label: 'Reports', href: '/reports', short: 'RP', icon: FileText },
   ];
+  if (hasPermission('view_reports')) {
+    items.push({ label: 'Reports', href: '/reports', short: 'RP', icon: FileText });
+  }
 
   if (lmsEnabled) {
     items.push({ label: 'My Workstation', href: '/employee-dashboard', short: 'MW', icon: Briefcase });
@@ -78,7 +80,7 @@ function buildNavItems(
   items.push({ kind: 'section', label: 'Purchased Modules' });
   items.push({ label: 'Storefront', href: '/storefront/settings', short: 'SF', icon: Store });
 
-  if (agentsEnabled) {
+  if (agentsEnabled && hasPermission('manage_agents')) {
     items.push({
       label: 'Business Agents',
       href: '/agents',

@@ -2,7 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import type { EmployeeReportRow } from '@/services/employees';
-import { listEmployees, updateEmployee, deactivateEmployee, removeEmployee } from '@/services/employees';
+import {
+  listEmployees,
+  getAssignableRoles,
+  updateEmployee,
+  deactivateEmployee,
+  removeEmployee,
+  type AssignableRole,
+} from '@/services/employees';
 import type { ApiError } from '@/lib/api-client';
 
 export interface EditEmployeeModalProps {
@@ -14,6 +21,9 @@ export interface EditEmployeeModalProps {
 
 export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEmployeeModalProps) {
   const [role, setRole] = useState<string>('executive');
+  const [roleId, setRoleId] = useState<number | ''>('');
+  const [assignableRoles, setAssignableRoles] = useState<AssignableRole[]>([]);
+  const [assignableRolesLoading, setAssignableRolesLoading] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [reason, setReason] = useState('');
   const [reassignOpenLeads, setReassignOpenLeads] = useState(true);
@@ -29,6 +39,7 @@ export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEm
     if (employee) {
       setRole(employee.role);
       setIsActive(employee.is_active);
+      setRoleId('');
       setReason('');
       setReassignOpenLeads(true);
       setReassignOpenWork(true);
@@ -56,6 +67,19 @@ export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEm
     };
   }, [isOpen, employee]);
 
+  useEffect(() => {
+    if (!isOpen || !employee) return;
+    setAssignableRolesLoading(true);
+    getAssignableRoles()
+      .then((roles) => {
+        setAssignableRoles(roles);
+        const match = roles.find((r) => r.slug === employee.role || r.name === employee.role);
+        if (match) setRoleId(match.id);
+      })
+      .catch(() => setAssignableRoles([]))
+      .finally(() => setAssignableRolesLoading(false));
+  }, [isOpen, employee]);
+
   if (!isOpen || !employee || employee.id === 0) return null;
 
   const handleRoleUpdate = async (e: React.FormEvent) => {
@@ -66,7 +90,8 @@ export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEm
     setSuccess(null);
     try {
       await updateEmployee(employee.id, {
-        role: role as 'manager' | 'executive',
+        role_id: roleId !== '' ? roleId : undefined,
+        role: roleId === '' ? (role as 'manager' | 'executive') : undefined,
         is_active: isActive,
       });
       setSuccess('Employee role/status updated.');
@@ -170,7 +195,10 @@ export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEm
 
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-            {error}
+            <p>{error}</p>
+            {error.includes('active assignments') && (
+              <p className="mt-2 font-medium">Use the reassign options below, or check &quot;Force deactivation&quot; to proceed.</p>
+            )}
           </div>
         )}
 
@@ -178,14 +206,29 @@ export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEm
           <h3 className="text-sm font-semibold text-text-primary">Role and status</h3>
           <div>
             <label className="mb-1 block text-sm font-medium text-text-secondary">Role</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="manager">Manager</option>
-              <option value="executive">Executive</option>
-            </select>
+            {assignableRolesLoading ? (
+              <p className="text-sm text-text-secondary">Loading roles…</p>
+            ) : assignableRoles.length > 0 ? (
+              <select
+                value={roleId === '' ? '' : String(roleId)}
+                onChange={(e) => setRoleId(e.target.value === '' ? '' : Number(e.target.value))}
+                className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="">Select role</option>
+                {assignableRoles.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            ) : (
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="manager">Manager</option>
+                <option value="executive">Executive</option>
+              </select>
+            )}
           </div>
           <div>
             <label className="flex items-center gap-2 text-sm font-medium text-text-secondary">
@@ -209,8 +252,11 @@ export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEm
           </div>
         </form>
 
-        <div className="space-y-3 border-b border-border-color py-4">
+        <div className="space-y-3 border-b border-border-color py-4" id="edit-employee-deactivate-section">
           <h3 className="text-sm font-semibold text-text-primary">Deactivate with reassignment</h3>
+          {error && error.includes('active assignments') && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">Select reassign options or force deactivation below, then click Deactivate again.</p>
+          )}
           <div>
             <label className="mb-1 block text-sm font-medium text-text-secondary">Reason (optional)</label>
             <input

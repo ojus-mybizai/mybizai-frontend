@@ -4,6 +4,13 @@ export type EmployeeRole = 'owner' | 'manager' | 'executive';
 export type ManagedEmployeeRole = 'manager' | 'executive';
 export type EmployeeInviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked';
 
+export interface AssignableRole {
+  id: number;
+  name: string;
+  slug?: string | null;
+  description?: string | null;
+}
+
 export interface Employee {
   id: number;
   user_id: number;
@@ -64,7 +71,9 @@ export interface EmployeeActivityListResponse {
 export interface EmployeeInviteCreate {
   email: string;
   name?: string;
-  role: ManagedEmployeeRole;
+  /** Prefer role_id (from assignable roles); fallback to role for legacy. */
+  role_id?: number | null;
+  role?: ManagedEmployeeRole;
   expires_in_hours?: number;
 }
 
@@ -122,6 +131,10 @@ export interface EmployeeDeactivateResult {
   reassigned_work: number;
 }
 
+export async function getAssignableRoles(): Promise<AssignableRole[]> {
+  return apiFetch<AssignableRole[]>('/employees/roles', { method: 'GET', auth: true });
+}
+
 export async function getEmployeesReport(): Promise<EmployeeReportRow[]> {
   return apiFetch<EmployeeReportRow[]>('/employees/report', { method: 'GET', auth: true });
 }
@@ -162,7 +175,7 @@ export async function createEmployee(payload: { email: string; name?: string; ro
 
 export async function updateEmployee(
   employeeId: number,
-  payload: { role?: ManagedEmployeeRole; is_active?: boolean }
+  payload: { role_id?: number | null; role?: ManagedEmployeeRole; is_active?: boolean }
 ): Promise<Employee> {
   return apiFetch<Employee>(`/employees/${employeeId}`, {
     method: 'PUT',

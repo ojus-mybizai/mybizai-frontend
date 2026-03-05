@@ -315,7 +315,7 @@ export default function WorkTemplatesPage() {
       <ProtectedShell>
         <ModuleGuard module="lms">
           <div className="w-full rounded-xl border border-border-color bg-card-bg p-4">
-            <p className="text-base text-text-secondary">Only owner or manager can manage work types.</p>
+            <p className="text-base text-text-secondary">You don&apos;t have permission to manage work types.</p>
             <Link href="/work" className="mt-3 inline-block text-sm font-semibold text-accent hover:underline">
               Back to Work
             </Link>

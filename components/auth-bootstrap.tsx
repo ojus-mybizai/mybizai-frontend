@@ -111,11 +111,15 @@ export default function AuthBootstrap({ children }: Props) {
             const me = await apiFetch<Record<string, unknown>>('/auth/users/me', { method: 'GET' });
             if (isMounted && me && typeof me === 'object') {
               setUser(me);
-              const businesses = me.businesses as Array<{ is_owner?: boolean; permission_keys?: string[] }> | undefined;
-              const first = Array.isArray(businesses) && businesses.length > 0 ? businesses[0] : null;
-              if (first) {
-                setIsOwner(Boolean(first.is_owner));
-                setPermissionKeys(Array.isArray(first.permission_keys) ? first.permission_keys : []);
+              const businesses = me.businesses as Array<{ id?: number; is_owner?: boolean; permission_keys?: string[] }> | undefined;
+              const defaultId = withToken.defaultBusinessId;
+              const currentBusiness =
+                Array.isArray(businesses) && businesses.length > 0
+                  ? (defaultId != null ? businesses.find((b) => b.id === defaultId) : null) ?? businesses[0]
+                  : null;
+              if (currentBusiness) {
+                setIsOwner(Boolean(currentBusiness.is_owner));
+                setPermissionKeys(Array.isArray(currentBusiness.permission_keys) ? currentBusiness.permission_keys : []);
               }
             }
           } catch {

@@ -8,12 +8,14 @@ import { EditEmployeeModal } from '@/components/employees/edit-employee-modal';
 import { useAuthStore } from '@/lib/auth-store';
 import {
   getEmployeesReport,
+  getAssignableRoles,
   createEmployeeInvite,
   listEmployeeInvites,
   resendEmployeeInvite,
   revokeEmployeeInvite,
   type EmployeeReportRow,
   type EmployeeInvite,
+  type AssignableRole,
   type ManagedEmployeeRole,
 } from '@/services/employees';
 
@@ -23,12 +25,18 @@ const ROLE_LABELS: Record<string, string> = {
   executive: 'Executive',
 };
 
-const ROLE_FILTER_OPTIONS = [
-  { value: '', label: 'All roles' },
-  { value: 'owner', label: 'Owner' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'executive', label: 'Executive' },
-];
+function getRoleFilterOptions(rows: EmployeeReportRow[]) {
+  const options = [{ value: '', label: 'All roles' }];
+  const roleSet = new Set(rows.map((r) => r.role));
+  ['owner', 'manager', 'executive'].forEach((r) => {
+    if (roleSet.has(r)) {
+      options.push({ value: r, label: ROLE_LABELS[r] ?? r });
+      roleSet.delete(r);
+    }
+  });
+  roleSet.forEach((r) => options.push({ value: r, label: r }));
+  return options;
+}
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'All statuses' },
@@ -62,8 +70,11 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [inviteStatusFilter, setInviteStatusFilter] = useState('');
   const [addOpen, setAddOpen] = useState(false);
+  const [assignableRoles, setAssignableRoles] = useState<AssignableRole[]>([]);
+  const [assignableRolesLoading, setAssignableRolesLoading] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
+  const [inviteRoleId, setInviteRoleId] = useState<number | ''>('');
   const [inviteRole, setInviteRole] = useState<ManagedEmployeeRole>('executive');
   const [inviteExpiryHours, setInviteExpiryHours] = useState(72);
   const [addSubmitting, setAddSubmitting] = useState(false);
@@ -99,6 +110,17 @@ export default function EmployeesPage() {
   useEffect(() => {
     void Promise.all([loadTeam(), loadInvites()]);
   }, [loadTeam, loadInvites]);
+
+  useEffect(() => {
+    if (!addOpen || !canManageEmployees) return;
+    setAssignableRolesLoading(true);
+    getAssignableRoles()
+      .then(setAssignableRoles)
+      .catch(() => setAssignableRoles([]))
+      .finally(() => setAssignableRolesLoading(false));
+  }, [addOpen, canManageEmployees]);
+
+  const roleFilterOptions = useMemo(() => getRoleFilterOptions(rows), [rows]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -159,12 +181,14 @@ export default function EmployeesPage() {
       await createEmployeeInvite({
         email,
         name: inviteName.trim() || undefined,
-        role: inviteRole,
+        role_id: inviteRoleId !== '' ? inviteRoleId : undefined,
+        role: inviteRoleId === '' ? inviteRole : undefined,
         expires_in_hours: inviteExpiryHours,
       });
       setAddOpen(false);
       setInviteEmail('');
       setInviteName('');
+      setInviteRoleId('');
       setInviteRole('executive');
       setInviteExpiryHours(72);
       setNotice(`Invite sent to ${email}.`);
@@ -192,6 +216,12 @@ export default function EmployeesPage() {
   };
 
   const handleRevokeInvite = async (inviteId: number) => {
+    const invite = invites.find((i) => i.id === inviteId);
+    if (!invite) return;
+    const confirmed = typeof window !== 'undefined' && window.confirm(
+      `Revoke this invite for ${invite.email}? They will no longer be able to use the link.`,
+    );
+    if (!confirmed) return;
     setInviteActionId(inviteId);
     setError(null);
     try {
@@ -338,7 +368,7 @@ export default function EmployeesPage() {
                       onChange={(e) => setRoleFilter(e.target.value)}
                       className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
                     >
-                      {ROLE_FILTER_OPTIONS.map((o) => (
+                      {roleFilterOptions.map((o) => (
                         <option key={o.value} value={o.value}>{o.label}</option>
                       ))}
                     </select>
@@ -627,14 +657,35 @@ export default function EmployeesPage() {
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-text-secondary">Role</label>
-                    <select
-                      value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value as ManagedEmployeeRole)}
-                      className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                    >
-                      <option value="manager">Manager</option>
-                      <option value="executive">Executive</option>
-                    </select>
+                    {assignableRolesLoading ? (
+                      <p className="text-sm text-text-secondary">Loading roles…</p>
+                    ) : assignableRoles.length > 0 ? (
+                      <select
+                        value={inviteRoleId === '' ? '' : String(inviteRoleId)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setInviteRoleId(v === '' ? '' : Number(v));
+                        }}
+                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                      >
+                        <option value="">Select role</option>
+                        {assignableRoles.map((r) => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        value={inviteRole}
+                        onChange={(e) => setInviteRole(e.target.value as ManagedEmployeeRole)}
+                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                      >
+                        <option value="manager">Manager</option>
+                        <option value="executive">Executive</option>
+                      </select>
+                    )}
+                    {assignableRoles.length > 0 && (
+                      <p className="mt-1 text-xs text-text-secondary">To add more roles, go to Settings → Roles.</p>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-text-secondary">
