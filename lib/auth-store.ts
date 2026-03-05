@@ -36,6 +36,10 @@ export interface AuthState {
   defaultRole: DefaultRole;
   hasActiveBusinessAccess: boolean;
   isInitialized: boolean;
+  /** Permission-driven: keys for current business (from me/login). Owner has all. */
+  permissionKeys: string[];
+  /** True if current user is owner of default business. */
+  isOwner: boolean;
   setAccessToken: (token: string | null) => void;
   setUser: (user: User) => void;
   setOnboardingRequired: (value: boolean) => void;
@@ -43,10 +47,14 @@ export interface AuthState {
   setDefaultRole: (value: DefaultRole) => void;
   setHasActiveBusinessAccess: (value: boolean) => void;
   setInitialized: (value: boolean) => void;
+  setPermissionKeys: (keys: string[]) => void;
+  setIsOwner: (value: boolean) => void;
+  /** True if user has the permission or is owner. */
+  hasPermission: (key: string) => boolean;
   logout: (broadcast?: boolean) => void;
 }
 
-export const useAuthStore = create<AuthState>((set: (partial: Partial<AuthState>) => void) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: getStoredAccessToken(),
   user: null,
   onboardingRequired: false,
@@ -54,6 +62,8 @@ export const useAuthStore = create<AuthState>((set: (partial: Partial<AuthState>
   defaultRole: null,
   hasActiveBusinessAccess: true,
   isInitialized: false,
+  permissionKeys: [],
+  isOwner: false,
   setAccessToken: (token: string | null) => {
     persistAccessToken(token);
     set({ accessToken: token });
@@ -64,6 +74,13 @@ export const useAuthStore = create<AuthState>((set: (partial: Partial<AuthState>
   setDefaultRole: (value: DefaultRole) => set({ defaultRole: value }),
   setHasActiveBusinessAccess: (value: boolean) => set({ hasActiveBusinessAccess: value }),
   setInitialized: (value: boolean) => set({ isInitialized: value }),
+  setPermissionKeys: (keys: string[]) => set({ permissionKeys: keys }),
+  setIsOwner: (value: boolean) => set({ isOwner: value }),
+  hasPermission: (key: string) => {
+    const s = get();
+    if (s.isOwner) return true;
+    return Array.isArray(s.permissionKeys) && s.permissionKeys.includes(key);
+  },
   logout: (broadcast: boolean = true) => {
     persistAccessToken(null);
     set({
@@ -73,6 +90,8 @@ export const useAuthStore = create<AuthState>((set: (partial: Partial<AuthState>
       defaultBusinessId: null,
       defaultRole: null,
       hasActiveBusinessAccess: false,
+      permissionKeys: [],
+      isOwner: false,
     });
     if (broadcast && typeof window !== "undefined") {
       broadcastAuthEvent("logout");

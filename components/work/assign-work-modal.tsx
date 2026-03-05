@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
 import {
@@ -13,15 +13,19 @@ import {
 } from '@/services/work';
 import { listEmployees, type Employee } from '@/services/employees';
 import { listLeadsForSelect, type LeadOption } from '@/services/customers';
+import { listFields, type DynamicField } from '@/services/dynamic-data';
+import type { RecordFilterRow } from '@/services/work';
 
 export interface AssignWorkModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated?: (workId: number) => void;
   initialLeadId?: number | null;
+  /** When set, modal opens with this template pre-selected; work type and assignee are pre-filled from template. */
+  initialTemplateId?: number | null;
 }
 
-export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = null }: AssignWorkModalProps) {
+export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = null, initialTemplateId = null }: AssignWorkModalProps) {
   const router = useRouter();
   const currentUserId = useAuthStore((s) => (s.user as { id?: number } | null)?.id ?? null);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -37,8 +41,17 @@ export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = nu
   const [notes, setNotes] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [dueDate, setDueDate] = useState('');
+  const [recordLimit, setRecordLimit] = useState<string>('');
+  const [filterRows, setFilterRows] = useState<RecordFilterRow[]>([]);
+  const [datasheetFields, setDatasheetFields] = useState<DynamicField[]>([]);
+  const [fieldsLoading, setFieldsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedTemplate = templateId != null ? templates.find((t) => t.id === templateId) : null;
+  const isDatasheetTemplate = selectedTemplate?.template_type === 'datasheet';
+  const linkedModelId = selectedTemplate?.linked_dynamic_model_id ?? null;
+  const prevLinkedModelId = useRef<number | null>(null);
 
   const filteredLeads = leads.filter((lead) => {
     const query = leadQuery.trim().toLowerCase();
@@ -61,27 +74,62 @@ export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = nu
       listWorkTypes().then(setWorkTypes).catch(() => setWorkTypes([]));
       listWorkTemplates().then(setTemplates).catch(() => setTemplates([]));
       listLeadsForSelect({ per_page: 100 }).then(setLeads).catch(() => setLeads([]));
-      setAssignedToId(null);
+      setTemplateId(initialTemplateId ?? null);
       setWorkTypeId(null);
-      setTemplateId(null);
+      setAssignedToId(null);
       setLeadId(initialLeadId);
       setLeadQuery('');
       setTitle('');
       setNotes('');
       setPriority('medium');
       setDueDate('');
+      setRecordLimit('');
+      setFilterRows([]);
+      setDatasheetFields([]);
       setError(null);
     }
-  }, [initialLeadId, isOpen]);
+  }, [initialLeadId, initialTemplateId, isOpen]);
+
+  // When a datasheet template is selected, load its fields for the filter builder
+  useEffect(() => {
+    if (!isOpen || !isDatasheetTemplate || linkedModelId == null) {
+      setDatasheetFields([]);
+      prevLinkedModelId.current = null;
+      return;
+    }
+    if (prevLinkedModelId.current !== linkedModelId) {
+      setFilterRows([]);
+      prevLinkedModelId.current = linkedModelId;
+    }
+    setFieldsLoading(true);
+    listFields(linkedModelId)
+      .then(setDatasheetFields)
+      .catch(() => setDatasheetFields([]))
+      .finally(() => setFieldsLoading(false));
+  }, [isOpen, isDatasheetTemplate, linkedModelId]);
+
+  // When template is selected (by user or via initialTemplateId), pre-fill work type and assignee
+  useEffect(() => {
+    if (!isOpen || templateId == null || templates.length === 0) return;
+    const t = templates.find((x) => x.id === templateId);
+    if (t) {
+      setWorkTypeId(t.work_type_id);
+      setAssignedToId((prev) => prev ?? t.default_assigned_to_id ?? null);
+    }
+  }, [isOpen, templateId, templates]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (templateId != null && assignedToId == null) {
+      setError('Please select an assignee when creating work from a template.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       let created;
       if (templateId != null) {
-        created = await createWorkFromTemplate(templateId, {
+        const payload: Parameters<typeof createWorkFromTemplate>[1] = {
           assigned_to_id: assignedToId ?? undefined,
           work_type_id: workTypeId ?? undefined,
           lead_id: leadId || undefined,
@@ -89,7 +137,26 @@ export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = nu
           notes: notes.trim() || undefined,
           priority,
           due_date: dueDate || undefined,
-        });
+        };
+        const selTpl = templates.find((t) => t.id === templateId);
+        if (selTpl?.template_type === 'datasheet') {
+          if (recordLimit.trim()) {
+            const n = parseInt(recordLimit, 10);
+            if (!Number.isNaN(n) && n >= 1 && n <= 500) payload.record_limit = n;
+          }
+          const filters = filterRows.filter((r) => r.field && (r.value !== undefined && r.value !== '' || ['is_null', 'is_not_null'].includes(r.op || 'eq')));
+          if (filters.length > 0) {
+            payload.record_filters = filters.map((r) => {
+              const op = r.op || 'eq';
+              let value = r.value;
+              if (op === 'in' && typeof value === 'string') {
+                value = value.split(',').map((s) => s.trim()).filter(Boolean);
+              }
+              return { field: r.field, op, value };
+            });
+          }
+        }
+        created = await createWorkFromTemplate(templateId, payload);
       } else {
         if (workTypeId == null || assignedToId == null) {
           setError('Please select a work type and an employee.');
@@ -158,23 +225,125 @@ export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = nu
             >
               <option value="">No template</option>
               {templates.filter((t) => t.is_active).map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.template_type && t.template_type !== 'simple' ? ` (${t.template_type})` : ''}
+                </option>
               ))}
             </select>
           </div>
+          {isDatasheetTemplate && (
+            <>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-text-secondary">Filter records (optional)</label>
+                <p className="mb-2 text-xs text-text-secondary">Only assign rows that match these conditions (e.g. payment = pending).</p>
+                {fieldsLoading ? (
+                  <p className="text-sm text-text-secondary">Loading fields…</p>
+                ) : (
+                  <div className="space-y-2">
+                    {filterRows.map((row, idx) => (
+                      <div key={idx} className="flex flex-wrap items-center gap-2 rounded-lg border border-border-color bg-bg-primary p-2">
+                        <select
+                          value={row.field}
+                          onChange={(e) => {
+                            const next = [...filterRows];
+                            next[idx] = { ...next[idx], field: e.target.value };
+                            setFilterRows(next);
+                          }}
+                          className="min-w-[100px] rounded border border-border-color bg-bg-secondary px-2 py-1.5 text-sm text-text-primary"
+                        >
+                          <option value="">Field</option>
+                          {datasheetFields.map((f) => (
+                            <option key={f.id} value={f.name}>{f.display_name || f.name}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={row.op ?? 'eq'}
+                          onChange={(e) => {
+                            const next = [...filterRows];
+                            next[idx] = { ...next[idx], op: e.target.value };
+                            setFilterRows(next);
+                          }}
+                          className="rounded border border-border-color bg-bg-secondary px-2 py-1.5 text-sm text-text-primary"
+                        >
+                          <option value="eq">equals</option>
+                          <option value="ne">not equals</option>
+                          <option value="contains">contains</option>
+                          <option value="gt">&gt;</option>
+                          <option value="gte">≥</option>
+                          <option value="lt">&lt;</option>
+                          <option value="lte">≤</option>
+                          <option value="in">in (comma-separated)</option>
+                          <option value="is_null">is empty</option>
+                          <option value="is_not_null">is not empty</option>
+                        </select>
+                        {row.op !== 'is_null' && row.op !== 'is_not_null' && (
+                          <input
+                            type="text"
+                            value={row.value != null ? String(row.value) : ''}
+                            onChange={(e) => {
+                              const next = [...filterRows];
+                              const v = e.target.value;
+                              next[idx] = { ...next[idx], value: v };
+                              setFilterRows(next);
+                            }}
+                            placeholder="Value"
+                            className="min-w-[80px] flex-1 rounded border border-border-color bg-bg-secondary px-2 py-1.5 text-sm text-text-primary"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setFilterRows((prev) => prev.filter((_, i) => i !== idx))}
+                          className="rounded p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
+                          aria-label="Remove filter"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setFilterRows((prev) => [...prev, { field: '', op: 'eq', value: '' }])}
+                      className="rounded-md border border-dashed border-border-color px-3 py-1.5 text-sm text-text-secondary hover:border-accent hover:text-accent"
+                    >
+                      + Add filter
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-text-secondary">Record limit (optional)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={recordLimit}
+                  onChange={(e) => setRecordLimit(e.target.value)}
+                  placeholder="e.g. 20 — leave empty for all matching records"
+                  className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+                <p className="mt-1 text-xs text-text-secondary">Max records to assign (after filters). Empty = all matching.</p>
+              </div>
+            </>
+          )}
           <div>
-            <label className="mb-1 block text-sm font-medium text-text-secondary">Work type *</label>
+            <label className="mb-1 block text-sm font-medium text-text-secondary">
+              Work type {templateId != null ? '(from template)' : '*'}
+            </label>
             <select
               value={workTypeId ?? ''}
               onChange={(e) => setWorkTypeId(e.target.value === '' ? null : Number(e.target.value))}
-              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              disabled={templateId != null}
+              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-70 disabled:cursor-not-allowed"
             >
               <option value="">Select type</option>
               {workTypes.filter((t) => t.is_active).map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-text-secondary">Required when no template is selected.</p>
+            <p className="mt-1 text-xs text-text-secondary">
+              {templateId != null ? 'Pre-filled from template.' : 'Required when no template is selected.'}
+            </p>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-text-secondary">Assign to *</label>

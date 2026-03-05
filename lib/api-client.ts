@@ -127,6 +127,13 @@ async function refreshAccessToken(): Promise<string | null> {
       (payload.has_active_business_access as boolean | undefined) ??
       (payload.hasActiveBusinessAccess as boolean | undefined) ??
       true;
+    const isOwner =
+      (payload.is_owner as boolean | undefined) ?? (payload.isOwner as boolean | undefined) ?? false;
+    const permissionKeys = Array.isArray(payload.permission_keys)
+      ? (payload.permission_keys as string[])
+      : Array.isArray((payload as { permissionKeys?: string[] }).permissionKeys)
+        ? ((payload as { permissionKeys: string[] }).permissionKeys)
+        : [];
 
     const state = useAuthStore.getState();
     state.setAccessToken(accessToken);
@@ -137,6 +144,8 @@ async function refreshAccessToken(): Promise<string | null> {
     );
     state.setDefaultRole(defaultRole);
     state.setHasActiveBusinessAccess(Boolean(hasActiveBusinessAccess));
+    state.setIsOwner(Boolean(isOwner));
+    state.setPermissionKeys(permissionKeys);
 
     if (typeof window !== "undefined") {
       broadcastAuthEvent("refresh");

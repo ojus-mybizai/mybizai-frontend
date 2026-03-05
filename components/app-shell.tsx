@@ -2,6 +2,21 @@
 
 import { ReactNode, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import {
+  LayoutDashboard,
+  Sheet,
+  FileText,
+  Users,
+  MessageSquare,
+  Radio,
+  Briefcase,
+  UserCog,
+  Store,
+  Bot,
+  LogOut,
+  Settings,
+  type LucideIcon,
+} from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { performLogout } from '@/lib/auth-actions';
 import { useThemeStore } from '@/lib/theme-store';
@@ -22,6 +37,7 @@ interface NavItem {
   label: string;
   href: string;
   short: string;
+  icon: LucideIcon;
   children?: NavChild[];
 }
 
@@ -36,33 +52,38 @@ function isNavItem(entry: NavEntry): entry is NavItem {
   return typeof (entry as NavItem | undefined)?.href === 'string';
 }
 
-function buildNavItems(lmsEnabled: boolean, agentsEnabled: boolean): NavEntry[] {
+function buildNavItems(
+  lmsEnabled: boolean,
+  agentsEnabled: boolean,
+  hasPermission: (key: string) => boolean,
+): NavEntry[] {
   const items: NavEntry[] = [
     { kind: 'section', label: 'Foundation' },
-    { label: 'Dashboard', href: '/dashboard', short: 'DB' },
-    { label: 'Data Sheet', href: '/data-sheet', short: 'DS' },
-    { label: 'Catalog & Stock', href: '/catalog', short: 'CT' },
-    { label: 'Orders & Bookings', href: '/orders', short: 'OR' },
-    { label: 'Reports', href: '/reports', short: 'RP' },
-    { label: 'Settings', href: '/settings', short: 'ST' },
+    { label: 'Dashboard', href: '/dashboard', short: 'DB', icon: LayoutDashboard },
+    { label: 'Data Sheet', href: '/data-sheet', short: 'DS', icon: Sheet },
+    { label: 'Reports', href: '/reports', short: 'RP', icon: FileText },
   ];
 
   if (lmsEnabled) {
-    items.push({ label: 'Customers', href: '/customers', short: 'CU' });
-    items.push({ label: 'Conversations', href: '/conversations', short: 'CV' });
-    items.push({ label: 'Channels', href: '/channels', short: 'CH' });
-    items.push({ label: 'Work & Tasks', href: '/work', short: 'WK' });
-    items.push({ label: 'Employees', href: '/employees', short: 'EM' });
+    items.push({ label: 'My Workstation', href: '/employee-dashboard', short: 'MW', icon: Briefcase });
+    items.push({ label: 'Customers', href: '/customers', short: 'CU', icon: Users });
+    items.push({ label: 'Conversations', href: '/conversations', short: 'CV', icon: MessageSquare });
+    items.push({ label: 'Channels', href: '/channels', short: 'CH', icon: Radio });
+    items.push({ label: 'Work & Tasks', href: '/work', short: 'WK', icon: Briefcase });
+    if (hasPermission('manage_employees')) {
+      items.push({ label: 'Employees', href: '/employees', short: 'EM', icon: UserCog });
+    }
   }
 
   items.push({ kind: 'section', label: 'Purchased Modules' });
-  items.push({ label: 'Storefront', href: '/storefront/settings', short: 'SF' });
+  items.push({ label: 'Storefront', href: '/storefront/settings', short: 'SF', icon: Store });
 
   if (agentsEnabled) {
     items.push({
       label: 'Business Agents',
       href: '/agents',
       short: 'BA',
+      icon: Bot,
       children: [
         { label: 'All Agents', href: '/agents', group: 'manage' },
         { label: 'New Agent', href: '/agents/new', group: 'manage' },
@@ -94,7 +115,8 @@ export default function AppShell({ children }: AppShellProps) {
   const business = user?.businesses?.[0];
   const lmsEnabled = business?.lms_enabled !== false;
   const agentsEnabled = business?.agents_enabled !== false;
-  const navItems = buildNavItems(lmsEnabled, agentsEnabled);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const navItems = buildNavItems(lmsEnabled, agentsEnabled, hasPermission);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [openNavHref, setOpenNavHref] = useState<string | null>(
     pathname && pathname.startsWith('/agents') ? '/agents' : null,
@@ -185,8 +207,8 @@ export default function AppShell({ children }: AppShellProps) {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-xs font-semibold text-text-secondary">
-                    {item.short}
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-text-secondary">
+                    <item.icon className="h-3.5 w-3.5" aria-hidden />
                   </div>
                   <span className="truncate">{item.label}</span>
                 </div>
@@ -242,10 +264,20 @@ export default function AppShell({ children }: AppShellProps) {
           onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-left text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-xs font-semibold text-text-secondary">
-            LO
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-text-secondary">
+            <LogOut className="h-3.5 w-3.5" aria-hidden />
           </div>
           <span>Logout</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push('/settings')}
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-left text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
+        >
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-text-secondary">
+            <Settings className="h-3.5 w-3.5" aria-hidden />
+          </div>
+          <span>Settings</span>
         </button>
       </div>
     </div>

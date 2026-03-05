@@ -81,10 +81,8 @@ function toEmployeeReportRow(detail: EmployeeDetail): EmployeeReportRow {
 export default function EmployeeDetailPage() {
   const params = useParams<{ id: string }>();
   const employeeId = Number(params?.id);
-  const defaultRole = useAuthStore((s) => s.defaultRole);
-  const user = useAuthStore((s) => s.user as { businesses?: { role?: string }[] } | null);
-  const role = defaultRole ?? user?.businesses?.[0]?.role ?? 'owner';
-  const canManageEmployees = role === 'owner' || role === 'manager';
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canManageEmployees = hasPermission('manage_employees');
 
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [loading, setLoading] = useState(true);

@@ -54,11 +54,11 @@ function priorityBadge(priority: string): string {
 
 export default function WorkPage() {
   const router = useRouter();
-  const user = useAuthStore((s) => s.user as { id?: number; businesses?: { role?: string }[] } | null);
+  const user = useAuthStore((s) => s.user as { id?: number } | null);
   const currentUserId = user?.id ?? null;
-  const role = user?.businesses?.[0]?.role ?? 'owner';
-  const canAssign = role === 'owner' || role === 'manager';
-  const canManageTypes = role === 'owner' || role === 'manager';
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAssign = hasPermission('manage_work') || hasPermission('assign_work');
+  const canManageTypes = hasPermission('manage_work');
 
   const [stats, setStats] = useState<WorkStats | null>(null);
   const [items, setItems] = useState<Work[]>([]);

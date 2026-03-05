@@ -47,10 +47,8 @@ const INVITE_STATUS_OPTIONS = [
 type ActiveTab = 'team' | 'invites';
 
 export default function EmployeesPage() {
-  const defaultRole = useAuthStore((s) => s.defaultRole);
-  const user = useAuthStore((s) => s.user as { businesses?: { role?: string }[] } | null);
-  const role = defaultRole ?? user?.businesses?.[0]?.role ?? 'owner';
-  const canManageEmployees = role === 'owner' || role === 'manager';
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canManageEmployees = hasPermission('manage_employees');
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('team');
   const [rows, setRows] = useState<EmployeeReportRow[]>([]);

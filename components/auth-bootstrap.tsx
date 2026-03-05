@@ -16,6 +16,8 @@ export default function AuthBootstrap({ children }: Props) {
   const setDefaultBusinessId = useAuthStore((s) => s.setDefaultBusinessId);
   const setDefaultRole = useAuthStore((s) => s.setDefaultRole);
   const setHasActiveBusinessAccess = useAuthStore((s) => s.setHasActiveBusinessAccess);
+  const setPermissionKeys = useAuthStore((s) => s.setPermissionKeys);
+  const setIsOwner = useAuthStore((s) => s.setIsOwner);
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const setInitialized = useAuthStore((s) => s.setInitialized);
   const logout = useAuthStore((s) => s.logout);
@@ -77,6 +79,13 @@ export default function AuthBootstrap({ children }: Props) {
                 (payload.has_active_business_access as boolean | undefined) ??
                 (payload.hasActiveBusinessAccess as boolean | undefined) ??
                 true;
+              const isOwner =
+                (payload.is_owner as boolean | undefined) ?? (payload.isOwner as boolean | undefined) ?? false;
+              const permissionKeys = Array.isArray(payload.permission_keys)
+                ? (payload.permission_keys as string[])
+                : Array.isArray((payload as { permissionKeys?: string[] }).permissionKeys)
+                  ? ((payload as { permissionKeys: string[] }).permissionKeys)
+                  : [];
 
               if (isMounted) {
                 setAccessToken(accessToken);
@@ -87,6 +96,8 @@ export default function AuthBootstrap({ children }: Props) {
                 );
                 setDefaultRole(defaultRole);
                 setHasActiveBusinessAccess(Boolean(hasActiveBusinessAccess));
+                setIsOwner(Boolean(isOwner));
+                setPermissionKeys(permissionKeys);
               }
             }
           } catch {
@@ -97,9 +108,15 @@ export default function AuthBootstrap({ children }: Props) {
         const withToken = useAuthStore.getState();
         if (withToken.accessToken) {
           try {
-            const me = await apiFetch('/auth/users/me', { method: 'GET' });
-            if (isMounted) {
-              setUser(me && typeof me === 'object' ? (me as Record<string, unknown>) : null);
+            const me = await apiFetch<Record<string, unknown>>('/auth/users/me', { method: 'GET' });
+            if (isMounted && me && typeof me === 'object') {
+              setUser(me);
+              const businesses = me.businesses as Array<{ is_owner?: boolean; permission_keys?: string[] }> | undefined;
+              const first = Array.isArray(businesses) && businesses.length > 0 ? businesses[0] : null;
+              if (first) {
+                setIsOwner(Boolean(first.is_owner));
+                setPermissionKeys(Array.isArray(first.permission_keys) ? first.permission_keys : []);
+              }
             }
           } catch {
             // ignore errors from /auth/users/me
@@ -132,6 +149,8 @@ export default function AuthBootstrap({ children }: Props) {
     setDefaultBusinessId,
     setDefaultRole,
     setHasActiveBusinessAccess,
+    setPermissionKeys,
+    setIsOwner,
     setInitialized,
     logout,
   ]);

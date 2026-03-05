@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import ProtectedShell from '@/components/protected-shell';
+import { useAuthStore } from '@/lib/auth-store';
 import { SettingsKnowledgeBaseTab } from '@/components/settings/knowledge-base-tab';
 import {
   changePassword,
@@ -102,9 +103,10 @@ export default function SettingsPage() {
     target_audience: '',
   });
 
-  const isOwnerOrManager =
-    profile?.current_role === 'owner' || profile?.current_role === 'manager';
-  const isOwner = profile?.current_role === 'owner';
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canManageRoles = hasPermission('manage_settings') && permissions.length > 0;
+  const isOwnerOrManager = isOwner || canManageRoles;
 
   useEffect(() => {
     let cancelled = false;
@@ -272,8 +274,6 @@ export default function SettingsPage() {
       setLoading(false);
     }
   };
-
-  const canManageRoles = isOwnerOrManager && permissions.length > 0;
 
   const startNewRole = () => {
     if (!canManageRoles) return;

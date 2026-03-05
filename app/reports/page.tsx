@@ -39,10 +39,10 @@ const STATUS_FILTER_OPTIONS = [
 ];
 
 export default function ReportsPage() {
-  const user = useAuthStore((s) => s.user as { id?: number; businesses?: { role?: string; lms_enabled?: boolean }[] } | null);
-  const role = user?.businesses?.[0]?.role ?? 'owner';
+  const user = useAuthStore((s) => s.user as { id?: number; businesses?: { lms_enabled?: boolean }[] } | null);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
   const lmsEnabled = user?.businesses?.[0]?.lms_enabled !== false;
-  const isExecutive = role === 'executive';
+  const isExecutive = !hasPermission('view_all_work'); // sees only own report row
   const currentUserId = user?.id;
 
   const [rows, setRows] = useState<EmployeeReportRow[]>([]);

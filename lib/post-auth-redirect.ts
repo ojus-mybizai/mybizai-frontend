@@ -1,9 +1,8 @@
-import type { DefaultRole } from '@/lib/auth-store';
-
 interface ResolvePostAuthRedirectInput {
   onboardingRequired: boolean;
   next?: string | null;
-  defaultRole?: DefaultRole;
+  /** When false, redirect non-owner to employee dashboard. */
+  isOwner?: boolean;
 }
 
 function normalizePath(next?: string | null): string | null {
@@ -16,11 +15,12 @@ function normalizePath(next?: string | null): string | null {
 export function resolvePostAuthRedirect({
   onboardingRequired,
   next,
-  defaultRole,
+  isOwner,
 }: ResolvePostAuthRedirectInput): string {
-  if (onboardingRequired) return '/onboarding';
+  // Onboarding is only for owners; employees (isOwner === false) never go there
+  if (onboardingRequired && isOwner !== false) return '/onboarding';
   const normalized = normalizePath(next);
   if (normalized) return normalized;
-  if (defaultRole === 'manager' || defaultRole === 'executive') return '/work';
+  if (!isOwner) return '/employee-dashboard';
   return '/dashboard';
 }

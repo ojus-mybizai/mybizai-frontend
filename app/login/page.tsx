@@ -16,6 +16,8 @@ interface LoginSuccessData {
   default_business_id?: number | null;
   default_role?: 'owner' | 'manager' | 'executive' | null;
   has_active_business_access?: boolean;
+  is_owner?: boolean;
+  permission_keys?: string[];
 }
 
 interface UnverifiedUserData {
@@ -83,6 +85,8 @@ function LoginForm() {
       const defaultBusinessId = data.default_business_id ?? null;
       const defaultRole = data.default_role ?? null;
       const hasActiveBusinessAccess = data.has_active_business_access ?? true;
+      const isOwner = data.is_owner ?? (data.default_role === 'owner');
+      const permissionKeys = Array.isArray(data.permission_keys) ? data.permission_keys : [];
 
       setAccessToken(accessToken || null);
       setUser(null);
@@ -90,6 +94,8 @@ function LoginForm() {
       setDefaultBusinessId(defaultBusinessId);
       setDefaultRole(defaultRole);
       setHasActiveBusinessAccess(hasActiveBusinessAccess);
+      useAuthStore.getState().setIsOwner(Boolean(isOwner));
+      useAuthStore.getState().setPermissionKeys(permissionKeys);
       broadcastAuthEvent('login');
 
       if (typeof document !== 'undefined' && refreshToken) {
@@ -104,7 +110,7 @@ function LoginForm() {
         resolvePostAuthRedirect({
           onboardingRequired,
           next,
-          defaultRole,
+          isOwner: Boolean(isOwner),
         }),
       );
     } catch (err) {

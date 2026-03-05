@@ -154,11 +154,11 @@ export interface DeleteImpact {
 
 // Models
 export async function listModels(): Promise<DynamicModel[]> {
-  return apiFetch<DynamicModel[]>('/dynamic-data/models', { method: 'GET' });
+  return apiFetch<DynamicModel[]>('/dynamic-data/models', { method: 'GET', auth: true });
 }
 
 export async function getModel(id: number | string): Promise<DynamicModel> {
-  return apiFetch<DynamicModel>(`/dynamic-data/models/${id}`, { method: 'GET' });
+  return apiFetch<DynamicModel>(`/dynamic-data/models/${id}`, { method: 'GET', auth: true });
 }
 
 export async function createModel(payload: DynamicModelCreate): Promise<DynamicModel> {
@@ -186,6 +186,7 @@ export async function deleteModel(id: number | string): Promise<void> {
 export async function listFields(modelId: number | string): Promise<DynamicField[]> {
   return apiFetch<DynamicField[]>(`/dynamic-data/models/${modelId}/fields`, {
     method: 'GET',
+    auth: true,
   });
 }
 

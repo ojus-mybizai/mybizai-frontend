@@ -73,8 +73,8 @@ export default function CustomerProfilePage() {
   const currentUserId = user?.id;
   const business = useAuthStore((s) => (s.user as { businesses?: Array<{ role?: string; agents_enabled?: boolean }> } | null)?.businesses?.[0]);
   const agentsEnabled = business?.agents_enabled !== false;
-  const role = (business?.role as string) ?? 'owner';
-  const canAssignLeads = role === 'owner' || role === 'manager';
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAssignLeads = hasPermission('manage_leads');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [isEditing, setIsEditing] = useState(false);

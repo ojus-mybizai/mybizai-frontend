@@ -19,8 +19,8 @@ const CHANNEL_TYPE_LABELS: Record<string, string> = {
 export function CustomerFilters({ initial, onApply }: Props) {
   const user = useAuthStore((s) => s.user as { id?: number; businesses?: Array<{ role?: string }> } | null);
   const currentUserId = user?.id;
-  const role = user?.businesses?.[0]?.role ?? 'owner';
-  const isExecutive = role === 'executive'; // EXECUTIVE sees only assigned leads; no filter UI
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canViewAllLeads = hasPermission('view_all_leads'); // hide filter UI when user only sees own leads
   const [draft, setDraft] = useState<CustomerFilters>(initial);
   const [channels, setChannels] = useState<Channel[]>([]);
 
@@ -99,7 +99,7 @@ export function CustomerFilters({ initial, onApply }: Props) {
           ))}
         </select>
       </div>
-      {!isExecutive && (
+      {canViewAllLeads && (
         <div className="space-y-1">
           <label className="text-sm font-medium text-text-secondary">Assigned to</label>
           <select

@@ -80,6 +80,10 @@ function VerifyEmailForm() {
       const defaultBusinessId = data.default_business_id ?? null;
       const defaultRole = data.default_role ?? null;
       const hasActiveBusinessAccess = data.has_active_business_access ?? true;
+      const isOwner = (data as { is_owner?: boolean }).is_owner ?? (data.default_role === 'owner');
+      const permissionKeys = Array.isArray((data as { permission_keys?: string[] }).permission_keys)
+        ? (data as { permission_keys: string[] }).permission_keys
+        : [];
 
       setAccessToken(accessToken || null);
       setUser(null);
@@ -87,6 +91,8 @@ function VerifyEmailForm() {
       setDefaultBusinessId(defaultBusinessId);
       setDefaultRole(defaultRole);
       setHasActiveBusinessAccess(hasActiveBusinessAccess);
+      useAuthStore.getState().setIsOwner(Boolean(isOwner));
+      useAuthStore.getState().setPermissionKeys(permissionKeys);
       broadcastAuthEvent('login');
 
       if (typeof document !== 'undefined' && refreshToken) {
@@ -101,7 +107,7 @@ function VerifyEmailForm() {
         resolvePostAuthRedirect({
           onboardingRequired,
           next,
-          defaultRole,
+          isOwner: Boolean(isOwner),
         }),
       );
     } catch (err) {

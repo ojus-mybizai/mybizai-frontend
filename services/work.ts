@@ -26,6 +26,36 @@ export interface Work {
   due_date: string | null;
   created_at?: string;
   updated_at?: string;
+  work_template_id?: number | null;
+  template_type?: 'simple' | 'checklist' | 'datasheet' | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface WorkStepOut {
+  id: number;
+  work_id: number;
+  order: number;
+  label: string;
+  completed_at: string | null;
+  completed_by_id: number | null;
+}
+
+export interface AssignedRecordOut {
+  dynamic_record_id: number;
+  data: Record<string, unknown>;
+  status: string;
+  sort_order: number;
+  updated_at: string | null;
+}
+
+export interface WorkEventOut {
+  id: number;
+  work_id: number;
+  event_type: string;
+  actor_user_id: number | null;
+  payload: Record<string, unknown> | null;
+  created_at: string | null;
 }
 
 export interface WorkCreate {
@@ -109,6 +139,17 @@ export interface WorkTemplate {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+  template_type?: 'simple' | 'checklist' | 'datasheet';
+  steps_schema?: Array<{ order: number; label: string }> | null;
+  linked_dynamic_model_id?: number | null;
+  datasheet_ui_schema?: DatasheetUiSchema | null;
+}
+
+export interface DatasheetUiSchema {
+  display_fields?: string[];
+  editable_fields?: string[];
+  record_actions?: Array<{ type: string; label: string; field: string }>;
+  auto_complete_work_when_all_done?: boolean;
 }
 
 export interface WorkTemplateCreate {
@@ -119,9 +160,20 @@ export interface WorkTemplateCreate {
   default_notes?: string | null;
   default_due_days?: number | null;
   is_active?: boolean;
+  template_type?: 'simple' | 'checklist' | 'datasheet';
+  steps_schema?: Array<{ order: number; label: string }> | null;
+  linked_dynamic_model_id?: number | null;
+  datasheet_ui_schema?: Record<string, unknown> | null;
+  execution_rules?: Record<string, unknown> | null;
 }
 
 export type WorkTemplateUpdate = Partial<WorkTemplateCreate>;
+
+export interface RecordFilterRow {
+  field: string;
+  op?: string;
+  value?: unknown;
+}
 
 export interface WorkCreateFromTemplate {
   work_type_id?: number;
@@ -131,6 +183,10 @@ export interface WorkCreateFromTemplate {
   notes?: string | null;
   priority?: 'low' | 'medium' | 'high';
   due_date?: string | null;
+  record_ids?: number[] | null;
+  record_limit?: number | null;
+  /** For datasheet: filter which records to assign e.g. [{ field: "payment", op: "eq", value: "pending" }] */
+  record_filters?: RecordFilterRow[] | null;
 }
 
 export async function listWorkTypes(): Promise<WorkType[]> {
@@ -225,6 +281,13 @@ export async function listWorkTemplates(): Promise<WorkTemplate[]> {
   return apiFetch<WorkTemplate[]>('/work/templates', { method: 'GET', auth: true });
 }
 
+export async function getWorkTemplate(templateId: number): Promise<WorkTemplate> {
+  const list = await apiFetch<WorkTemplate[]>('/work/templates', { method: 'GET', auth: true });
+  const t = list.find((x) => x.id === templateId);
+  if (!t) throw new Error('Template not found');
+  return t;
+}
+
 export async function createWorkTemplate(payload: WorkTemplateCreate): Promise<WorkTemplate> {
   return apiFetch<WorkTemplate>('/work/templates', {
     method: 'POST',
@@ -254,4 +317,41 @@ export async function createWorkFromTemplate(templateId: number, payload: WorkCr
     body: JSON.stringify(payload),
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+export async function getWorkSteps(workId: number): Promise<WorkStepOut[]> {
+  return apiFetch<WorkStepOut[]>(`/work/${workId}/steps`, { method: 'GET', auth: true });
+}
+
+export async function completeWorkStep(workId: number, stepOrder: number): Promise<WorkStepOut> {
+  return apiFetch<WorkStepOut>(`/work/${workId}/steps/${stepOrder}/complete`, { method: 'POST', auth: true });
+}
+
+export async function revertWorkStep(workId: number, stepOrder: number): Promise<WorkStepOut> {
+  return apiFetch<WorkStepOut>(`/work/${workId}/steps/${stepOrder}/revert`, { method: 'POST', auth: true });
+}
+
+export async function getWorkAssignedRecords(workId: number): Promise<AssignedRecordOut[]> {
+  return apiFetch<AssignedRecordOut[]>(`/work/${workId}/assigned-records`, { method: 'GET', auth: true });
+}
+
+export async function updateWorkRecordStatus(
+  workId: number,
+  dynamicRecordId: number,
+  status: 'pending' | 'in_progress' | 'done' | 'skipped'
+): Promise<AssignedRecordOut> {
+  return apiFetch<AssignedRecordOut>(`/work/${workId}/records/${dynamicRecordId}/status`, {
+    method: 'PATCH',
+    auth: true,
+    body: JSON.stringify({ status }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function startWork(workId: number): Promise<Work> {
+  return apiFetch<Work>(`/work/${workId}/start`, { method: 'POST', auth: true });
+}
+
+export async function getWorkEvents(workId: number): Promise<WorkEventOut[]> {
+  return apiFetch<WorkEventOut[]>(`/work/${workId}/events`, { method: 'GET', auth: true });
 }

@@ -98,7 +98,7 @@ function AcceptInviteContent() {
       router.replace(
         resolvePostAuthRedirect({
           onboardingRequired: false,
-          defaultRole: result.role,
+          isOwner: false,
         }),
       );
     } catch (err) {
