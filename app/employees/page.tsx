@@ -16,6 +16,7 @@ import {
   type EmployeeReportRow,
   type EmployeeInvite,
   type AssignableRole,
+  type EmployeeRole,
   type ManagedEmployeeRole,
 } from '@/services/employees';
 
@@ -25,10 +26,12 @@ const ROLE_LABELS: Record<string, string> = {
   executive: 'Executive',
 };
 
+const KNOWN_ROLES: EmployeeRole[] = ['owner', 'manager', 'executive'];
+
 function getRoleFilterOptions(rows: EmployeeReportRow[]) {
   const options = [{ value: '', label: 'All roles' }];
   const roleSet = new Set(rows.map((r) => r.role));
-  ['owner', 'manager', 'executive'].forEach((r) => {
+  KNOWN_ROLES.forEach((r) => {
     if (roleSet.has(r)) {
       options.push({ value: r, label: ROLE_LABELS[r] ?? r });
       roleSet.delete(r);

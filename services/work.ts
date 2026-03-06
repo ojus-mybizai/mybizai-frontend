@@ -163,7 +163,7 @@ export interface WorkTemplateCreate {
   template_type?: 'simple' | 'checklist' | 'datasheet';
   steps_schema?: Array<{ order: number; label: string }> | null;
   linked_dynamic_model_id?: number | null;
-  datasheet_ui_schema?: Record<string, unknown> | null;
+  datasheet_ui_schema?: DatasheetUiSchema | null;
   execution_rules?: Record<string, unknown> | null;
 }
 

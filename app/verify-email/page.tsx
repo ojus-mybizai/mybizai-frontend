@@ -16,6 +16,8 @@ interface VerifyEmailResponse {
   default_business_id?: number | null;
   default_role?: 'owner' | 'manager' | 'executive' | null;
   has_active_business_access?: boolean;
+  is_owner?: boolean;
+  permission_keys?: string[] | null;
 }
 
 function VerifyEmailForm() {
@@ -80,10 +82,8 @@ function VerifyEmailForm() {
       const defaultBusinessId = data.default_business_id ?? null;
       const defaultRole = data.default_role ?? null;
       const hasActiveBusinessAccess = data.has_active_business_access ?? true;
-      const isOwner = (data as { is_owner?: boolean }).is_owner ?? (data.default_role === 'owner');
-      const permissionKeys = Array.isArray((data as { permission_keys?: string[] }).permission_keys)
-        ? (data as { permission_keys: string[] }).permission_keys
-        : [];
+      const isOwner = data.is_owner ?? (data.default_role === 'owner');
+      const permissionKeys = Array.isArray(data.permission_keys) ? data.permission_keys : [];
 
       setAccessToken(accessToken || null);
       setUser(null);

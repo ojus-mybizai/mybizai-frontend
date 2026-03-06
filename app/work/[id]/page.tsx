@@ -8,7 +8,7 @@ import ModuleGuard from '@/components/module-guard';
 import { useAuthStore } from '@/lib/auth-store';
 import { listEmployees } from '@/services/employees';
 import { listLeadsForSelect, type LeadOption } from '@/services/customers';
-import { getWork, listWorkTypes, updateWork, startWork, getWorkTemplate, type Work, type WorkType, type WorkUpdate } from '@/services/work';
+import { getWork, listWorkTypes, updateWork, startWork, getWorkTemplate, type Work, type WorkType, type WorkUpdate, type DatasheetUiSchema } from '@/services/work';
 import { WorkDetailHeader } from '@/components/work/work-detail-header';
 import WorkDetailChecklist from '@/components/work/work-detail-checklist';
 import WorkDetailDatasheet from '@/components/work/work-detail-datasheet';
@@ -35,7 +35,7 @@ export default function WorkDetailPage() {
   const canEditOwn = true;
 
   const [work, setWork] = useState<Work | null>(null);
-  const [datasheetUiSchema, setDatasheetUiSchema] = useState<Record<string, unknown> | null>(null);
+  const [datasheetUiSchema, setDatasheetUiSchema] = useState<DatasheetUiSchema | null>(null);
   const [employees, setEmployees] = useState<Array<{ user_id: number; name: string }>>([]);
   const [workTypes, setWorkTypes] = useState<WorkType[]>([]);
   const [leads, setLeads] = useState<LeadOption[]>([]);
