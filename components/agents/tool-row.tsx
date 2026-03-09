@@ -49,7 +49,7 @@ export function ToolRow({
     : '';
 
   return (
-    <div className="rounded-xl border border-border-color bg-card-bg px-4 py-3">
+    <div className="rounded-xl border border-border-color bg-bg-primary/50 px-4 py-3.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -66,8 +66,8 @@ export function ToolRow({
             )}
           </div>
           {description && (
-            <div className="mt-1">
-              <p className="text-xs text-text-secondary">{showDescription}</p>
+            <div className="mt-1.5">
+              <p className="text-xs text-text-secondary leading-relaxed">{showDescription}</p>
               {isLongDescription && (
                 <button
                   type="button"
@@ -80,7 +80,7 @@ export function ToolRow({
             </div>
           )}
           {tool.advanced && (
-            <div className="mt-1 text-[11px] text-text-secondary">
+            <div className="mt-1.5 text-[11px] text-text-secondary">
               Priority: {tool.advanced.priority ?? '—'} · Rate limit:{' '}
               {tool.advanced.rateLimitPerMin ?? '—'}/min
             </div>
@@ -89,7 +89,7 @@ export function ToolRow({
         <button
           type="button"
           onClick={() => !disabled && onToggle(tool.id, !enabled)}
-          className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
             enabled
               ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
               : 'border-border-color bg-bg-primary text-text-secondary'
@@ -100,9 +100,9 @@ export function ToolRow({
       </div>
 
       {onRuleTextChange && (
-        <div className="mt-3">
+        <div className="mt-3.5 border-t border-border-color/60 pt-3">
           <label className="text-[11px] font-medium text-text-secondary">
-            When to use this tool (optional) — instruction for the AI; save below to apply
+            When to use (optional) — save below to apply
           </label>
           <textarea
             value={ruleText ?? ''}
@@ -111,10 +111,10 @@ export function ToolRow({
             rows={2}
             placeholder={
               mode === 'post_process'
-                ? 'Example: Run only when user asks for follow-up/reminder.'
-                : 'Example: Use only when user explicitly asks to check catalog.'
+                ? 'e.g. Run only when user asks for follow-up/reminder.'
+                : 'e.g. Use only when user explicitly asks to check catalog.'
             }
-            className="mt-1 w-full rounded-md border border-border-color bg-bg-primary px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+            className="mt-1.5 w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-xs text-text-primary placeholder:text-text-secondary/80 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
           />
         </div>
       )}

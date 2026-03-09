@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, forwardRef } from 'react';
 import type { DynamicField } from '@/services/dynamic-data';
-import { listAttachments } from '@/services/dynamic-data';
+import { listAttachments, uploadFileForAttachment, bindAttachment, deleteAttachment } from '@/services/dynamic-data';
 
 function toDateInputValue(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -15,33 +15,205 @@ function toDateInputValue(value: unknown): string {
 
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', INR: '₹', JPY: '¥', CAD: 'C$', AUD: 'A$', CHF: 'CHF', CNY: '¥' };
 
-function ImageFileCell({ field, value, recordId }: { field: DynamicField; value: unknown; recordId: number }) {
-  const [attachments, setAttachments] = useState<Array<{ field_id: number; signed_url?: string; original_file_name?: string }>>([]);
+type AttachmentItem = { id: number; field_id: number; signed_url?: string; original_file_name?: string };
+
+function ImageFileCell({
+  field,
+  value,
+  recordId,
+  modelId,
+  onAttachmentAdded,
+}: {
+  field: DynamicField;
+  value: unknown;
+  recordId: number;
+  modelId?: number | string;
+  onAttachmentAdded?: () => void;
+}) {
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const strVal = typeof value === 'string' ? value : '';
-  useEffect(() => {
-    if (!strVal) return;
+  const multiple = (field.config?.multiple as boolean) === true;
+
+  const loadAttachments = () => {
     listAttachments(recordId)
-      .then((list) => setAttachments((list as Array<{ field_id: number; signed_url?: string; original_file_name?: string }>) ?? []))
+      .then((list) => setAttachments((list as AttachmentItem[]) ?? []))
       .catch(() => setAttachments([]));
-  }, [recordId, strVal]);
+  };
+  useEffect(() => {
+    loadAttachments();
+  }, [recordId]);
+
   const forField = attachments.filter((a) => a.field_id === field.id);
-  const first = forField[0];
   const isImage = field.field_type === 'image';
-  return (
-    <td className="max-w-[200px] px-4 py-3 text-text-primary">
-      {first?.signed_url ? (
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !modelId) return;
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const up = await uploadFileForAttachment(modelId, file);
+      await bindAttachment(modelId, {
+        dynamic_record_id: recordId,
+        field_id: field.id,
+        storage_key: up.storage_key,
+        original_file_name: up.original_file_name,
+        mime_type: up.mime_type ?? undefined,
+        size_bytes: up.size_bytes ?? undefined,
+      });
+      loadAttachments();
+      onAttachmentAdded?.();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemove = async (attachmentId: number) => {
+    setUploadError(null);
+    setDeletingId(attachmentId);
+    try {
+      await deleteAttachment(attachmentId);
+      loadAttachments();
+      onAttachmentAdded?.();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Remove failed');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const renderAttachment = (att: AttachmentItem) => (
+    <span key={att.id} className="inline-flex items-center gap-1 rounded border border-border-color bg-bg-secondary/50 p-1">
+      {att.signed_url ? (
         isImage ? (
-          <img src={first.signed_url} alt="" className="max-h-12 max-w-[180px] rounded object-contain" />
+          <img src={att.signed_url} alt="" className="max-h-10 max-w-[100px] rounded object-contain" />
         ) : (
-          <a href={first.signed_url} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-accent hover:underline">
-            {first.original_file_name ?? strVal}
+          <a href={att.signed_url} target="_blank" rel="noopener noreferrer" className="truncate max-w-[120px] text-xs text-accent hover:underline">
+            {att.original_file_name ?? 'File'}
           </a>
         )
+      ) : (
+        <span className="text-xs text-text-secondary">{att.original_file_name ?? '—'}</span>
+      )}
+      {modelId && (
+        <button
+          type="button"
+          onClick={() => void handleRemove(att.id)}
+          disabled={deletingId === att.id}
+          className="shrink-0 rounded p-0.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+          aria-label="Remove"
+        >
+          ×
+        </button>
+      )}
+    </span>
+  );
+
+  return (
+    <td className="max-w-[280px] px-4 py-3 text-text-primary">
+      {forField.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {forField.map(renderAttachment)}
+          {multiple && modelId && (
+            <span className="inline-flex items-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={isImage ? 'image/*' : undefined}
+                className="hidden"
+                onChange={handleFileChange}
+                disabled={uploading}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="text-xs font-medium text-accent hover:underline disabled:opacity-50"
+              >
+                {uploading ? '…' : '+ Add'}
+              </button>
+            </span>
+          )}
+          {!multiple && modelId && forField.length === 1 && (
+            <span className="inline-flex items-center gap-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={isImage ? 'image/*' : undefined}
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file || !modelId) return;
+                  setUploadError(null);
+                  setUploading(true);
+                  try {
+                    const up = await uploadFileForAttachment(modelId, file);
+                    await bindAttachment(modelId, {
+                      dynamic_record_id: recordId,
+                      field_id: field.id,
+                      storage_key: up.storage_key,
+                      original_file_name: up.original_file_name,
+                      mime_type: up.mime_type ?? undefined,
+                      size_bytes: up.size_bytes ?? undefined,
+                    });
+                    if (forField[0]?.id != null) await deleteAttachment(forField[0].id);
+                    loadAttachments();
+                    onAttachmentAdded?.();
+                  } catch (err) {
+                    setUploadError(err instanceof Error ? err.message : 'Upload failed');
+                  } finally {
+                    setUploading(false);
+                  }
+                }}
+                disabled={uploading}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="text-xs text-text-secondary hover:underline"
+              >
+                {uploading ? '…' : 'Replace'}
+              </button>
+            </span>
+          )}
+        </div>
       ) : strVal ? (
         <span className="truncate text-xs text-text-secondary" title={strVal}>{strVal}</span>
       ) : (
-        <span className="text-xs text-text-secondary">—</span>
+        <>
+          <span className="text-xs text-text-secondary">—</span>
+          {modelId && (
+            <div className="mt-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={isImage ? 'image/*' : undefined}
+                className="hidden"
+                onChange={handleFileChange}
+                disabled={uploading}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="text-xs font-medium text-accent hover:underline disabled:opacity-50"
+              >
+                {uploading ? 'Uploading…' : 'Upload'}
+              </button>
+            </div>
+          )}
+        </>
       )}
+      {uploadError && <p className="mt-0.5 text-xs text-red-600">{uploadError}</p>}
     </td>
   );
 }
@@ -110,6 +282,8 @@ interface DataSheetCellProps {
   onSave: (value: unknown) => Promise<void>;
   error?: string | null;
   fetchRelatedRecords?: (targetModelId: number) => Promise<Array<{ id: number; record_key?: string; data?: Record<string, unknown> }>>;
+  modelId?: number | string;
+  onAttachmentAdded?: () => void;
 }
 
 function formatDisplay(value: unknown, fieldType: string): string {
@@ -160,6 +334,8 @@ export function DataSheetCell({
   onSave,
   error,
   fetchRelatedRecords,
+  modelId,
+  onAttachmentAdded,
 }: DataSheetCellProps) {
   const draftInitial = field.field_type === 'date' ? toDateInputValue(value) : formatDisplay(value, field.field_type);
   const [editing, setEditing] = useState(false);
@@ -227,7 +403,13 @@ export function DataSheetCell({
 
   if (field.field_type === 'image' || field.field_type === 'file') {
     return (
-      <ImageFileCell field={field} value={value} recordId={recordId} />
+      <ImageFileCell
+        field={field}
+        value={value}
+        recordId={recordId}
+        modelId={modelId}
+        onAttachmentAdded={onAttachmentAdded}
+      />
     );
   }
 

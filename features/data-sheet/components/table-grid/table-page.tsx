@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { DataSheetCell } from '@/components/data-sheet/data-sheet-cell';
 import { RelationCell } from '@/components/data-sheet/relation-cell';
@@ -13,6 +13,8 @@ import {
   updateRecord,
   deleteRecord,
   listViews,
+  uploadFileForAttachment,
+  bindAttachment,
   type QueryResponse,
 } from '@/features/data-sheet/api';
 import type { QueryFilter } from '@/components/data-sheet/data-sheet-filter-builder';
@@ -42,6 +44,9 @@ function parseAddRowValue(field: DynamicField, raw: unknown): unknown {
       if (Array.isArray(raw)) return raw.map((x) => Number(x)).filter(Number.isFinite);
       const id = Number(raw);
       return Number.isFinite(id) ? id : null;
+    case 'image':
+    case 'file':
+      return null;
     default:
       return str;
   }
@@ -79,6 +84,7 @@ export function TablePage() {
   const [confirmDeleteRowId, setConfirmDeleteRowId] = useState<number | null>(null);
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
   const [deletingRowId, setDeletingRowId] = useState<number | null>(null);
+  const hasLoadedOnceRef = useRef(false);
 
   // Sync URL -> state once on mount / URL change
   useEffect(() => {
@@ -97,9 +103,12 @@ export function TablePage() {
     return () => clearTimeout(t);
   }, [keyword]);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (options?: { background?: boolean }) => {
     if (!ctx?.modelId) return;
-    setLoading(true);
+    const background = options?.background === true;
+    if (!background) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const res = await queryRecords(ctx.modelId, {
@@ -123,7 +132,10 @@ export function TablePage() {
   }, [ctx?.modelId, page, perPage, sort, filters, keywordDebounced]);
 
   useEffect(() => {
-    void refetch();
+    const background = hasLoadedOnceRef.current;
+    refetch({ background }).then(() => {
+      hasLoadedOnceRef.current = true;
+    });
   }, [refetch]);
 
   const toggleSort = useCallback((fieldName: string) => {
@@ -169,7 +181,18 @@ export function TablePage() {
           data: { ...data, [fieldName]: value },
           mode: 'merge',
         });
-        void refetch();
+        setItems((prev) =>
+          prev.map((r) =>
+            Number(r.id) === recordId
+              ? {
+                  ...r,
+                  data: { ...((r.data ?? r.normalized_data ?? {}) as Record<string, unknown>), [fieldName]: value },
+                  normalized_data: { ...((r.normalized_data ?? r.data ?? {}) as Record<string, unknown>), [fieldName]: value },
+                }
+              : r
+          )
+        );
+        void refetch({ background: true });
       } catch (e) {
         const msg = normalizeApiError(e).message;
         setCellErrors((prev) => ({
@@ -193,10 +216,33 @@ export function TablePage() {
         const raw = addRowData[f.name];
         data[f.name] = parseAddRowValue(f, raw);
       }
-      await createRecord(ctx.modelId, data);
+      const created = await createRecord(ctx.modelId, data);
+      const recordId = created.id;
+
+      const imageFileFields = fieldList.filter((f) => f.field_type === 'image' || f.field_type === 'file');
+      for (const f of imageFileFields) {
+        const raw = addRowData[f.name];
+        const files: File[] = Array.isArray(raw)
+          ? (raw as File[]).filter((x): x is File => x instanceof File)
+          : raw instanceof File
+            ? [raw]
+            : [];
+        for (const file of files) {
+          const up = await uploadFileForAttachment(ctx.modelId, file);
+          await bindAttachment(ctx.modelId, {
+            dynamic_record_id: recordId,
+            field_id: f.id,
+            storage_key: up.storage_key,
+            original_file_name: up.original_file_name,
+            mime_type: up.mime_type ?? undefined,
+            size_bytes: up.size_bytes ?? undefined,
+          });
+        }
+      }
+
       setAddRowOpen(false);
       setAddRowData({});
-      void refetch();
+      void refetch({ background: true });
     } catch (e) {
       setError(normalizeApiError(e).message);
     } finally {
@@ -220,7 +266,7 @@ export function TablePage() {
           return next;
         });
         setConfirmDeleteRowId(null);
-        void refetch();
+        void refetch({ background: true });
       } catch (e) {
         setError(normalizeApiError(e).message);
       } finally {
@@ -261,7 +307,7 @@ export function TablePage() {
       }
       setSelectedIds(new Set());
       setConfirmBulkDeleteOpen(false);
-      void refetch();
+      void refetch({ background: true });
     } catch (e) {
       setError(normalizeApiError(e).message);
     } finally {
@@ -269,17 +315,13 @@ export function TablePage() {
     }
   }, [ctx?.modelId, selectedIds, refetch]);
 
-  const applyView = useCallback(
-    (config: Record<string, unknown>) => {
-      const f = (config.filters as QueryFilter[]) ?? [];
-      const s = (config.sort as SortRule[]) ?? [];
-      setFilters(f);
-      setSort(s);
-      setPage(1);
-      void refetch();
-    },
-    [refetch]
-  );
+  const applyView = useCallback((config: Record<string, unknown>) => {
+    const f = (config.filters as QueryFilter[]) ?? [];
+    const s = (config.sort as SortRule[]) ?? [];
+    setFilters(f);
+    setSort(s);
+    setPage(1);
+  }, []);
 
   if (!ctx) return null;
 
@@ -582,6 +624,8 @@ export function TablePage() {
                           onSave={(value) => handleSaveCell(recordId, field.name, value)}
                           error={rowErrors[field.name]}
                           fetchRelatedRecords={fetchRelatedRecords}
+                          modelId={modelId}
+                          onAttachmentAdded={() => void refetch({ background: true })}
                         />
                       )
                     )}
@@ -815,17 +859,47 @@ function AddRowModal({
               );
             }
             if (f.field_type === 'image' || f.field_type === 'file') {
+              const allowMultiple = f.config?.multiple === true || f.config?.multiple === 'true';
+              const files: File[] = Array.isArray(value)
+                ? (value as File[]).filter((x): x is File => x instanceof File)
+                : value instanceof File
+                  ? [value]
+                  : [];
+              const fileInputId = `add-row-file-${f.id}`;
               return (
                 <div key={f.id}>
                   <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
                   <input
-                    type="text"
-                    value={String(value ?? '')}
-                    onChange={(e) => setValue(e.target.value.trim() || null)}
-                    placeholder="Upload after saving row"
-                    className={inputClass}
+                    id={fileInputId}
+                    type="file"
+                    multiple
+                    accept={f.field_type === 'image' ? 'image/*' : undefined}
+                    className="mt-1 block w-full text-sm text-text-secondary file:mr-2 file:rounded file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
+                    onChange={(e) => {
+                      const chosen = e.target.files;
+                      if (!chosen?.length) return;
+                      const newFiles = Array.from(chosen);
+                      const list = allowMultiple ? [...files, ...newFiles] : newFiles.length > 0 ? [newFiles[0]] : [];
+                      setValue(list);
+                      e.target.value = '';
+                    }}
                   />
-                  <p className="mt-0.5 text-xs text-text-secondary">Upload available when editing the row after creation.</p>
+                  {files.length > 0 && (
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      {files.map((file, i) => (
+                        <span key={i} className="rounded bg-bg-secondary px-2 py-0.5 text-xs text-text-primary">
+                          {file.name}
+                        </span>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setValue([])}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             }

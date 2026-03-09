@@ -65,7 +65,7 @@ export function DataSheetToolCard({
 
   return (
     <>
-      <div className="rounded-xl border border-border-color bg-card-bg px-4 py-3">
+      <div className="rounded-xl border border-border-color bg-bg-primary/50 px-4 py-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -77,17 +77,17 @@ export function DataSheetToolCard({
               <span className="text-sm font-semibold text-text-primary">{displayName}</span>
             </div>
             {instruction && (
-              <p className="mt-1 truncate text-xs text-text-secondary" title={instruction}>
+              <p className="mt-1.5 truncate text-xs text-text-secondary leading-relaxed" title={instruction}>
                 &ldquo;{instruction}&rdquo;
               </p>
             )}
             <p className="mt-0.5 text-[11px] text-text-secondary">{fieldSummary}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={() => !disabled && onToggle(tool.id, !enabled)}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                 enabled
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
                   : 'border-border-color bg-bg-primary text-text-secondary'
@@ -100,7 +100,7 @@ export function DataSheetToolCard({
                 type="button"
                 onClick={() => onEdit(tool)}
                 disabled={disabled}
-                className="rounded p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary disabled:opacity-50"
+                className="rounded-lg p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary disabled:opacity-50"
                 title="Edit"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -118,7 +118,7 @@ export function DataSheetToolCard({
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={disabled}
-                className="rounded p-1.5 text-text-secondary hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 disabled:opacity-50"
+                className="rounded-lg p-1.5 text-text-secondary hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 disabled:opacity-50"
                 title="Delete"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,9 +135,9 @@ export function DataSheetToolCard({
         </div>
 
         {onRuleTextChange && (
-          <div className="mt-3">
+          <div className="mt-3.5 border-t border-border-color/60 pt-3">
             <label className="text-[11px] font-medium text-text-secondary">
-              When to use this tool (optional) — instruction for the AI; save below to apply
+              When to use (optional) — save below to apply
             </label>
             <textarea
               value={ruleText}
@@ -145,7 +145,7 @@ export function DataSheetToolCard({
               onChange={(e) => onRuleTextChange(tool.id, e.target.value)}
               rows={2}
               placeholder="e.g. Only use for product inquiries."
-              className="mt-1 w-full rounded-md border border-border-color bg-bg-primary px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+              className="mt-1.5 w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-xs text-text-primary placeholder:text-text-secondary/80 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
             />
           </div>
         )}

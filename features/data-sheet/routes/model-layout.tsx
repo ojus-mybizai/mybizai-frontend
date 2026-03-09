@@ -3,13 +3,13 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import ProtectedShell from '@/components/protected-shell';
 import ModuleGuard from '@/components/module-guard';
 import { getModel, listFields, type DynamicModel, type DynamicField } from '@/features/data-sheet/api';
 import { DataSheetProvider, type DataSheetContextValue } from '@/features/data-sheet/context/data-sheet-context';
 
 const TABS = [
   { slug: '', label: 'Table', href: (id: string) => `/data-sheet/${id}` },
+  { slug: 'reports', label: 'Reports', href: (id: string) => `/data-sheet/${id}/reports` },
   { slug: 'settings', label: 'Settings', href: (id: string) => `/data-sheet/${id}/settings` },
   { slug: 'import', label: 'Import', href: (id: string) => `/data-sheet/${id}/import` },
 ];
@@ -50,41 +50,35 @@ export function ModelLayout({ children }: { children: ReactNode }) {
 
   if (!modelId) {
     return (
-      <ProtectedShell>
-        <ModuleGuard module="lms">
-          <div className="rounded-xl border border-border-color bg-card-bg px-6 py-8 text-text-secondary">
-            Invalid model
-          </div>
-        </ModuleGuard>
-      </ProtectedShell>
+      <ModuleGuard module="lms">
+        <div className="rounded-xl border border-border-color bg-card-bg px-6 py-8 text-text-secondary">
+          Invalid model
+        </div>
+      </ModuleGuard>
     );
   }
 
   if (loading) {
     return (
-      <ProtectedShell>
-        <ModuleGuard module="lms">
-          <div className="space-y-4">
-            <div className="h-6 w-48 animate-pulse rounded bg-bg-secondary" />
-            <div className="h-10 w-full animate-pulse rounded bg-bg-secondary" />
-          </div>
-        </ModuleGuard>
-      </ProtectedShell>
+      <ModuleGuard module="lms">
+        <div className="space-y-4">
+          <div className="h-6 w-48 animate-pulse rounded bg-bg-secondary" />
+          <div className="h-10 w-full animate-pulse rounded bg-bg-secondary" />
+        </div>
+      </ModuleGuard>
     );
   }
 
   if (error || !model) {
     return (
-      <ProtectedShell>
-        <ModuleGuard module="lms">
-          <div className="rounded-xl border border-border-color bg-card-bg px-6 py-8">
-            <p className="font-medium text-text-primary">{error ?? 'Model not found'}</p>
-            <Link href="/data-sheet" className="mt-2 inline-block text-sm text-accent hover:underline">
-              Back to Data Sheet
-            </Link>
-          </div>
-        </ModuleGuard>
-      </ProtectedShell>
+      <ModuleGuard module="lms">
+        <div className="rounded-xl border border-border-color bg-card-bg px-6 py-8">
+          <p className="font-medium text-text-primary">{error ?? 'Model not found'}</p>
+          <Link href="/data-sheet" className="mt-2 inline-block text-sm text-accent hover:underline">
+            Back to Data Sheet
+          </Link>
+        </div>
+      </ModuleGuard>
     );
   }
 
@@ -101,9 +95,8 @@ export function ModelLayout({ children }: { children: ReactNode }) {
   };
 
   return (
-    <ProtectedShell>
-      <ModuleGuard module="lms">
-        <DataSheetProvider value={contextValue}>
+    <ModuleGuard module="lms">
+      <DataSheetProvider value={contextValue}>
           <div className="w-full max-w-full space-y-4">
             <nav className="text-xs text-text-secondary">
               <Link href="/data-sheet" className="font-semibold text-accent hover:underline">
@@ -151,7 +144,6 @@ export function ModelLayout({ children }: { children: ReactNode }) {
             <div>{children}</div>
           </div>
         </DataSheetProvider>
-      </ModuleGuard>
-    </ProtectedShell>
+    </ModuleGuard>
   );
 }

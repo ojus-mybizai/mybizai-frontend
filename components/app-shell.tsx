@@ -78,7 +78,7 @@ function buildNavItems(
   }
 
   items.push({ kind: 'section', label: 'Purchased Modules' });
-  items.push({ label: 'Storefront', href: '/storefront/settings', short: 'SF', icon: Store });
+  // items.push({ label: 'Storefront', href: '/storefront/settings', short: 'SF', icon: Store });
 
   if (agentsEnabled && hasPermission('manage_agents')) {
     items.push({
@@ -344,7 +344,13 @@ export default function AppShell({ children }: AppShellProps) {
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 px-2 md:px-3 py-4 md:py-5 overflow-y-auto">
+        <main
+          className={
+            pathname?.startsWith('/conversations')
+              ? 'min-h-0 flex-1 overflow-y-auto'
+              : 'min-h-0 flex-1 px-2 md:px-3 py-4 md:py-5 overflow-y-auto'
+          }
+        >
           {children}
         </main>
       </div>

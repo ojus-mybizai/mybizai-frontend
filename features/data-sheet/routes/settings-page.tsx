@@ -2,6 +2,17 @@
 
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useDataSheetContext } from '@/features/data-sheet/context/data-sheet-context';
 import {
   updateModel,
@@ -18,6 +29,58 @@ import { FieldConfigPanel } from '@/features/data-sheet/components/field-config-
 import { DeleteModelModal } from '@/features/data-sheet/components/delete-model-modal';
 import { ConfirmModal } from '@/features/data-sheet/components/confirm-modal';
 
+function SortableFieldRow({
+  field,
+  onEditClick,
+  isEditing,
+}: {
+  field: DynamicField;
+  onEditClick: () => void;
+  isEditing: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: String(field.id),
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 rounded-lg border border-border-color bg-bg-primary px-4 py-3 ${isDragging ? 'opacity-70 z-10' : ''}`}
+    >
+      <button
+        type="button"
+        className="cursor-grab touch-none rounded p-1 text-text-secondary hover:bg-bg-secondary active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+      >
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+          <path d="M7 2a1 1 0 011 1v1h3V3a1 1 0 112 0v1h3a1 1 0 110 2h-3v1a1 1 0 11-2 0V6H8v1a1 1 0 01-2 0V4H3a1 1 0 010-2h3V3a1 1 0 011-1zm-4 9a1 1 0 011-1h3v1a1 1 0 11-2 0v-1H4a1 1 0 01-1-1zm12 0a1 1 0 01-1 1h-3v1a1 1 0 112 0v1h3a1 1 0 110 2h-3v1a1 1 0 11-2 0v-1h-3a1 1 0 01-1-1zM7 14a1 1 0 011 1v3h3a1 1 0 110 2H8v3a1 1 0 11-2 0v-3H3a1 1 0 110-2h3v-3a1 1 0 011-1z" />
+        </svg>
+      </button>
+      <div className="min-w-0 flex-1">
+        <span className="font-medium text-text-primary">{field.display_name}</span>
+        <span className="ml-2 text-xs text-text-secondary">
+          {field.name} · {getFieldTypeLabel(field.field_type)}
+          {field.is_required && ' · required'}
+          {field.is_unique && ' · unique'}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onEditClick}
+        className="rounded-md border border-border-color bg-bg-secondary px-2 py-1 text-xs text-text-secondary hover:bg-bg-primary"
+      >
+        {isEditing ? 'Done' : 'Edit'}
+      </button>
+    </li>
+  );
+}
+
 export function SettingsPage() {
   const router = useRouter();
   const ctx = useDataSheetContext();
@@ -30,6 +93,7 @@ export function SettingsPage() {
   const [confirmDeleteField, setConfirmDeleteField] = useState<DynamicField | null>(null);
   const [deletingField, setDeletingField] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   const modelId = ctx?.modelId ?? '';
   const model = ctx?.model;
@@ -100,18 +164,33 @@ export function SettingsPage() {
     [saving, ctx?.refetchFields]
   );
 
-  const handleMoveField = useCallback(
-    async (field: DynamicField, direction: 'up' | 'down') => {
-      const idx = fields.findIndex((f) => f.id === field.id);
-      if (idx < 0) return;
-      const newIdx = direction === 'up' ? idx - 1 : idx + 1;
-      if (newIdx < 0 || newIdx >= fields.length) return;
-      const swap = fields[newIdx];
-      await handleUpdateField(field.id, { order_index: swap.order_index });
-      await updateField(swap.id, { order_index: field.order_index });
-      if (ctx?.refetchFields) await ctx.refetchFields();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor)
+  );
+
+  const handleDragEndFields = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (over == null || active.id === over.id || reordering) return;
+      const oldIndex = fields.findIndex((f) => String(f.id) === active.id);
+      const newIndex = fields.findIndex((f) => String(f.id) === over.id);
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+      const newOrder = arrayMove(fields, oldIndex, newIndex);
+      setReordering(true);
+      setError(null);
+      try {
+        await Promise.all(
+          newOrder.map((f, i) => (f.order_index !== i ? updateField(f.id, { order_index: i }) : Promise.resolve()))
+        );
+        if (ctx?.refetchFields) await ctx.refetchFields();
+      } catch (e) {
+        setError(normalizeApiError(e).message);
+      } finally {
+        setReordering(false);
+      }
     },
-    [fields, handleUpdateField, ctx?.refetchFields]
+    [fields, reordering, ctx?.refetchFields]
   );
 
   const handleDeleteField = useCallback(
@@ -210,54 +289,30 @@ export function SettingsPage() {
             No fields yet. Add your first field to define columns for the table.
           </p>
         ) : (
-          <ul className="mt-4 space-y-2">
-            {fields.map((field, idx) => (
-              <li
-                key={field.id}
-                className="flex items-center gap-2 rounded-lg border border-border-color bg-bg-primary px-4 py-3"
-              >
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => void handleMoveField(field, 'up')}
-                    disabled={idx === 0}
-                    className="rounded p-1 text-text-secondary hover:bg-bg-secondary disabled:opacity-30"
-                    aria-label="Move up"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleMoveField(field, 'down')}
-                    disabled={idx === fields.length - 1}
-                    className="rounded p-1 text-text-secondary hover:bg-bg-secondary disabled:opacity-30"
-                    aria-label="Move down"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span className="font-medium text-text-primary">{field.display_name}</span>
-                  <span className="ml-2 text-xs text-text-secondary">
-                    {field.name} · {getFieldTypeLabel(field.field_type)}
-                    {field.is_required && ' · required'}
-                    {field.is_unique && ' · unique'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditFieldId(editFieldId === field.id ? null : field.id)}
-                  className="rounded-md border border-border-color bg-bg-secondary px-2 py-1 text-xs text-text-secondary hover:bg-bg-primary"
-                >
-                  {editFieldId === field.id ? 'Done' : 'Edit'}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEndFields}
+          >
+            <SortableContext
+              items={fields.map((f) => String(f.id))}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul className="mt-4 space-y-2">
+                {fields.map((field) => (
+                  <SortableFieldRow
+                    key={field.id}
+                    field={field}
+                    onEditClick={() => setEditFieldId(editFieldId === field.id ? null : field.id)}
+                    isEditing={editFieldId === field.id}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        )}
+        {reordering && (
+          <p className="mt-2 text-xs text-text-secondary" role="status">Updating order…</p>
         )}
       </section>
 

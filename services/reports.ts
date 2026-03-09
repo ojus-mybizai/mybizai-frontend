@@ -58,3 +58,35 @@ export async function getReportsDashboard(days: number = 30): Promise<ReportsDas
     auth: true,
   });
 }
+
+/** Datasheet report: aggregates for one dynamic model (data sheet). */
+export interface DatasheetReportSeriesPoint {
+  date: string;
+  count: number;
+}
+
+export interface DatasheetReportFieldGroup {
+  value: string;
+  count: number;
+}
+
+export interface DatasheetReport {
+  dynamic_model_id: number;
+  model_display_name: string;
+  total_records: number;
+  over_time: DatasheetReportSeriesPoint[];
+  by_field: Record<string, DatasheetReportFieldGroup[]>;
+}
+
+export async function getDatasheetReport(
+  modelId: number,
+  days: number = 30,
+  groupBy?: string | null
+): Promise<DatasheetReport> {
+  const params = new URLSearchParams({ days: String(days) });
+  if (groupBy != null && groupBy !== '') params.set('group_by', groupBy);
+  return apiFetch<DatasheetReport>(
+    `/dynamic-data/models/${modelId}/report?${params.toString()}`,
+    { method: 'GET', auth: true }
+  );
+}

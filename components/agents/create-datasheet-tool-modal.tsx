@@ -65,7 +65,7 @@ export function CreateDataSheetToolModal({
   }, [open]);
 
   useEffect(() => {
-    if (open && dynamicModelId != null && step >= 2) {
+    if (open && dynamicModelId != null && step >= 3) {
       setLoadingFields(true);
       listFields(dynamicModelId)
         .then(setFields)
@@ -113,8 +113,9 @@ export function CreateDataSheetToolModal({
     setList([]);
   };
 
-  const canNextStep1 = dynamicModelId != null && operation != null;
-  const canNextStep2 =
+  const canNextStep1 = dynamicModelId != null;
+  const canNextStep2 = operation != null;
+  const canNextStep3 =
     operation === 'search'
       ? allowedFilterFields.length > 0 || allowedReadFields.length > 0
       : allowedWriteFields.length > 0;
@@ -147,7 +148,7 @@ export function CreateDataSheetToolModal({
 
   if (!open) return null;
 
-  const modalWidth = step === 2 ? 'max-w-2xl' : 'max-w-lg';
+  const modalWidth = step === 3 ? 'max-w-2xl' : 'max-w-lg';
 
   return (
     <div
@@ -171,7 +172,7 @@ export function CreateDataSheetToolModal({
         </div>
 
         <div className="mb-4 flex gap-2">
-          {[1, 2, 3].map((s) => (
+          {[1, 2, 3, 4].map((s) => (
             <div
               key={s}
               className={`h-2 flex-1 rounded-full ${
@@ -189,53 +190,68 @@ export function CreateDataSheetToolModal({
 
         {step === 1 && (
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-text-primary">
-                Data Sheet (model)
-              </label>
-              <select
-                value={dynamicModelId ?? ''}
-                onChange={(e) => {
-                  setDynamicModelId(e.target.value ? Number(e.target.value) : null);
-                  setAllowedReadFields([]);
-                  setAllowedWriteFields([]);
-                  setAllowedFilterFields([]);
-                }}
-                className="mt-1 w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                disabled={loadingModels}
-              >
-                <option value="">Select a data sheet</option>
+            <p className="text-sm text-text-secondary">
+              Select which data sheet this tool will use.
+            </p>
+            {loadingModels ? (
+              <p className="text-sm text-text-secondary">Loading data sheets…</p>
+            ) : models.length === 0 ? (
+              <p className="rounded-lg border border-border-color bg-bg-secondary/50 px-3 py-4 text-sm text-text-secondary">
+                No data sheets yet. Create one from Data Sheet first.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
                 {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name || m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-primary">Operation</label>
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                {OPERATIONS.map((op) => (
                   <button
-                    key={op.value}
+                    key={m.id}
                     type="button"
-                    onClick={() => setOperation(op.value)}
-                    className={`rounded-xl border p-3 text-left transition ${
-                      operation === op.value
+                    onClick={() => {
+                      setDynamicModelId(m.id);
+                      setOperation(null);
+                      setAllowedReadFields([]);
+                      setAllowedWriteFields([]);
+                      setAllowedFilterFields([]);
+                    }}
+                    className={`rounded-xl border px-4 py-3 text-left transition ${
+                      dynamicModelId === m.id
                         ? 'border-accent bg-accent/10 text-text-primary'
                         : 'border-border-color bg-bg-primary text-text-secondary hover:border-accent/50'
                     }`}
                   >
-                    <span className="block text-sm font-semibold">{op.label}</span>
-                    <span className="mt-0.5 block text-xs">{op.description}</span>
+                    <span className="block text-sm font-semibold">{m.display_name || m.name}</span>
                   </button>
                 ))}
               </div>
-            </div>
+            )}
           </div>
         )}
 
         {step === 2 && (
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Choose what the AI can do with this data sheet.
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {OPERATIONS.map((op) => (
+                <button
+                  key={op.value}
+                  type="button"
+                  onClick={() => setOperation(op.value)}
+                  className={`rounded-xl border p-3 text-left transition ${
+                    operation === op.value
+                      ? 'border-accent bg-accent/10 text-text-primary'
+                      : 'border-border-color bg-bg-primary text-text-secondary hover:border-accent/50'
+                  }`}
+                >
+                  <span className="block text-sm font-semibold">{op.label}</span>
+                  <span className="mt-0.5 block text-xs">{op.description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
           <div className="max-h-[50vh] space-y-4 overflow-y-auto">
             {loadingFields ? (
               <p className="text-sm text-text-secondary">Loading fields…</p>
@@ -428,12 +444,15 @@ export function CreateDataSheetToolModal({
           </div>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-text-primary">
-                When should the AI use this tool?
+                Describe the tool
               </label>
+              <p className="mt-0.5 text-xs text-text-secondary">
+                When should the AI use this tool? (e.g. when the user asks about product availability or to add an order.)
+              </p>
               <textarea
                 value={triggerInstruction}
                 onChange={(e) => setTriggerInstruction(e.target.value)}
@@ -524,7 +543,15 @@ export function CreateDataSheetToolModal({
           {step > 1 ? (
             <button
               type="button"
-              onClick={() => setStep((s) => s - 1)}
+              onClick={() => {
+                if (step === 2) {
+                  setOperation(null);
+                  setAllowedReadFields([]);
+                  setAllowedWriteFields([]);
+                  setAllowedFilterFields([]);
+                }
+                setStep((s) => s - 1);
+              }}
               className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-bg-secondary"
             >
               Back
@@ -538,12 +565,14 @@ export function CreateDataSheetToolModal({
               Cancel
             </button>
           )}
-          {step < 3 ? (
+          {step < 4 ? (
             <button
               type="button"
               onClick={() => setStep((s) => s + 1)}
               disabled={
-                (step === 1 && !canNextStep1) || (step === 2 && !canNextStep2)
+                (step === 1 && !canNextStep1) ||
+                (step === 2 && !canNextStep2) ||
+                (step === 3 && !canNextStep3)
               }
               className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             >

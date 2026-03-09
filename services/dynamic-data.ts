@@ -329,6 +329,25 @@ export async function semanticSearch(
 }
 
 // Attachments
+export interface UploadFileForAttachmentResult {
+  storage_key: string;
+  original_file_name: string;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+}
+
+export async function uploadFileForAttachment(
+  modelId: number | string,
+  file: File
+): Promise<UploadFileForAttachmentResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiFetch<UploadFileForAttachmentResult>(
+    `/dynamic-data/models/${modelId}/upload-file`,
+    { method: 'POST', body: formData }
+  );
+}
+
 export async function bindAttachment(
   modelId: number | string,
   payload: {
@@ -351,6 +370,10 @@ export async function listAttachments(recordId: number | string): Promise<unknow
   return apiFetch<unknown[]>(`/dynamic-data/records/${recordId}/attachments`, {
     method: 'GET',
   });
+}
+
+export async function deleteAttachment(attachmentId: number | string): Promise<void> {
+  await apiFetch(`/dynamic-data/attachments/${attachmentId}`, { method: 'DELETE' });
 }
 
 // Import

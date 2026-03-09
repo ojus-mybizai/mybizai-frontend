@@ -232,11 +232,23 @@ export function FieldConfigPanel({
     );
   }
 
-  if ((fieldType === 'image' || fieldType === 'file') && Object.keys(config).length === 0) {
+  if (fieldType === 'image' || fieldType === 'file') {
+    const multiple = config.multiple === true;
     return (
-      <p className="text-sm text-text-secondary">
-        Optional: max size and allowed types can be configured later in field settings.
-      </p>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={multiple}
+            onChange={(e) => onConfigChange({ ...config, multiple: e.target.checked })}
+            className="rounded border-border-color text-accent focus:ring-accent"
+          />
+          <span className="text-sm font-medium text-text-secondary">Allow multiple files</span>
+        </label>
+        <p className="text-sm text-text-secondary">
+          Optional: max size and allowed types can be configured later in field settings.
+        </p>
+      </div>
     );
   }
 

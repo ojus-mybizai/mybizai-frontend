@@ -2,16 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { listModels, deleteModel, type DynamicModel } from '@/features/data-sheet/api';
 import { normalizeApiError } from '@/features/data-sheet/api/normalize-error';
 import { DeleteModelModal } from '@/features/data-sheet/components/delete-model-modal';
+import { CreateModelModal } from '@/features/data-sheet/components/create-model-modal';
 
 export function ModelDirectoryPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [models, setModels] = useState<DynamicModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DynamicModel | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   const loadModels = async () => {
     setLoading(true);
@@ -30,6 +35,10 @@ export function ModelDirectoryPage() {
   useEffect(() => {
     void loadModels();
   }, []);
+
+  useEffect(() => {
+    if (searchParams?.get('create') === '1') setCreateModalOpen(true);
+  }, [searchParams]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
@@ -62,12 +71,13 @@ export function ModelDirectoryPage() {
             </p>
           )}
         </div>
-        <Link
-          href="/data-sheet/new"
+        <button
+          type="button"
+          onClick={() => setCreateModalOpen(true)}
           className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-base font-semibold text-white hover:opacity-90"
         >
           Create model
-        </Link>
+        </button>
       </div>
 
       {error && (
@@ -102,12 +112,13 @@ export function ModelDirectoryPage() {
           <p className="mb-4 text-sm text-text-secondary">
             Create your first data sheet to start organizing your data.
           </p>
-          <Link
-            href="/data-sheet/new"
+          <button
+            type="button"
+            onClick={() => setCreateModalOpen(true)}
             className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
           >
             Create model
-          </Link>
+          </button>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -147,10 +158,10 @@ export function ModelDirectoryPage() {
                   Open table
                 </Link>
                 <Link
-                  href={`/data-sheet/chat?modelId=${model.id}`}
+                  href={`/data-sheet/${model.id}/reports`}
                   className="rounded-md border border-border-color bg-bg-secondary px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-bg-primary"
                 >
-                  Chat
+                  Reports
                 </Link>
                 <Link
                   href={`/data-sheet/${model.id}/settings`}
@@ -170,6 +181,17 @@ export function ModelDirectoryPage() {
           onConfirm={handleDeleteConfirm}
           onClose={() => setDeleteTarget(null)}
           deleting={deleting}
+        />
+      )}
+
+      {createModalOpen && (
+        <CreateModelModal
+          onClose={() => setCreateModalOpen(false)}
+          onSuccess={(modelId) => {
+            setCreateModalOpen(false);
+            void loadModels();
+            router.push(`/data-sheet/${modelId}`);
+          }}
         />
       )}
     </div>
@@ -198,6 +220,13 @@ function CardActionsMenu({ model, onDelete }: { model: DynamicModel; onDelete: (
               onClick={() => setOpen(false)}
             >
               Open table
+            </Link>
+            <Link
+              href={`/data-sheet/${model.id}/reports`}
+              className="block w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary"
+              onClick={() => setOpen(false)}
+            >
+              Reports
             </Link>
             <Link
               href={`/data-sheet/${model.id}/settings`}
