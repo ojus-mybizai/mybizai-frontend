@@ -30,6 +30,7 @@ export interface Work {
   template_type?: 'simple' | 'checklist' | 'datasheet' | null;
   started_at?: string | null;
   completed_at?: string | null;
+  form_data?: Record<string, unknown> | null;
 }
 
 export interface WorkStepOut {
@@ -39,6 +40,7 @@ export interface WorkStepOut {
   label: string;
   completed_at: string | null;
   completed_by_id: number | null;
+  form_data?: Record<string, unknown> | null;
 }
 
 export interface AssignedRecordOut {
@@ -47,6 +49,18 @@ export interface AssignedRecordOut {
   status: string;
   sort_order: number;
   updated_at: string | null;
+  form_data?: Record<string, unknown> | null;
+}
+
+export type FormFieldType = 'text' | 'textarea' | 'number' | 'image' | 'location' | 'datetime' | 'select' | 'phone' | 'lead';
+
+export interface FormField {
+  id: string;
+  type: FormFieldType;
+  label: string;
+  required: boolean;
+  placeholder?: string;
+  options?: string[];  // for select type
 }
 
 export interface WorkEventOut {
@@ -140,9 +154,11 @@ export interface WorkTemplate {
   created_at?: string;
   updated_at?: string;
   template_type?: 'simple' | 'checklist' | 'datasheet';
-  steps_schema?: Array<{ order: number; label: string }> | null;
+  steps_schema?: Array<{ order: number; label: string; form_schema?: FormField[] }> | null;
   linked_dynamic_model_id?: number | null;
   datasheet_ui_schema?: DatasheetUiSchema | null;
+  form_schema?: FormField[] | null;
+  execution_rules?: Record<string, unknown> | null;
 }
 
 export interface DatasheetUiSchema {
@@ -150,6 +166,8 @@ export interface DatasheetUiSchema {
   editable_fields?: string[];
   record_actions?: Array<{ type: string; label: string; field: string }>;
   auto_complete_work_when_all_done?: boolean;
+  /** Controls how form_schema is applied. 'per_record' = employee fills same form for each row (default). 'single' = one form for the whole work. */
+  form_mode?: 'per_record' | 'single';
 }
 
 export interface WorkTemplateCreate {
@@ -161,10 +179,11 @@ export interface WorkTemplateCreate {
   default_due_days?: number | null;
   is_active?: boolean;
   template_type?: 'simple' | 'checklist' | 'datasheet';
-  steps_schema?: Array<{ order: number; label: string }> | null;
+  steps_schema?: Array<{ order: number; label: string; form_schema?: FormField[] }> | null;
   linked_dynamic_model_id?: number | null;
   datasheet_ui_schema?: DatasheetUiSchema | null;
   execution_rules?: Record<string, unknown> | null;
+  form_schema?: FormField[] | null;
 }
 
 export type WorkTemplateUpdate = Partial<WorkTemplateCreate>;
@@ -354,4 +373,84 @@ export async function startWork(workId: number): Promise<Work> {
 
 export async function getWorkEvents(workId: number): Promise<WorkEventOut[]> {
   return apiFetch<WorkEventOut[]>(`/work/${workId}/events`, { method: 'GET', auth: true });
+}
+
+export async function submitWorkForm(workId: number, formData: Record<string, unknown>): Promise<Work> {
+  return apiFetch<Work>(`/work/${workId}/submit-form`, {
+    method: 'PATCH',
+    auth: true,
+    body: JSON.stringify({ form_data: formData }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function submitRecordFormData(
+  workId: number,
+  dynamicRecordId: number,
+  formData: Record<string, unknown>
+): Promise<AssignedRecordOut> {
+  return apiFetch<AssignedRecordOut>(`/work/${workId}/records/${dynamicRecordId}/form-data`, {
+    method: 'PATCH',
+    auth: true,
+    body: JSON.stringify({ form_data: formData }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function submitStepFormData(
+  workId: number,
+  stepOrder: number,
+  formData: Record<string, unknown>
+): Promise<WorkStepOut> {
+  return apiFetch<WorkStepOut>(`/work/${workId}/steps/${stepOrder}/form-data`, {
+    method: 'PATCH',
+    auth: true,
+    body: JSON.stringify({ form_data: formData }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+// ---------- Employee activity feed ----------
+
+export interface WorkActivityItem {
+  id: number;
+  work_id: number;
+  work_title: string | null;
+  work_type_name: string | null;
+  event_type: string;
+  payload: Record<string, unknown> | null;
+  created_at: string | null;
+}
+
+export interface WorkActivityListOut {
+  items: WorkActivityItem[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
+export interface LogMyWorkPayload {
+  title?: string | null;
+  notes?: string | null;
+  due_date?: string | null;
+  priority?: 'low' | 'medium' | 'high';
+  lead_id?: number | null;
+}
+
+export async function getMyActivity(
+  page = 1,
+  perPage = 20,
+): Promise<WorkActivityListOut> {
+  const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+  return apiFetch<WorkActivityListOut>(`/work/my-activity?${params}`, { method: 'GET', auth: true });
+}
+
+export async function logMyWork(templateId: number, payload: LogMyWorkPayload): Promise<Work> {
+  return apiFetch<Work>(`/work/templates/${templateId}/log-my-work`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
 }

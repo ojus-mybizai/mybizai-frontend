@@ -1,6 +1,7 @@
 import { apiFetch } from '@/lib/api-client';
 
-export type DataSheetToolOperation = 'search' | 'create' | 'update';
+// All operations the backend executor supports
+export type DataSheetToolOperation = 'search' | 'create' | 'update' | 'delete' | 'bulk_add';
 
 export type DataSheetSearchMode = 'structured' | 'semantic';
 
@@ -8,7 +9,10 @@ export interface DataSheetToolConfigOut {
   id: number;
   tool_id: number;
   dynamic_model_id: number;
-  operation: string;
+  /** Legacy single-op field — prefer allowed_operations */
+  operation: string | null;
+  /** All operations the tool can perform */
+  allowed_operations: DataSheetToolOperation[];
   allowed_read_fields: string[];
   allowed_write_fields: string[];
   allowed_filter_fields: string[];
@@ -34,7 +38,8 @@ export interface DataSheetToolOut {
 
 export interface DataSheetToolCreate {
   dynamic_model_id: number;
-  operation: DataSheetToolOperation;
+  /** New: send all selected operations */
+  allowed_operations: DataSheetToolOperation[];
   allowed_read_fields: string[];
   allowed_write_fields: string[];
   allowed_filter_fields: string[];
@@ -46,7 +51,7 @@ export interface DataSheetToolCreate {
 
 export interface DataSheetToolUpdate {
   dynamic_model_id?: number;
-  operation?: DataSheetToolOperation;
+  allowed_operations?: DataSheetToolOperation[];
   allowed_read_fields?: string[];
   allowed_write_fields?: string[];
   allowed_filter_fields?: string[];

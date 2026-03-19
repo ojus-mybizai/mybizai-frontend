@@ -8,9 +8,12 @@ import { CustomerFilters } from '@/components/customers/customer-filters';
 import { AIStatusBadge } from '@/components/customers/ai-status-badge';
 import { CreateLeadModal } from '@/components/customers/create-lead-modal';
 import { LeadStatsCard } from '@/components/customers/lead-stats-card';
+import { LeadFieldConfigPanel } from '@/components/customers/lead-field-config-panel';
 import { useShallow } from 'zustand/react/shallow';
 import { useCustomerStore } from '@/lib/customer-store';
 import type { CustomerFilters as CustomerFiltersType } from '@/services/customers';
+import { listLeadFields, getVisibleFields, type LeadFieldConfig } from '@/services/lead-fields';
+import { LeadAnalyticsDashboard } from '@/components/customers/lead-analytics-dashboard';
 
 const PER_PAGE_OPTIONS = [10, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 10;
@@ -83,7 +86,26 @@ function CustomersContent() {
   const [filters, setFilters] = useState(initialFilters);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [pageView, setPageView] = useState<'list' | 'analytics'>('list');
+  const [closedFilter, setClosedFilter] = useState<'all' | 'open' | 'closed'>('all');
   const menuRef = useRef<HTMLDivElement>(null);
+  const [fieldConfigs, setFieldConfigs] = useState<LeadFieldConfig[]>([]);
+  const [showFieldConfig, setShowFieldConfig] = useState(false);
+
+  // Custom fields: visible non-system, non-relation fields (shown as data cells)
+  const customColumns = useMemo(
+    () => getVisibleFields(fieldConfigs).filter((f) => !f.is_system && f.field_type !== 'relation'),
+    [fieldConfigs]
+  );
+  // Relation fields: visible relation-type fields (shown as count badges)
+  const relationColumns = useMemo(
+    () => getVisibleFields(fieldConfigs).filter((f) => f.field_type === 'relation' && !f.is_system),
+    [fieldConfigs]
+  );
+
+  useEffect(() => {
+    listLeadFields().then(setFieldConfigs).catch(() => {});
+  }, [showFieldConfig]); // reload after closing config panel
 
   useEffect(() => {
     if (openMenuId === null) return;
@@ -115,7 +137,13 @@ function CustomersContent() {
     void loadLeadStats();
   }, []);
 
-  const isEmpty = !loadingList && customers.length === 0;
+  const filteredCustomers = useMemo(() => {
+    if (closedFilter === 'open') return customers.filter((c) => !c.status || ['new', 'contacted', 'qualified'].includes(c.status));
+    if (closedFilter === 'closed') return customers.filter((c) => c.status && ['won', 'lost'].includes(c.status));
+    return customers;
+  }, [customers, closedFilter]);
+
+  const isEmpty = !loadingList && filteredCustomers.length === 0;
   const perPage = filters.perPage ?? DEFAULT_PAGE_SIZE;
   const start = total === 0 ? 0 : (page - 1) * perPage + 1;
   const end = Math.min(page * perPage, total);
@@ -151,6 +179,26 @@ function CustomersContent() {
               </Link>
               <button
                 type="button"
+                onClick={() => setShowFieldConfig(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary transition-colors"
+                title="Customize columns and source mapping"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                Columns
+              </button>
+              <Link
+                href="/customers/import"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                </svg>
+                Import
+              </Link>
+              <button
+                type="button"
                 onClick={() => setIsCreateModalOpen(true)}
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
               >
@@ -159,14 +207,71 @@ function CustomersContent() {
             </div>
           </div>
 
-          {leadStats && (
-            <LeadStatsCard
-              stats={leadStats}
-              onSegmentClick={handleSegmentClick}
-            />
+          {/* View toggle + Open/Closed quick-filter */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* View toggle */}
+            <div className="flex rounded-lg border border-border-color overflow-hidden text-sm font-medium">
+              <button
+                type="button"
+                onClick={() => setPageView('list')}
+                className={`px-4 py-2 transition-colors ${pageView === 'list' ? 'bg-accent text-white' : 'bg-card-bg text-text-secondary hover:text-text-primary'}`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                  List
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageView('analytics')}
+                className={`px-4 py-2 transition-colors border-l border-border-color ${pageView === 'analytics' ? 'bg-accent text-white' : 'bg-card-bg text-text-secondary hover:text-text-primary'}`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Analytics
+                </span>
+              </button>
+            </div>
+
+            {/* Open / Closed quick-filter (list view only) */}
+            {pageView === 'list' && (
+              <div className="flex gap-1">
+                {(['all', 'open', 'closed'] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => {
+                      setClosedFilter(f);
+                      if (f === 'open') setFilters((prev) => ({ ...prev, page: 1, status: undefined }));
+                      else if (f === 'closed') setFilters((prev) => ({ ...prev, page: 1, status: undefined }));
+                      else setFilters((prev) => ({ ...prev, page: 1, status: undefined }));
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                      closedFilter === f
+                        ? f === 'open' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+                          : f === 'closed' ? 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                          : 'bg-accent/10 text-accent'
+                        : 'border border-border-color text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {pageView === 'analytics' && (
+            <LeadAnalyticsDashboard closedFilter={closedFilter === 'all' ? undefined : closedFilter} />
           )}
 
-          <CustomerFilters initial={filters} onApply={(next) => setFilters((f) => ({ ...f, ...next }))} />
+          {pageView === 'list' && (
+            <>
+            <CustomerFilters initial={filters} onApply={(next) => setFilters((f) => ({ ...f, ...next }))} />
 
           {/* Segment summary bar */}
           {!loadingList && (
@@ -194,6 +299,7 @@ function CustomersContent() {
 
           {!isEmpty && (
             <div className="overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-sm">
+              <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-border-color">
                 <thead className="bg-bg-secondary">
                   <tr>
@@ -203,6 +309,22 @@ function CustomersContent() {
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Priority</th>
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Score</th>
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Source</th>
+                    {/* Dynamic custom field columns */}
+                    {customColumns.map((f) => (
+                      <th key={f.id} className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary whitespace-nowrap">
+                        {f.display_name}
+                      </th>
+                    ))}
+                    {/* Relation columns */}
+                    {relationColumns.map((f) => {
+                      const cfg = f.config as Record<string, unknown> | undefined;
+                      const dsName = cfg?.datasheet_name as string | undefined;
+                      return (
+                        <th key={f.id} className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary whitespace-nowrap">
+                          {dsName ?? f.display_name}
+                        </th>
+                      );
+                    })}
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Last activity</th>
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Agent</th>
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Mode</th>
@@ -210,7 +332,7 @@ function CustomersContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-color">
-                  {customers.map((c) => (
+                  {filteredCustomers.map((c) => (
                     <tr key={c.id} className="hover:bg-bg-secondary/60">
                       <td className="px-4 py-2.5">
                         <div className="text-base font-semibold text-text-primary">{c.name || 'Unknown'}</div>
@@ -294,6 +416,37 @@ function CustomersContent() {
                           <span className="text-text-secondary">—</span>
                         )}
                       </td>
+                      {/* Dynamic custom field cells */}
+                      {customColumns.map((f) => {
+                        const val = c.custom_fields?.[f.field_key];
+                        return (
+                          <td key={f.id} className="px-4 py-2.5 text-sm text-text-primary whitespace-nowrap">
+                            <DynamicCell field={f} value={val} />
+                          </td>
+                        );
+                      })}
+                      {/* Relation count cells */}
+                      {relationColumns.map((f) => {
+                        const cfg = f.config as Record<string, unknown> | undefined;
+                        const target = cfg?.target as string ?? 'work';
+                        // Datasheet relations are keyed by datasheet_<id> in relations_summary
+                        const summaryKey =
+                          target === 'datasheet' && cfg?.datasheet_id
+                            ? `datasheet_${cfg.datasheet_id}`
+                            : target;
+                        const count = c.relations_summary?.[summaryKey] ?? 0;
+                        return (
+                          <td key={f.id} className="px-4 py-2.5">
+                            {count > 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-semibold text-accent">
+                                {count}
+                              </span>
+                            ) : (
+                              <span className="text-text-secondary text-sm">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
                       <td className="whitespace-nowrap px-4 py-2.5 text-sm text-text-secondary">
                         {formatLastActivity(c.lastActivity)}
                       </td>
@@ -403,6 +556,7 @@ function CustomersContent() {
                   ))}
                 </tbody>
               </table>
+              </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-color px-4 py-3 text-sm text-text-secondary">
                 <div className="flex flex-wrap items-center gap-3">
@@ -443,10 +597,87 @@ function CustomersContent() {
               </div>
             </div>
           )}
+            </>
+          )}
         </div>
     </ModuleGuard>
-    <CreateLeadModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} />
+    <CreateLeadModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} fieldConfigs={fieldConfigs} />
+
+    {/* Field config slide-over */}
+    {showFieldConfig && (
+      <div className="fixed inset-0 z-50 flex">
+        {/* Backdrop */}
+        <div
+          className="flex-1 bg-black/40 backdrop-blur-sm"
+          onClick={() => setShowFieldConfig(false)}
+        />
+        {/* Panel */}
+        <div className="w-full max-w-md bg-bg-primary shadow-2xl flex flex-col h-full">
+          <LeadFieldConfigPanel onClose={() => setShowFieldConfig(false)} />
+        </div>
+      </div>
+    )}
     </>
+  );
+}
+
+// ─── Dynamic cell renderer ─────────────────────────────────────────────────────
+
+function DynamicCell({ field, value }: { field: LeadFieldConfig; value: unknown }) {
+  if (value === undefined || value === null || value === '') {
+    return <span className="text-text-secondary">—</span>;
+  }
+
+  const str = String(value);
+
+  if (field.field_type === 'boolean') {
+    return (
+      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+        value === true || str === 'true' || str === '1'
+          ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+          : 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-400'
+      }`}>
+        {value === true || str === 'true' || str === '1' ? 'Yes' : 'No'}
+      </span>
+    );
+  }
+
+  if (field.field_type === 'select') {
+    return (
+      <span className="inline-flex items-center rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-semibold text-accent">
+        {str}
+      </span>
+    );
+  }
+
+  if (field.field_type === 'date' || field.field_type === 'datetime') {
+    const d = new Date(str);
+    if (!Number.isNaN(d.getTime())) {
+      return (
+        <span className="text-text-primary">
+          {field.field_type === 'datetime'
+            ? d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+        </span>
+      );
+    }
+  }
+
+  if (field.field_type === 'url') {
+    return (
+      <a href={str} target="_blank" rel="noopener noreferrer" className="text-accent underline text-xs truncate max-w-[120px] block">
+        {str}
+      </a>
+    );
+  }
+
+  if (field.field_type === 'number') {
+    return <span className="font-mono text-text-primary">{str}</span>;
+  }
+
+  // text / email / phone / textarea
+  return (
+    <span className="text-text-primary truncate max-w-[160px] block" title={str}>{str}</span>
   );
 }
 

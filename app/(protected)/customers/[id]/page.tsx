@@ -1,27 +1,31 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ModuleGuard from '@/components/module-guard';
 import { ConversationList } from '@/components/customers/conversation-list';
 import { LeadScoreDisplay } from '@/components/customers/lead-score-display';
-import { CustomFieldsEditor } from '@/components/customers/custom-fields-editor';
 import { AssignWorkModal } from '@/components/work/assign-work-modal';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '@/lib/auth-store';
 import { useCustomerStore } from '@/lib/customer-store';
 import type { LeadUpdate } from '@/services/customers';
-import { listConversationSessions, type ConversationSession } from '@/services/customers';
+import { listConversationSessions, type ConversationSession, listLeadNotes, createLeadNote, deleteLeadNote, type LeadNote } from '@/services/customers';
 import { listFollowups, type FollowUpMessage, sendFollowupNow, cancelFollowup, createFollowup, type FollowUpMessageCreate } from '@/services/followups';
-import { listAgents, type Agent } from '@/services/agents';
-import { getLeadTemplate } from '@/services/lead-templates';
+import type { Agent } from '@/services/agents';
 import type { LeadTemplate } from '@/services/lead-templates';
-import { listEmployees, type Employee } from '@/services/employees';
+import type { Employee } from '@/services/employees';
+import { useAgentList, useEmployeeList, useLeadTemplate } from '@/lib/hooks/use-reference-data';
 import { listWork, updateWork, type Work } from '@/services/work';
 import { listOrders, type Order } from '@/services/orders';
 import { listAppointments, type Appointment } from '@/services/appointments';
 import { listConversationAnalytics, type ConversationAnalyticsResponse } from '@/services/analytics';
+import { DynamicLeadFieldsInput } from '@/components/customers/dynamic-lead-fields-input';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Cell,
+} from 'recharts';
 
 type TabId =
   | 'overview'
@@ -53,6 +57,167 @@ function channelLabel(channelType: string): string {
   return channelType;
 }
 
+// ─── Lead Notes Component ─────────────────────────────────────────────────────
+
+const NOTE_CATEGORY_LABELS: Record<string, string> = {
+  general: 'General',
+  preference: 'Preference',
+  complaint: 'Complaint',
+  'follow-up': 'Follow-up',
+};
+
+const NOTE_CATEGORY_COLORS: Record<string, string> = {
+  general: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+  preference: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+  complaint: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  'follow-up': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+};
+
+function LeadNotesSection({ leadId, currentUserId }: { leadId: string | number; currentUserId?: number | null }) {
+  const [notes, setNotes] = useState<LeadNote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [content, setContent] = useState('');
+  const [category, setCategory] = useState('general');
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await listLeadNotes(leadId);
+      setNotes(data);
+    } catch {
+      setNotes([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [leadId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = content.trim();
+    if (!text) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      const note = await createLeadNote(leadId, { content: text, category });
+      setNotes((prev) => [note, ...prev]);
+      setContent('');
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Failed to add note.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (noteId: number) => {
+    setDeletingId(noteId);
+    try {
+      await deleteLeadNote(leadId, noteId);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    } catch {
+      // silently ignore
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-border-color bg-card-bg shadow-sm">
+      {/* Header */}
+      <div className="border-b border-border-color px-5 py-3">
+        <h2 className="text-sm font-semibold text-text-primary">
+          Notes{notes.length > 0 ? ` (${notes.length})` : ''}
+        </h2>
+      </div>
+
+      {/* Add note form */}
+      <form onSubmit={handleSubmit} className="border-b border-border-color p-4 space-y-3">
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Add a note about this lead — preferences, complaints, follow-up context…"
+          rows={3}
+          className="w-full resize-none rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+        />
+        <div className="flex items-center gap-3">
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
+          >
+            {Object.entries(NOTE_CATEGORY_LABELS).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            disabled={saving || !content.trim()}
+            className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 disabled:opacity-50"
+          >
+            {saving ? 'Adding…' : '+ Add Note'}
+          </button>
+        </div>
+        {err && <p className="text-xs text-red-600">{err}</p>}
+      </form>
+
+      {/* Notes list */}
+      {loading ? (
+        <div className="animate-pulse p-6 text-center text-sm text-text-secondary">Loading notes…</div>
+      ) : notes.length === 0 ? (
+        <div className="p-6 text-center text-sm text-text-secondary">No notes yet. Add the first one above.</div>
+      ) : (
+        <div className="divide-y divide-border-color">
+          {notes.map((note) => (
+            <div key={note.id} className="group px-5 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        NOTE_CATEGORY_COLORS[note.category ?? 'general'] ??
+                        'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {NOTE_CATEGORY_LABELS[note.category ?? 'general'] ?? note.category}
+                    </span>
+                    {note.source === 'agent' && (
+                      <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                        🤖 AI
+                      </span>
+                    )}
+                    <span className="text-xs text-text-secondary">
+                      {note.created_at
+                        ? new Date(note.created_at).toLocaleString(undefined, {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })
+                        : ''}
+                    </span>
+                  </div>
+                  <p className="text-sm text-text-primary whitespace-pre-wrap break-words">{note.content}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(note.id)}
+                  disabled={deletingId === note.id}
+                  className="shrink-0 rounded p-1 text-xs text-text-secondary opacity-0 group-hover:opacity-100 hover:text-red-600 disabled:opacity-50 transition-opacity"
+                  title="Delete note"
+                >
+                  🗑
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CustomerProfilePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -74,18 +239,19 @@ export default function CustomerProfilePage() {
   const agentsEnabled = business?.agents_enabled !== false;
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canAssignLeads = hasPermission('manage_leads');
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editData, setEditData] = useState<LeadUpdate>({});
-  const [showCustomFieldsEditor, setShowCustomFieldsEditor] = useState(false);
-  const [matchedTemplate, setMatchedTemplate] = useState<LeadTemplate | null>(null);
+  const [editCustomFields, setEditCustomFields] = useState<Record<string, unknown>>({});
+  const { data: matchedTemplate = null } = useLeadTemplate(currentCustomer?.templateId ?? null);
   const [assigning, setAssigning] = useState(false);
   const [followups, setFollowups] = useState<FollowUpMessage[]>([]);
   const [followupsLoading, setFollowupsLoading] = useState(false);
   const [followupsError, setFollowupsError] = useState<string | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
+  // Reference data via React Query — shared cache, not refetched on every mount
+  const { data: employees = [] } = useEmployeeList();
+  const { data: agents = [] } = useAgentList({ enabled: agentsEnabled });
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [latestSessions, setLatestSessions] = useState<ConversationSession[]>([]);
   const [latestSessionsLoading, setLatestSessionsLoading] = useState(false);
@@ -121,12 +287,20 @@ export default function CustomerProfilePage() {
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [assignWorkModalOpen, setAssignWorkModalOpen] = useState(false);
 
+  /**
+   * Tracks which tabs have already been fetched for the current lead.
+   * Prevents redundant API calls when the user switches back to a tab
+   * they already visited during this page session.
+   * Reset whenever the lead `id` changes.
+   */
+  const loadedTabsRef = useRef<Set<TabId>>(new Set());
+
+  // Reset loaded tabs when navigating to a different lead
   useEffect(() => {
-    listEmployees().then(setEmployees).catch(() => setEmployees([]));
-    if (agentsEnabled) {
-      listAgents().then(setAgents).catch(() => setAgents([]));
-    }
-  }, [agentsEnabled]);
+    loadedTabsRef.current = new Set();
+  }, [id]);
+
+  // (employees and agents are now fetched via React Query hooks above — no useEffect needed)
 
   useEffect(() => {
     if (!id) return;
@@ -175,22 +349,7 @@ export default function CustomerProfilePage() {
     }
   }, [currentCustomer, isEditing]);
 
-  useEffect(() => {
-    const tid = currentCustomer?.templateId;
-    if (!tid) {
-      setMatchedTemplate(null);
-      return;
-    }
-    let cancelled = false;
-    getLeadTemplate(tid)
-      .then((t) => {
-        if (!cancelled) setMatchedTemplate(t);
-      })
-      .catch(() => {
-        if (!cancelled) setMatchedTemplate(null);
-      });
-    return () => { cancelled = true; };
-  }, [currentCustomer?.templateId]);
+  // (matchedTemplate is now fetched via useLeadTemplate React Query hook above)
 
   useEffect(() => {
     const latestConversation = [...conversations].sort(
@@ -220,6 +379,8 @@ export default function CustomerProfilePage() {
 
   useEffect(() => {
     if (!id || activeTab !== 'work') return;
+    // Skip if already loaded for this lead — prevents refetch on every tab switch
+    if (loadedTabsRef.current.has('work')) return;
     const leadId = Number(id);
     if (!Number.isFinite(leadId)) return;
     let cancelled = false;
@@ -227,7 +388,10 @@ export default function CustomerProfilePage() {
     setWorkError(null);
     listWork({ page: 1, per_page: 50, lead_id: leadId })
       .then((res) => {
-        if (!cancelled) setWorkItems(res.items ?? []);
+        if (!cancelled) {
+          setWorkItems(res.items ?? []);
+          loadedTabsRef.current.add('work');
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) {
@@ -245,6 +409,8 @@ export default function CustomerProfilePage() {
 
   useEffect(() => {
     if (!id || activeTab !== 'orders') return;
+    // Skip if already loaded for this lead
+    if (loadedTabsRef.current.has('orders')) return;
     const leadId = Number(id);
     if (!Number.isFinite(leadId)) return;
     let cancelled = false;
@@ -252,7 +418,10 @@ export default function CustomerProfilePage() {
     setOrdersError(null);
     listOrders({ lead_id: leadId })
       .then((rows) => {
-        if (!cancelled) setOrders(rows ?? []);
+        if (!cancelled) {
+          setOrders(rows ?? []);
+          loadedTabsRef.current.add('orders');
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) {
@@ -270,6 +439,8 @@ export default function CustomerProfilePage() {
 
   useEffect(() => {
     if (!id || activeTab !== 'appointments') return;
+    // Skip if already loaded for this lead
+    if (loadedTabsRef.current.has('appointments')) return;
     const leadId = Number(id);
     if (!Number.isFinite(leadId)) return;
     let cancelled = false;
@@ -277,7 +448,10 @@ export default function CustomerProfilePage() {
     setAppointmentsError(null);
     listAppointments({ lead_id: leadId })
       .then((rows) => {
-        if (!cancelled) setAppointments(rows ?? []);
+        if (!cancelled) {
+          setAppointments(rows ?? []);
+          loadedTabsRef.current.add('appointments');
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) {
@@ -295,6 +469,8 @@ export default function CustomerProfilePage() {
 
   useEffect(() => {
     if (!id || activeTab !== 'analytics') return;
+    // Skip if already loaded for this lead
+    if (loadedTabsRef.current.has('analytics')) return;
     const leadId = Number(id);
     if (!Number.isFinite(leadId)) return;
     let cancelled = false;
@@ -309,7 +485,10 @@ export default function CustomerProfilePage() {
       limit: 100,
     })
       .then((rows) => {
-        if (!cancelled) setConversationAnalytics(rows ?? []);
+        if (!cancelled) {
+          setConversationAnalytics(rows ?? []);
+          loadedTabsRef.current.add('analytics');
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) {
@@ -336,7 +515,7 @@ export default function CustomerProfilePage() {
       if (currentCustomer.lastScoreUpdate) systemFields.last_score_update = currentCustomer.lastScoreUpdate;
       if (currentCustomer.templateId != null) systemFields._template_id = currentCustomer.templateId;
       if (currentCustomer.lastFilled) systemFields.last_filled = currentCustomer.lastFilled;
-      const extraData = { ...(currentCustomer.customFields || {}), ...systemFields };
+      const extraData = { ...editCustomFields, ...systemFields };
 
       await updateLead(id, {
         ...editData,
@@ -352,37 +531,6 @@ export default function CustomerProfilePage() {
     }
   };
 
-  const handleCustomFieldsUpdate = async (customFields: Record<string, unknown>) => {
-    if (!id || !currentCustomer) return;
-    setIsSaving(true);
-    setActionError(null);
-    setActionNotice(null);
-    try {
-      const systemFields: Record<string, unknown> = {};
-      if (currentCustomer.leadScore !== undefined) {
-        systemFields.lead_level_score = currentCustomer.leadScore;
-      }
-      if (currentCustomer.lastScoreUpdate) {
-        systemFields.last_score_update = currentCustomer.lastScoreUpdate;
-      }
-      if (currentCustomer.templateId != null) {
-        systemFields._template_id = currentCustomer.templateId;
-      }
-      if (currentCustomer.lastFilled) {
-        systemFields.last_filled = currentCustomer.lastFilled;
-      }
-      const extraData = { ...customFields, ...systemFields };
-
-      await updateLead(id, { extra_data: extraData });
-      setShowCustomFieldsEditor(false);
-      setActionNotice('Custom fields updated.');
-    } catch (error) {
-      console.error('Failed to update custom fields:', error);
-      setActionError('Failed to update custom fields. Please try again.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const handleDelete = async () => {
     if (!id) return;
@@ -542,7 +690,19 @@ export default function CustomerProfilePage() {
                 )}
                 <button
                   type="button"
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => {
+                    setEditData({
+                      name: currentCustomer.name || '',
+                      phone: currentCustomer.phone || '',
+                      email: currentCustomer.email || '',
+                      status: currentCustomer.status as LeadUpdate['status'],
+                      priority: currentCustomer.priority as LeadUpdate['priority'],
+                      source: currentCustomer.source || '',
+                    });
+                    setEditCustomFields(currentCustomer.customFields || {});
+                    setIsEditing(true);
+                    setActiveTab('details');
+                  }}
                   className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent"
                 >
                   Edit
@@ -611,65 +771,172 @@ export default function CustomerProfilePage() {
               <div className="p-4">
                 {activeTab === 'overview' && (
                   <div className="space-y-4">
+                    {/* Pipeline stages — clickable, saves to backend */}
                     <section>
-                      <h2 className="mb-2 text-sm font-semibold text-text-secondary">Summary</h2>
-                      <div className="grid gap-2 text-base sm:grid-cols-2">
-                        <div>
-                          <span className="text-text-secondary">Source </span>
-                          <span className="text-text-primary">{currentCustomer.source ? currentCustomer.source.replace('_', ' ') : '—'}</span>
-                        </div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h2 className="text-sm font-semibold text-text-secondary">Pipeline stage</h2>
+                        <span className="text-xs text-text-secondary">Click a stage to update</span>
+                      </div>
+                      {/* Main funnel: New → Contacted → Qualified → Won */}
+                      <div className="flex items-stretch gap-0 mb-2">
+                        {(['new', 'contacted', 'qualified', 'won'] as const).map((stage, i, arr) => {
+                          const isActive = currentCustomer.status === stage;
+                          const stageIndex = ['new', 'contacted', 'qualified', 'won', 'lost'].indexOf(currentCustomer.status ?? 'new');
+                          const thisIndex = ['new', 'contacted', 'qualified', 'won'].indexOf(stage);
+                          const isPast = stageIndex > thisIndex && currentCustomer.status !== 'lost';
+                          const styleMap: Record<string, { active: string; past: string; idle: string; dot: string }> = {
+                            new:       { active: 'bg-gray-500 border-gray-500 text-white shadow-lg scale-105', past: 'bg-gray-200 border-gray-300 text-gray-600 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300', idle: 'border-border-color text-text-secondary hover:border-gray-400 hover:text-text-primary', dot: 'bg-gray-500' },
+                            contacted: { active: 'bg-amber-500 border-amber-500 text-white shadow-lg scale-105', past: 'bg-amber-100 border-amber-300 text-amber-700 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-300', idle: 'border-border-color text-text-secondary hover:border-amber-400 hover:text-amber-500', dot: 'bg-amber-500' },
+                            qualified: { active: 'bg-blue-500 border-blue-500 text-white shadow-lg scale-105', past: 'bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300', idle: 'border-border-color text-text-secondary hover:border-blue-400 hover:text-blue-500', dot: 'bg-blue-500' },
+                            won:       { active: 'bg-emerald-500 border-emerald-500 text-white shadow-lg scale-105', past: 'bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-300', idle: 'border-border-color text-text-secondary hover:border-emerald-400 hover:text-emerald-500', dot: 'bg-emerald-500' },
+                          };
+                          const s = styleMap[stage];
+                          const cls = isActive ? s.active : isPast ? s.past : s.idle;
+                          return (
+                            <div key={stage} className="flex items-center flex-1 min-w-0">
+                              <button
+                                type="button"
+                                disabled={isSaving}
+                                onClick={async () => {
+                                  if (isActive || !id) return;
+                                  setIsSaving(true);
+                                  setActionError(null);
+                                  setActionNotice(null);
+                                  try {
+                                    await updateLead(id, { status: stage });
+                                    setActionNotice(`Stage updated to ${stage.charAt(0).toUpperCase() + stage.slice(1)}.`);
+                                  } catch {
+                                    setActionError('Failed to update stage.');
+                                  } finally {
+                                    setIsSaving(false);
+                                  }
+                                }}
+                                className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-2 py-3 text-xs font-semibold rounded-lg border-2 transition-all cursor-pointer disabled:cursor-not-allowed ${cls}`}
+                              >
+                                <span className={`h-2.5 w-2.5 rounded-full ${isActive || isPast ? s.dot : 'bg-border-color'}`} />
+                                <span className="truncate">{stage.charAt(0).toUpperCase() + stage.slice(1)}</span>
+                              </button>
+                              {i < arr.length - 1 && (
+                                <div className={`w-5 flex-none flex items-center justify-center ${isPast ? 'text-text-primary' : 'text-border-color'}`}>
+                                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Lost as a separate row */}
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={async () => {
+                          if (currentCustomer.status === 'lost' || !id) return;
+                          setIsSaving(true);
+                          setActionError(null);
+                          setActionNotice(null);
+                          try {
+                            await updateLead(id, { status: 'lost' });
+                            setActionNotice('Stage updated to Lost.');
+                          } catch {
+                            setActionError('Failed to update stage.');
+                          } finally {
+                            setIsSaving(false);
+                          }
+                        }}
+                        className={`w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg border-2 transition-all ${
+                          currentCustomer.status === 'lost'
+                            ? 'bg-red-500 border-red-500 text-white shadow-md'
+                            : 'border-border-color text-text-secondary hover:border-red-400 hover:text-red-500'
+                        }`}
+                      >
+                        <span className={`h-2 w-2 rounded-full ${currentCustomer.status === 'lost' ? 'bg-white' : 'bg-border-color'}`} />
+                        Mark as Lost
+                      </button>
+                    </section>
+
+                    {/* Quick metrics row */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="rounded-xl border border-border-color bg-card-bg p-3">
+                        <p className="text-xs uppercase tracking-wide text-text-secondary">Lead score</p>
+                        <p className={`mt-1 text-2xl font-bold ${currentCustomer.leadScore != null && currentCustomer.leadScore >= 71 ? 'text-emerald-500' : currentCustomer.leadScore != null && currentCustomer.leadScore >= 31 ? 'text-amber-500' : 'text-text-primary'}`}>
+                          {currentCustomer.leadScore != null ? Math.round(currentCustomer.leadScore) : '—'}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border-color bg-card-bg p-3">
+                        <p className="text-xs uppercase tracking-wide text-text-secondary">Conversations</p>
+                        <p className="mt-1 text-2xl font-bold text-text-primary">{conversations.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-border-color bg-card-bg p-3">
+                        <p className="text-xs uppercase tracking-wide text-text-secondary">Follow-ups</p>
+                        <p className="mt-1 text-2xl font-bold text-text-primary">{followups.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-border-color bg-card-bg p-3">
+                        <p className="text-xs uppercase tracking-wide text-text-secondary">Source</p>
+                        <p className="mt-1 text-sm font-semibold text-text-primary capitalize truncate">
+                          {currentCustomer.source ? currentCustomer.source.replace(/_/g, ' ') : '—'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Summary grid */}
+                    <section>
+                      <h2 className="mb-2 text-sm font-semibold text-text-secondary">Details</h2>
+                      <div className="rounded-xl border border-border-color bg-card-bg divide-y divide-border-color">
                         {showAgentExperience && (
-                          <>
-                            <div>
-                              <span className="text-text-secondary">Agent </span>
-                              <span className="text-text-primary">
-                                {currentCustomer.assignedAgent && currentCustomer.assignedAgent !== '—' ? currentCustomer.assignedAgent : 'Unassigned'}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-text-secondary">Conversations </span>
-                              <span className="text-text-primary">{conversations.length}</span>
-                            </div>
-                          </>
+                          <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                            <span className="text-text-secondary">Agent</span>
+                            <span className="font-medium text-text-primary">
+                              {currentCustomer.assignedAgent && currentCustomer.assignedAgent !== '—' ? currentCustomer.assignedAgent : 'Unassigned'}
+                            </span>
+                          </div>
                         )}
-                        <div>
-                          <span className="text-text-secondary">Assigned to </span>
+                        <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                          <span className="text-text-secondary">Assigned to</span>
                           {canAssignLeads ? (
                             <select
                               value={currentCustomer.assignedToId ?? ''}
                               onChange={(e) => handleAssignChange(e.target.value === '' ? null : Number(e.target.value))}
                               disabled={assigning}
-                              className="rounded border border-border-color bg-bg-primary px-2 py-1 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+                              className="rounded border border-border-color bg-bg-primary px-2 py-1 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
                             >
                               <option value="">Unassigned</option>
-                              {employees
-                                .filter((emp) => emp.id === 0 || emp.is_active)
-                                .map((emp) => (
+                              {employees.filter((emp) => emp.id === 0 || emp.is_active).map((emp) => (
                                 <option key={emp.user_id} value={String(emp.user_id)}>
                                   {emp.name || emp.email}{emp.id === 0 ? ' (Owner)' : ''}
                                 </option>
-                                ))}
+                              ))}
                             </select>
                           ) : (
-                            <span className="text-text-primary">
-                              {currentCustomer.assignedToId == null
-                                ? 'Unassigned'
-                                : currentCustomer.assignedToId === currentUserId
-                                  ? 'You'
-                                  : employees.find((e) => e.user_id === currentCustomer.assignedToId)?.name ?? employees.find((e) => e.user_id === currentCustomer.assignedToId)?.email ?? '—'}
+                            <span className="font-medium text-text-primary">
+                              {currentCustomer.assignedToId == null ? 'Unassigned'
+                                : currentCustomer.assignedToId === currentUserId ? 'You'
+                                : employees.find((e) => e.user_id === currentCustomer.assignedToId)?.name ?? '—'}
                             </span>
                           )}
                         </div>
+                        <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                          <span className="text-text-secondary">Priority</span>
+                          <span className={`font-medium capitalize ${currentCustomer.priority === 'high' ? 'text-red-500' : currentCustomer.priority === 'medium' ? 'text-amber-500' : 'text-text-primary'}`}>
+                            {currentCustomer.priority ?? '—'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                          <span className="text-text-secondary">Created</span>
+                          <span className="font-medium text-text-primary">
+                            {currentCustomer.createdAt ? new Date(currentCustomer.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                          </span>
+                        </div>
                       </div>
                     </section>
-                    <section>
-                      <h2 className="mb-2 text-sm font-semibold text-text-secondary">Lead score</h2>
-                      <LeadScoreDisplay score={currentCustomer.leadScore} lastUpdate={currentCustomer.lastScoreUpdate} showBreakdown={false} />
-                    </section>
+
                     {currentCustomer.lastMessagePreview && currentCustomer.lastMessagePreview !== '—' && (
                       <section>
-                        <h2 className="mb-2 text-sm font-semibold text-text-secondary">Last message</h2>
-                        <p className="text-base text-text-primary">{currentCustomer.lastMessagePreview}</p>
+                        <h2 className="mb-2 text-sm font-semibold text-text-secondary">Last AI summary</h2>
+                        <div className="rounded-xl border border-border-color bg-card-bg px-4 py-3 text-sm text-text-primary">
+                          {currentCustomer.lastMessagePreview}
+                        </div>
                       </section>
                     )}
                   </div>
@@ -757,7 +1024,16 @@ export default function CustomerProfilePage() {
                             <option value="other">Other</option>
                           </select>
                         </div>
-                        <div className="flex gap-2">
+                        {/* Dynamic custom fields */}
+                        <div className="rounded-xl border border-border-color bg-bg-secondary/40 p-4">
+                          <h3 className="text-sm font-semibold text-text-secondary mb-3">Custom Fields</h3>
+                          <DynamicLeadFieldsInput
+                            value={editCustomFields}
+                            onChange={setEditCustomFields}
+                          />
+                        </div>
+
+                        <div className="flex gap-2 pt-1">
                           <button
                             type="button"
                             onClick={() => setIsEditing(false)}
@@ -769,9 +1045,10 @@ export default function CustomerProfilePage() {
                             type="button"
                             onClick={handleSave}
                             disabled={isSaving}
-                            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                            className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                           >
-                            {isSaving ? 'Saving…' : 'Save'}
+                            {isSaving && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+                            {isSaving ? 'Saving…' : 'Save changes'}
                           </button>
                         </div>
                       </div>
@@ -808,7 +1085,18 @@ export default function CustomerProfilePage() {
                           {!isEditing && (
                             <button
                               type="button"
-                              onClick={() => setIsEditing(true)}
+                              onClick={() => {
+                                setEditData({
+                                  name: currentCustomer.name || '',
+                                  phone: currentCustomer.phone || '',
+                                  email: currentCustomer.email || '',
+                                  status: currentCustomer.status as LeadUpdate['status'],
+                                  priority: currentCustomer.priority as LeadUpdate['priority'],
+                                  source: currentCustomer.source || '',
+                                });
+                                setEditCustomFields(currentCustomer.customFields || {});
+                                setIsEditing(true);
+                              }}
                               className="mt-3 text-sm font-semibold text-accent hover:underline"
                             >
                               Edit details
@@ -834,34 +1122,31 @@ export default function CustomerProfilePage() {
                           </section>
                         )}
                         <section className="sm:col-span-2">
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between mb-2">
                             <h2 className="text-sm font-semibold text-text-secondary">Custom fields</h2>
-                            {!showCustomFieldsEditor && (
-                              <button type="button" onClick={() => setShowCustomFieldsEditor(true)} className="text-sm font-semibold text-accent hover:underline">
-                                Edit
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditData({
+                                  name: currentCustomer.name || '',
+                                  phone: currentCustomer.phone || '',
+                                  email: currentCustomer.email || '',
+                                  status: currentCustomer.status as LeadUpdate['status'],
+                                  priority: currentCustomer.priority as LeadUpdate['priority'],
+                                  source: currentCustomer.source || '',
+                                });
+                                setEditCustomFields(currentCustomer.customFields || {});
+                                setIsEditing(true);
+                              }}
+                              className="text-sm font-semibold text-accent hover:underline"
+                            >
+                              Edit
+                            </button>
                           </div>
-                          {showCustomFieldsEditor ? (
-                            <CustomFieldsEditor
-                              data={currentCustomer.customFields || {}}
-                              onChange={handleCustomFieldsUpdate}
-                              onCancel={() => setShowCustomFieldsEditor(false)}
-                            />
-                          ) : (
-                            <div className="mt-2 space-y-1.5 text-base">
-                              {currentCustomer.customFields && Object.keys(currentCustomer.customFields).length > 0 ? (
-                                Object.entries(currentCustomer.customFields).map(([key, value]) => (
-                                  <div key={key} className="flex justify-between gap-2">
-                                    <span className="text-text-secondary capitalize">{key.replace(/_/g, ' ')}</span>
-                                    <span className="text-text-primary">{typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)}</span>
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="text-text-secondary">No custom fields</p>
-                              )}
-                            </div>
-                          )}
+                          <DynamicLeadFieldsInput
+                            value={currentCustomer.customFields || {}}
+                            readonly
+                          />
                         </section>
                       </div>
                     )}
@@ -1318,14 +1603,8 @@ export default function CustomerProfilePage() {
 
                 {activeTab === 'orders' && (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div>
                       <h2 className="text-sm font-semibold text-text-secondary">Orders linked to this customer</h2>
-                      <Link
-                        href="/orders"
-                        className="rounded-md border border-border-color bg-bg-primary px-3 py-1.5 text-sm font-semibold text-text-primary hover:border-accent"
-                      >
-                        Open orders module
-                      </Link>
                     </div>
                     {ordersLoading ? (
                       <p className="text-base text-text-secondary">Loading orders…</p>
@@ -1383,14 +1662,8 @@ export default function CustomerProfilePage() {
 
                 {activeTab === 'appointments' && (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div>
                       <h2 className="text-sm font-semibold text-text-secondary">Appointments for this customer</h2>
-                      <Link
-                        href="/orders"
-                        className="rounded-md border border-border-color bg-bg-primary px-3 py-1.5 text-sm font-semibold text-text-primary hover:border-accent"
-                      >
-                        Open bookings module
-                      </Link>
                     </div>
                     {appointmentsLoading ? (
                       <p className="text-base text-text-secondary">Loading appointments…</p>
@@ -1447,83 +1720,194 @@ export default function CustomerProfilePage() {
                 )}
 
                 {activeTab === 'analytics' && (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <h2 className="text-sm font-semibold text-text-secondary">Conversation analytics (last 90 days)</h2>
                     {analyticsLoading ? (
-                      <p className="text-base text-text-secondary">Loading analytics…</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-pulse">
+                        {[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-bg-secondary" />)}
+                      </div>
                     ) : conversationAnalytics.length === 0 ? (
-                      <p className="text-base text-text-secondary">No analytics found for this customer in the selected period.</p>
-                    ) : (
-                      <>
-                        <div className="grid gap-3 sm:grid-cols-4">
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Conversations</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">{conversationAnalytics.length}</div>
+                      <div className="rounded-xl border border-border-color bg-card-bg px-6 py-10 text-center text-base text-text-secondary">
+                        <p className="font-medium text-text-primary mb-1">No analytics yet</p>
+                        <p>Conversation analytics appear after conversations are processed.</p>
+                      </div>
+                    ) : (() => {
+                      const totalMsgs = conversationAnalytics.reduce((s, r) => s + (r.message_count ?? 0), 0);
+                      const avgSentimentRows = conversationAnalytics.filter((r) => r.sentiment_score != null);
+                      const avgSentiment = avgSentimentRows.length > 0
+                        ? avgSentimentRows.reduce((s, r) => s + Number(r.sentiment_score), 0) / avgSentimentRows.length
+                        : null;
+                      const avgResponseRows = conversationAnalytics.filter((r) => r.avg_response_time != null);
+                      const avgResponse = avgResponseRows.length > 0
+                        ? avgResponseRows.reduce((s, r) => s + Number(r.avg_response_time), 0) / avgResponseRows.length
+                        : null;
+                      const needsFollowUp = conversationAnalytics.filter((r) => r.status !== 'resolved').length;
+
+                      const sentimentData = conversationAnalytics
+                        .filter((r) => r.sentiment_score != null)
+                        .map((r, i) => ({ label: `Conv #${r.conversation_id}`, value: Number(r.sentiment_score), index: i }));
+
+                      const volumeData = conversationAnalytics.map((r) => ({
+                        label: `#${r.conversation_id}`,
+                        messages: r.message_count ?? 0,
+                        tools: r.tool_calls?.length ?? 0,
+                      }));
+
+                      return (
+                        <>
+                          {/* KPI row */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {[
+                              { label: 'Conversations', value: conversationAnalytics.length },
+                              { label: 'Total messages', value: totalMsgs },
+                              { label: 'Avg sentiment', value: avgSentiment != null ? avgSentiment.toFixed(2) : '—' },
+                              { label: 'Avg response', value: avgResponse != null ? `${avgResponse.toFixed(1)}s` : '—' },
+                            ].map((kpi) => (
+                              <div key={kpi.label} className="rounded-xl border border-border-color bg-card-bg p-3">
+                                <p className="text-xs uppercase tracking-wide text-text-secondary">{kpi.label}</p>
+                                <p className="mt-1 text-2xl font-bold text-text-primary">{kpi.value}</p>
+                              </div>
+                            ))}
                           </div>
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Avg first response</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">
-                              {(
-                                conversationAnalytics.reduce((sum, row) => sum + Number(row.first_response_time || 0), 0) /
-                                Math.max(1, conversationAnalytics.filter((row) => row.first_response_time != null).length)
-                              ).toFixed(1)}s
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Sentiment line chart */}
+                            {sentimentData.length > 0 && (
+                              <div className="rounded-xl border border-border-color bg-card-bg p-4">
+                                <h3 className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-3">Sentiment over conversations</h3>
+                                <ResponsiveContainer width="100%" height={180}>
+                                  <LineChart data={sentimentData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickLine={false} axisLine={false} />
+                                    <YAxis domain={[-1, 1]} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickLine={false} axisLine={false} />
+                                    <Tooltip
+                                      content={({ active, payload, label }) => active && payload?.length ? (
+                                        <div className="rounded-lg border border-border-color bg-card-bg px-3 py-2 text-xs shadow-lg">
+                                          <p className="font-semibold text-text-primary mb-1">{label}</p>
+                                          <p className="text-text-secondary">Sentiment: <span className="font-semibold text-text-primary">{Number(payload[0].value).toFixed(2)}</span></p>
+                                        </div>
+                                      ) : null}
+                                    />
+                                    <Line
+                                      type="monotone"
+                                      dataKey="value"
+                                      stroke="#6366f1"
+                                      strokeWidth={2}
+                                      dot={{ r: 4, fill: '#6366f1' }}
+                                      activeDot={{ r: 5 }}
+                                    />
+                                  </LineChart>
+                                </ResponsiveContainer>
+                              </div>
+                            )}
+
+                            {/* Message volume bar chart */}
+                            <div className="rounded-xl border border-border-color bg-card-bg p-4">
+                              <h3 className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-3">Message volume</h3>
+                              <ResponsiveContainer width="100%" height={180}>
+                                <BarChart data={volumeData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickLine={false} axisLine={false} />
+                                  <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                                  <Tooltip
+                                    content={({ active, payload, label }) => active && payload?.length ? (
+                                      <div className="rounded-lg border border-border-color bg-card-bg px-3 py-2 text-xs shadow-lg">
+                                        <p className="font-semibold text-text-primary mb-1">{label}</p>
+                                        {payload.map((p, i) => (
+                                          <p key={i} className="text-text-secondary">{p.name}: <span className="font-semibold text-text-primary">{p.value}</span></p>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  />
+                                  <Bar dataKey="messages" name="Messages" fill="#6366f1" radius={[4, 4, 0, 0]}>
+                                    {volumeData.map((_, i) => (
+                                      <Cell key={i} fill="#6366f1" />
+                                    ))}
+                                  </Bar>
+                                  <Bar dataKey="tools" name="Tool calls" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
                             </div>
                           </div>
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Avg sentiment</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">
-                              {(
-                                conversationAnalytics.reduce((sum, row) => sum + Number(row.sentiment_score || 0), 0) /
-                                Math.max(1, conversationAnalytics.filter((row) => row.sentiment_score != null).length)
-                              ).toFixed(2)}
+
+                          {/* Response time bar chart */}
+                          {avgResponseRows.length > 0 && (
+                            <div className="rounded-xl border border-border-color bg-card-bg p-4">
+                              <h3 className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-3">Response time (s) per conversation</h3>
+                              <ResponsiveContainer width="100%" height={140}>
+                                <BarChart
+                                  data={conversationAnalytics.map((r) => ({ label: `#${r.conversation_id}`, value: r.avg_response_time != null ? Number(r.avg_response_time) : 0 }))}
+                                  margin={{ top: 4, right: 8, bottom: 0, left: -20 }}
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickLine={false} axisLine={false} />
+                                  <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickLine={false} axisLine={false} />
+                                  <Tooltip
+                                    content={({ active, payload, label }) => active && payload?.length ? (
+                                      <div className="rounded-lg border border-border-color bg-card-bg px-3 py-2 text-xs shadow-lg">
+                                        <p className="font-semibold text-text-primary">{label}: <span className="text-text-secondary">{Number(payload[0].value).toFixed(1)}s</span></p>
+                                      </div>
+                                    ) : null}
+                                  />
+                                  <Bar dataKey="value" name="Avg response (s)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
                             </div>
-                          </div>
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Needs follow-up</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">
-                              {conversationAnalytics.filter((row) => row.status !== 'resolved').length}
+                          )}
+
+                          {/* Collapsible raw table */}
+                          <details className="rounded-xl border border-border-color bg-card-bg overflow-hidden">
+                            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-text-secondary hover:bg-bg-secondary select-none">
+                              Raw data ({conversationAnalytics.length} conversations)
+                            </summary>
+                            <div className="overflow-x-auto border-t border-border-color">
+                              <table className="min-w-full divide-y divide-border-color text-sm">
+                                <thead className="bg-bg-secondary text-xs uppercase text-text-secondary">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left">Conversation</th>
+                                    <th className="px-3 py-2 text-left">Status</th>
+                                    <th className="px-3 py-2 text-left">Messages</th>
+                                    <th className="px-3 py-2 text-left">Avg response</th>
+                                    <th className="px-3 py-2 text-left">Sentiment</th>
+                                    <th className="px-3 py-2 text-left">Tool calls</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border-color">
+                                  {conversationAnalytics.map((row) => (
+                                    <tr key={row.id} className="hover:bg-bg-secondary/50">
+                                      <td className="px-3 py-2 text-text-primary">
+                                        <Link href={`/conversations/${row.conversation_id}`} className="font-semibold text-accent hover:underline">
+                                          #{row.conversation_id}
+                                        </Link>
+                                      </td>
+                                      <td className="px-3 py-2 text-text-secondary">
+                                        {row.status}{row.resolution_status ? ` / ${row.resolution_status}` : ''}
+                                      </td>
+                                      <td className="px-3 py-2 text-text-secondary">{row.message_count}</td>
+                                      <td className="px-3 py-2 text-text-secondary">
+                                        {row.avg_response_time != null ? `${row.avg_response_time.toFixed(1)}s` : '—'}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <span className={row.sentiment_score != null && row.sentiment_score > 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : row.sentiment_score != null && row.sentiment_score < 0 ? 'text-red-500 font-semibold' : 'text-text-secondary'}>
+                                          {row.sentiment_score != null ? row.sentiment_score.toFixed(2) : '—'}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-text-secondary">{row.tool_calls.length}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
-                          </div>
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full divide-y divide-border-color text-sm">
-                            <thead className="bg-bg-secondary text-xs uppercase text-text-secondary">
-                              <tr>
-                                <th className="px-3 py-2 text-left">Conversation</th>
-                                <th className="px-3 py-2 text-left">Status</th>
-                                <th className="px-3 py-2 text-left">Messages</th>
-                                <th className="px-3 py-2 text-left">Avg response</th>
-                                <th className="px-3 py-2 text-left">Sentiment</th>
-                                <th className="px-3 py-2 text-left">Tool calls</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border-color">
-                              {conversationAnalytics.map((row) => (
-                                <tr key={row.id}>
-                                  <td className="px-3 py-2 text-text-primary">
-                                    <Link href={`/conversations/${row.conversation_id}`} className="font-semibold text-accent hover:underline">
-                                      #{row.conversation_id}
-                                    </Link>
-                                  </td>
-                                  <td className="px-3 py-2 text-text-secondary">
-                                    {row.status}
-                                    {row.resolution_status ? ` / ${row.resolution_status}` : ''}
-                                  </td>
-                                  <td className="px-3 py-2 text-text-secondary">{row.message_count}</td>
-                                  <td className="px-3 py-2 text-text-secondary">
-                                    {row.avg_response_time != null ? `${row.avg_response_time.toFixed(1)}s` : '—'}
-                                  </td>
-                                  <td className="px-3 py-2 text-text-secondary">
-                                    {row.sentiment_score != null ? row.sentiment_score.toFixed(2) : '—'}
-                                  </td>
-                                  <td className="px-3 py-2 text-text-secondary">{row.tool_calls.length}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    )}
+                          </details>
+
+                          {needsFollowUp > 0 && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-4 py-2.5 text-sm text-amber-700 dark:text-amber-300">
+                              {needsFollowUp} conversation{needsFollowUp > 1 ? 's' : ''} still need follow-up (not resolved).
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     {analyticsError && <p className="text-xs text-red-500">{analyticsError}</p>}
                   </div>
                 )}
@@ -1531,7 +1915,11 @@ export default function CustomerProfilePage() {
                 {activeTab === 'notes' && (
                   <div className="space-y-4">
                     <section>
-                      <h2 className="mb-2 text-sm font-semibold text-text-secondary">Notes</h2>
+                      <h2 className="mb-2 text-sm font-semibold text-text-secondary">Lead Notes</h2>
+                      <LeadNotesSection leadId={id} currentUserId={currentUserId} />
+                    </section>
+                    <section>
+                      <h2 className="mb-2 text-sm font-semibold text-text-secondary">Profile Notes</h2>
                       {isEditing ? (
                         <div>
                           <textarea

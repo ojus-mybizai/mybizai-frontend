@@ -1,182 +1,138 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import type { DashboardMessage } from '@/components/dashboard/types';
-import type { DatasheetScopeOption } from '@/components/dashboard/floating-chat-input';
-import ViewToggle from '@/components/dashboard/view-toggle';
+import { useCallback, useEffect, useState } from 'react';
 import MetricsView from '@/components/dashboard/metrics-view';
-import ChatView from '@/components/dashboard/chat-view';
-import FloatingChatInput from '@/components/dashboard/floating-chat-input';
+import { PinnedReportsSection } from '@/components/dashboard/pinned-reports-section';
+import AIChatPanel from '@/components/dashboard/ai-chat-panel';
 import { useAuthStore } from '@/lib/auth-store';
 import { useDashboardStats } from '@/lib/use-dashboard-stats';
 import { useReportsDashboard } from '@/lib/use-reports-dashboard';
-import { sendDashboardChat } from '@/services/dashboard';
-import { listModels } from '@/services/dynamic-data';
+import {
+  getManagerStatus,
+  connectManager,
+  disconnectManager,
+  regenerateWebhookToken,
+  type ManagerStatus,
+} from '@/services/dashboard';
+
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+
+type Tab = 'chat' | 'metrics';
+
+function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg bg-bg-secondary p-0.5">
+      {([
+        { id: 'chat',    label: 'AI Chat'  },
+        { id: 'metrics', label: 'Metrics'  },
+      ] as { id: Tab; label: string }[]).map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => onChange(t.id)}
+          className={`rounded-md px-3 py-1 text-xs font-semibold transition-all ${
+            active === t.id
+              ? 'bg-card-bg text-text-primary shadow-sm'
+              : 'text-text-secondary hover:text-text-primary'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
-  const user = useAuthStore((s) => s.user as { businesses?: Array<{ lms_enabled?: boolean; agents_enabled?: boolean }> } | null);
-  const business = user?.businesses?.[0];
-  const lmsEnabled = business?.lms_enabled !== false;
-  const agentsEnabled = business?.agents_enabled !== false;
-  const { stats, recentActivity, insights, leadStatsError, loading: statsLoading } = useDashboardStats({ lmsEnabled });
-  const { data: reportsDashboard, loading: reportsLoading, error: reportsError } = useReportsDashboard(30);
-  const [view, setView] = useState<'metrics' | 'chat'>('metrics');
-  const [messages, setMessages] = useState<DashboardMessage[]>([]);
-  const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [datasheetModels, setDatasheetModels] = useState<Awaited<ReturnType<typeof listModels>>>([]);
+  const user = useAuthStore(
+    (s) => s.user as { businesses?: Array<{ lms_enabled?: boolean }> } | null,
+  );
+  const lmsEnabled = user?.businesses?.[0]?.lms_enabled !== false;
 
-  useEffect(() => {
-    if (view === 'chat') {
-      listModels()
-        .then(setDatasheetModels)
-        .catch(() => setDatasheetModels([]));
-    }
-  }, [view]);
+  const { stats, recentActivity, insights, leadStatsError, loading: statsLoading } =
+    useDashboardStats({ lmsEnabled });
+  const { data: reportsDashboard, loading: reportsLoading, error: reportsError } =
+    useReportsDashboard(30);
 
-  const datasheetScopeOptions: DatasheetScopeOption[] = datasheetModels.map((m) => ({
-    mention: `@datasheet-${m.id}`,
-    model: `datasheet-${m.id}`,
-    label: `Data: ${m.display_name}`,
-    dynamicModelId: m.id,
-  }));
+  const [activeTab, setActiveTab]           = useState<Tab>('chat');
+  const [chatFullscreen, setChatFullscreen] = useState(false);
+  const [managerStatus, setManagerStatus]   = useState<ManagerStatus | null>(null);
+  const [managerLoading, setManagerLoading] = useState(true);
 
-  const handleSend = async (message?: string, attachments?: File[]) => {
-    const trimmed = (message ?? inputValue).trim();
-    if (!trimmed && (!attachments || attachments.length === 0) || isLoading) return;
+  const fetchStatus = useCallback(async () => {
+    setManagerLoading(true);
+    try { setManagerStatus(await getManagerStatus()); }
+    catch { /* non-fatal */ }
+    finally { setManagerLoading(false); }
+  }, []);
 
-    const displayContent = trimmed || (attachments?.length ? `[${attachments.length} attachment(s)]` : '');
-    const userMessage: DashboardMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: displayContent,
-    };
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue('');
-    setView('chat');
-    setIsLoading(true);
+  const handleConnect = async () => {
+    setManagerLoading(true);
+    try { setManagerStatus(await connectManager()); }
+    finally { setManagerLoading(false); }
+  };
 
-    const datasheetMatch = trimmed.match(/@datasheet-(\d+)/);
-    const activeDatasheetId =
-      datasheetMatch != null ? parseInt(datasheetMatch[1], 10) : undefined;
-
+  const handleDisconnect = async () => {
+    setManagerLoading(true);
     try {
-      const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const { reply } = await sendDashboardChat(
-        trimmed || ' ',
-        history,
-        attachments,
-        activeDatasheetId
-      );
+      await disconnectManager();
+      setManagerStatus((p) => p ? { ...p, is_connected: false } : p);
+    } finally { setManagerLoading(false); }
+  };
 
-      const aiMessage: DashboardMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: reply,
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-    } catch (err) {
-      const aiMessage: DashboardMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: (err as Error).message || 'Failed to get a response. Please try again.',
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleRegenerateToken = async () => {
+    try {
+      const { webhook_token } = await regenerateWebhookToken();
+      setManagerStatus((p) => p ? { ...p, webhook_token } : p);
+    } catch { /* silent */ }
   };
 
   return (
-    <div className="relative mx-auto max-w-7xl space-y-4 pb-16">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-text-primary sm:text-2xl">Dashboard</h2>
-              <p className="mt-1 text-base text-text-secondary">
-                See what&apos;s happening across customers, orders, tasks, and your team.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <ViewToggle view={view} onChange={setView} />
-              {view === 'chat' && (
-                <span className="text-sm text-text-secondary">
-                  Type @ to scope
-                </span>
-              )}
-            </div>
-          </div>
+    <div className="flex h-full flex-col gap-3">
 
-          {(lmsEnabled || agentsEnabled) && (
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/catalog"
-                className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
-              >
-                Catalog &amp; Stock
-              </Link>
-              <Link
-                href="/orders"
-                className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
-              >
-                Orders &amp; Bookings
-              </Link>
-              {lmsEnabled && (
-                <>
-                  <Link
-                    href="/customers"
-                    className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
-                  >
-                    Customers
-                  </Link>
-                  <Link
-                    href="/conversations"
-                    className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
-                  >
-                    Conversations
-                  </Link>
-                  <Link
-                    href="/channels"
-                    className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
-                  >
-                    Channels
-                  </Link>
-                </>
-              )}
-              {agentsEnabled && (
-                <Link
-                  href="/agents"
-                  className="inline-flex items-center rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
-                >
-                  Business Agents
-                </Link>
-              )}
-            </div>
-          )}
+      {/* ── Minimal top bar ── */}
+      <div className="flex shrink-0 items-center justify-between">
+        <h2 className="text-sm font-semibold text-text-secondary tracking-wide uppercase">
+          Dashboard
+        </h2>
+        <TabBar active={activeTab} onChange={setActiveTab} />
+      </div>
 
-          {view === 'metrics' ? (
-            <MetricsView
-              stats={stats}
-              recentActivity={recentActivity}
-              insights={insights}
-              leadStatsError={leadStatsError}
-              loading={statsLoading}
-              reportsDashboard={reportsDashboard}
-              reportsLoading={reportsLoading}
-              reportsError={reportsError}
-            />
-          ) : (
-            <ChatView messages={messages} isLoading={isLoading} />
-          )}
-
-          <FloatingChatInput
-            value={inputValue}
-            onChange={setInputValue}
-            onSend={(msg, files) => handleSend(msg, files)}
-            isLoading={isLoading}
-            datasheetScopes={datasheetScopeOptions}
+      {/* ── Chat (primary tab) ── */}
+      {activeTab === 'chat' && (
+        <div className="flex flex-1 min-h-0">
+          <AIChatPanel
+            className="flex-1 min-h-0"
+            isFullscreen={chatFullscreen}
+            onToggleFullscreen={() => setChatFullscreen((v) => !v)}
+            managerStatus={managerStatus}
+            managerLoading={managerLoading}
+            apiBase={API_BASE}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            onRegenerateToken={handleRegenerateToken}
           />
         </div>
+      )}
+
+      {/* ── Metrics tab ── */}
+      {activeTab === 'metrics' && (
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pb-4">
+          <MetricsView
+            stats={stats}
+            recentActivity={recentActivity}
+            insights={insights}
+            leadStatsError={leadStatsError}
+            loading={statsLoading}
+            reportsDashboard={reportsDashboard}
+            reportsLoading={reportsLoading}
+            reportsError={reportsError}
+          />
+          <PinnedReportsSection />
+        </div>
+      )}
+    </div>
   );
 }

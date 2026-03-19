@@ -41,6 +41,7 @@ export function OrderTable({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border-color bg-card-bg">
+      <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-border-color text-base">
         <thead className="bg-bg-secondary/60">
           <tr>
@@ -121,6 +122,7 @@ export function OrderTable({
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -36,10 +36,10 @@ export interface NormalizedError {
 
 export type ApiResult<T> = NormalizedResult<T> | NormalizedError;
 
-/** Backend validation error shape (e.g. 422 with { detail: { errors: [...] } }) */
+/** Backend validation error shape (e.g. 422 with { detail: { errors: [...] } }, or 400 with linked_tool_names) */
 export interface BackendValidationError {
   message?: string;
   detail?:
     | string
-    | { message?: string; errors?: Array<{ field: string; error?: string }> };
+    | { message?: string; errors?: Array<{ field: string; error?: string }>; linked_tool_names?: string[] };
 }

@@ -245,7 +245,7 @@ export default function StorefrontSettingsPage() {
             {/* Theme */}
             <div className="rounded-xl border border-border-color bg-card-bg p-6 space-y-4">
               <h3 className="text-lg font-semibold text-text-primary">Theme</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {THEMES.map((t) => (
                   <label
                     key={t.value}

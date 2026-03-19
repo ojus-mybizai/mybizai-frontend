@@ -11,7 +11,7 @@ export default function ViewToggle({ view, onChange }: ViewToggleProps) {
       <button
         type="button"
         onClick={() => onChange('metrics')}
-        className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+        className={`min-h-[44px] rounded-md px-3 py-2.5 font-medium transition-colors ${
           view === 'metrics'
             ? 'bg-accent text-white'
             : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
@@ -22,7 +22,7 @@ export default function ViewToggle({ view, onChange }: ViewToggleProps) {
       <button
         type="button"
         onClick={() => onChange('chat')}
-        className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+        className={`min-h-[44px] rounded-md px-3 py-2.5 font-medium transition-colors ${
           view === 'chat'
             ? 'bg-accent text-white'
             : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'

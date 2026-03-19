@@ -171,12 +171,13 @@ function LoginForm() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 pr-16 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 pr-20 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute inset-y-0 right-3 text-xs font-medium text-text-secondary hover:text-text-primary"
+                className="absolute inset-y-0 right-0 flex min-h-[44px] min-w-[56px] items-center justify-center rounded-r-md text-xs font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? 'Hide' : 'Show'}
               </button>

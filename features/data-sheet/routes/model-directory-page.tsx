@@ -7,16 +7,18 @@ import { listModels, deleteModel, type DynamicModel } from '@/features/data-shee
 import { normalizeApiError } from '@/features/data-sheet/api/normalize-error';
 import { DeleteModelModal } from '@/features/data-sheet/components/delete-model-modal';
 import { CreateModelModal } from '@/features/data-sheet/components/create-model-modal';
+import { useStarredDatasheets } from '@/lib/use-starred-datasheets';
 
 export function ModelDirectoryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [models, setModels] = useState<DynamicModel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | ReturnType<typeof normalizeApiError> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DynamicModel | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const { isStarred, toggleStar } = useStarredDatasheets();
 
   const loadModels = async () => {
     setLoading(true);
@@ -49,7 +51,7 @@ export function ModelDirectoryPage() {
       setDeleteTarget(null);
       await loadModels();
     } catch (e) {
-      setError(normalizeApiError(e).message);
+      setError(normalizeApiError(e));
     } finally {
       setDeleting(false);
     }
@@ -68,6 +70,9 @@ export function ModelDirectoryPage() {
           {!loading && (
             <p className="mt-1 text-sm text-text-secondary">
               {models.length} {models.length === 1 ? 'model' : 'models'}
+              {' · '}
+              <span className="text-amber-400">★</span>
+              <span className="text-text-secondary"> to pin in sidebar</span>
             </p>
           )}
         </div>
@@ -82,7 +87,12 @@ export function ModelDirectoryPage() {
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-base text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
-          {error}
+          {typeof error === 'string' ? error : error.message}
+          {typeof error === 'object' && error.linked_tool_names?.length ? (
+            <p className="mt-2 text-sm">
+              Linked tools: {error.linked_tool_names.join(', ')}
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -129,9 +139,14 @@ export function ModelDirectoryPage() {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <h3 className="truncate font-medium text-text-primary">
-                    {model.display_name}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="truncate font-medium text-text-primary">
+                      {model.display_name}
+                    </h3>
+                    {isStarred(model.id) && (
+                      <span className="text-amber-400 text-xs leading-none shrink-0" title="Pinned in sidebar">★</span>
+                    )}
+                  </div>
                   <p className="mt-0.5 truncate text-sm text-text-secondary">
                     {model.name}
                   </p>
@@ -146,8 +161,23 @@ export function ModelDirectoryPage() {
                     </p>
                   )}
                 </div>
-                <div className="relative">
-                  <CardActionsMenu model={model} onDelete={() => setDeleteTarget(model)} />
+                <div className="flex items-center gap-1">
+                  {/* Star / unstar — pins in sidebar */}
+                  <button
+                    type="button"
+                    onClick={() => toggleStar(model.id)}
+                    title={isStarred(model.id) ? 'Remove from sidebar' : 'Pin to sidebar'}
+                    className={`rounded p-1.5 transition-colors ${
+                      isStarred(model.id)
+                        ? 'text-amber-400 hover:text-amber-300'
+                        : 'text-text-secondary hover:text-amber-400'
+                    }`}
+                  >
+                    <span className="text-base leading-none">{isStarred(model.id) ? '★' : '☆'}</span>
+                  </button>
+                  <div className="relative">
+                    <CardActionsMenu model={model} onDelete={() => setDeleteTarget(model)} />
+                  </div>
                 </div>
               </div>
               <div className="mt-4 flex gap-2 flex-wrap">

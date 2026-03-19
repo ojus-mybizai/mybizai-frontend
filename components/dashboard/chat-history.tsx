@@ -1,12 +1,17 @@
+'use client';
+
 import { useEffect, useRef } from 'react';
 import type { DashboardMessage } from './types';
 import ChatMessage from './chat-message';
 
 interface ChatHistoryProps {
   messages: DashboardMessage[];
+  onSend?: (message: string) => void;
+  onEdit?: (messageId: string, content: string) => void;
+  disabled?: boolean;
 }
 
-export default function ChatHistory({ messages }: ChatHistoryProps) {
+export default function ChatHistory({ messages, onSend, onEdit, disabled }: ChatHistoryProps) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -16,9 +21,15 @@ export default function ChatHistory({ messages }: ChatHistoryProps) {
   }, [messages.length]);
 
   return (
-    <div className="max-h-[calc(100vh-220px)] overflow-y-auto pr-1 space-y-3 pb-8">
+    <div className="space-y-1 pb-2">
       {messages.map((message) => (
-        <ChatMessage key={message.id} message={message} />
+        <ChatMessage
+          key={message.id}
+          message={message}
+          onSend={onSend}
+          onEdit={onEdit}
+          disabled={disabled}
+        />
       ))}
       <div ref={endRef} />
     </div>

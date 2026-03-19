@@ -5,6 +5,25 @@ export const API_BASE_URL =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
   "http://127.0.0.1:8000/api/v1";
 
+// ---------------------------------------------------------------------------
+// In-flight GET deduplication
+// ---------------------------------------------------------------------------
+// If two callers request the exact same GET URL simultaneously, we reuse the
+// same in-flight Promise instead of making two network requests. The entry is
+// removed as soon as the request settles.
+const inflightGets = new Map<string, Promise<unknown>>();
+
+// ---------------------------------------------------------------------------
+// Dev-mode API performance logging
+// ---------------------------------------------------------------------------
+const DEV = process.env.NODE_ENV === 'development';
+
+function logApiCall(method: string, url: string) {
+  if (!DEV) return;
+  // eslint-disable-next-line no-console
+  console.log(`[API CALL] ${method} ${url}`);
+}
+
 export interface ApiError extends Error {
   status: number;
   data?: unknown;
@@ -172,7 +191,25 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { auth = true, ...rest } = options;
 
+  const method = (rest.method ?? 'GET').toUpperCase();
   const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
+
+  // Dev logging — surfaces unexpected/repeated calls in the browser console
+  logApiCall(method, url);
+
+  // ------------------------------------------------------------------
+  // In-flight GET deduplication
+  // If an identical GET is already in-flight, piggyback on it instead
+  // of making a second network request.
+  // ------------------------------------------------------------------
+  if (method === 'GET') {
+    const state = useAuthStore.getState();
+    const dedupeKey = `${url}||${state.accessToken ?? ''}`;
+    const existing = inflightGets.get(dedupeKey);
+    if (existing) {
+      return existing as Promise<T>;
+    }
+  }
 
   const headers = new Headers(rest.headers || {});
   // Don't force Content-Type for FormData; the browser will set multipart boundary.
@@ -189,74 +226,90 @@ export async function apiFetch<T>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...rest,
-      headers,
-      credentials: "include",
-    });
-  } catch (error) {
-    // Handle network errors (CORS, connection refused, etc.)
-    const networkError = new Error(
-      `Network error: ${error instanceof Error ? error.message : "Failed to fetch"}. Please check if the server is running and accessible.`
-    ) as ApiError;
-    networkError.status = 0;
-    networkError.data = { originalError: String(error) };
-    throw networkError;
-  }
+  // Build deduplication key for GET requests
+  const dedupeKey = method === 'GET' ? `${url}||${token ?? ''}` : null;
 
-  if (response.status !== 401 || !auth || isAuthPath(path)) {
-    if (!response.ok) {
+  // Core fetch logic — wrapped so we can register the promise in inflightGets
+  const doFetch = async (): Promise<T> => {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...rest,
+        headers,
+        credentials: "include",
+      });
+    } catch (error) {
+      // Handle network errors (CORS, connection refused, etc.)
+      const networkError = new Error(
+        `Network error: ${error instanceof Error ? error.message : "Failed to fetch"}. Please check if the server is running and accessible.`
+      ) as ApiError;
+      networkError.status = 0;
+      networkError.data = { originalError: String(error) };
+      throw networkError;
+    }
+
+    if (response.status !== 401 || !auth || isAuthPath(path)) {
+      if (!response.ok) {
+        throw await buildError(response);
+      }
+      if (response.status === 204) {
+        return undefined as T;
+      }
+      return response.json() as Promise<T>;
+    }
+
+    if (!refreshPromise) {
+      refreshPromise = refreshAccessToken().finally(() => {
+        refreshPromise = null;
+      });
+    }
+
+    const newToken = await refreshPromise;
+
+    if (!newToken) {
       throw await buildError(response);
     }
-    if (response.status === 204) {
+
+    const retryHeaders = new Headers(rest.headers || {});
+    if (!isFormData && !retryHeaders.has("Content-Type")) {
+      retryHeaders.set("Content-Type", "application/json");
+    }
+    retryHeaders.set("Authorization", `Bearer ${newToken}`);
+
+    let retryResponse: Response;
+    try {
+      retryResponse = await fetch(url, {
+        ...rest,
+        headers: retryHeaders,
+        credentials: "include",
+      });
+    } catch (error) {
+      // Handle network errors on retry
+      const networkError = new Error(
+        `Network error on retry: ${error instanceof Error ? error.message : "Failed to fetch"}. Please check if the server is running and accessible.`
+      ) as ApiError;
+      networkError.status = 0;
+      networkError.data = { originalError: String(error) };
+      throw networkError;
+    }
+
+    if (!retryResponse.ok) {
+      throw await buildError(retryResponse);
+    }
+
+    if (retryResponse.status === 204) {
       return undefined as T;
     }
-    return response.json() as Promise<T>;
-  }
+    return retryResponse.json() as Promise<T>;
+  };
 
-  if (!refreshPromise) {
-    refreshPromise = refreshAccessToken().finally(() => {
-      refreshPromise = null;
+  if (dedupeKey) {
+    const promise = doFetch().finally(() => {
+      inflightGets.delete(dedupeKey!);
     });
+    inflightGets.set(dedupeKey, promise);
+    return promise;
   }
 
-  const newToken = await refreshPromise;
-
-  if (!newToken) {
-    throw await buildError(response);
-  }
-
-  const retryHeaders = new Headers(rest.headers || {});
-  if (!isFormData && !retryHeaders.has("Content-Type")) {
-    retryHeaders.set("Content-Type", "application/json");
-  }
-  retryHeaders.set("Authorization", `Bearer ${newToken}`);
-
-  let retryResponse: Response;
-  try {
-    retryResponse = await fetch(url, {
-      ...rest,
-      headers: retryHeaders,
-      credentials: "include",
-    });
-  } catch (error) {
-    // Handle network errors on retry
-    const networkError = new Error(
-      `Network error on retry: ${error instanceof Error ? error.message : "Failed to fetch"}. Please check if the server is running and accessible.`
-    ) as ApiError;
-    networkError.status = 0;
-    networkError.data = { originalError: String(error) };
-    throw networkError;
-  }
-
-  if (!retryResponse.ok) {
-    throw await buildError(retryResponse);
-  }
-
-  if (retryResponse.status === 204) {
-    return undefined as T;
-  }
-  return retryResponse.json() as Promise<T>;
+  return doFetch();
 }

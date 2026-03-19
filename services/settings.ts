@@ -38,6 +38,21 @@ export interface WorkspaceUpdate {
   working_hours?: Record<string, any>;
 }
 
+export interface DashboardPinsResponse {
+  model_ids: number[];
+}
+
+export async function getDashboardPins(): Promise<DashboardPinsResponse> {
+  return apiFetch<DashboardPinsResponse>('/settings/dashboard-pins', { method: 'GET' });
+}
+
+export async function updateDashboardPins(modelIds: number[]): Promise<DashboardPinsResponse> {
+  return apiFetch<DashboardPinsResponse>('/settings/dashboard-pins', {
+    method: 'PUT',
+    body: JSON.stringify({ model_ids: modelIds }),
+  });
+}
+
 /** Payload to enable/disable LMS and Agents modules (owner only). */
 export interface BusinessModulesUpdate {
   lms_enabled?: boolean;

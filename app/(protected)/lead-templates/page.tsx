@@ -95,6 +95,7 @@ export default function LeadTemplatesPage() {
 
           {!loading && templates.length > 0 && (
             <div className="overflow-hidden rounded-2xl border border-border-color bg-card-bg">
+              <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-border-color">
                 <thead className="bg-bg-secondary text-xs uppercase text-text-secondary">
                   <tr>
@@ -150,6 +151,7 @@ export default function LeadTemplatesPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>

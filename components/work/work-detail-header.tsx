@@ -41,11 +41,18 @@ export interface WorkDetailHeaderProps {
   work: Work;
   /** Optional slot for primary action (e.g. Start work) */
   action?: React.ReactNode;
-  /** Show compact meta (assignee, due) - default true */
+  /** Show the ← Back to Work nav link — default true */
+  showBack?: boolean;
+  /** Show compact meta (assignee, due) — default true */
   showMeta?: boolean;
 }
 
-export function WorkDetailHeader({ work, action, showMeta = true }: WorkDetailHeaderProps) {
+export function WorkDetailHeader({
+  work,
+  action,
+  showBack = true,
+  showMeta = true,
+}: WorkDetailHeaderProps) {
   const isOverdue =
     work.status !== 'completed' &&
     work.status !== 'cancelled' &&
@@ -54,23 +61,27 @@ export function WorkDetailHeader({ work, action, showMeta = true }: WorkDetailHe
     !Number.isNaN(new Date(work.due_date).getTime());
 
   return (
-    <header className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link
-          href="/work"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary hover:text-accent hover:underline"
-        >
-          <span aria-hidden>←</span>
-          Back to Work
-        </Link>
-        {action}
-      </div>
+    <header className="space-y-3">
+      {(showBack || action) && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {showBack && (
+            <Link
+              href="/work"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary hover:text-accent hover:underline"
+            >
+              <span aria-hidden>←</span>
+              Back to Work
+            </Link>
+          )}
+          {action && <div className="ml-auto">{action}</div>}
+        </div>
+      )}
 
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-text-primary">
+        <h1 className="text-xl font-semibold tracking-tight text-text-primary">
           {work.title || work.work_type_name || 'Untitled work'}
         </h1>
-        <p className="mt-1 text-sm text-text-secondary">{work.work_type_name}</p>
+        <p className="mt-0.5 text-sm text-text-secondary">{work.work_type_name}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -97,13 +108,23 @@ export function WorkDetailHeader({ work, action, showMeta = true }: WorkDetailHe
       </div>
 
       {showMeta && (
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-text-secondary">
+        <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-text-secondary">
           <span>
             Assigned to <span className="font-medium text-text-primary">{work.assigned_to_name}</span>
           </span>
           <span>
-            Due {isOverdue ? <span className="font-medium text-red-600 dark:text-red-400">{formatDate(work.due_date)}</span> : formatDate(work.due_date)}
+            Due{' '}
+            {isOverdue ? (
+              <span className="font-medium text-red-600 dark:text-red-400">{formatDate(work.due_date)}</span>
+            ) : (
+              <span className="font-medium text-text-primary">{formatDate(work.due_date)}</span>
+            )}
           </span>
+          {work.lead_name && (
+            <span>
+              Customer <span className="font-medium text-text-primary">{work.lead_name}</span>
+            </span>
+          )}
         </div>
       )}
     </header>

@@ -314,6 +314,7 @@ export default function ReportsPage() {
 
             {lmsEnabled && !loading && (
               <div className="overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-sm">
+                <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-border-color">
                   <thead className="bg-bg-secondary">
                     <tr>
@@ -363,6 +364,7 @@ export default function ReportsPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 {filteredRows.length === 0 && (
                   <div className="px-6 py-10 text-center text-base text-text-secondary">
                     {rows.length === 0 ? (

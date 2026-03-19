@@ -239,6 +239,9 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
   },
 
   async loadLeadStats() {
+    // Guard: if stats already loaded in this session, skip the duplicate network call.
+    // To force a refresh, set leadStats to null before calling this.
+    if (get().leadStats !== null) return;
     // Don't set loading state for stats to avoid blocking UI
     try {
       const stats = await getLeadStats();
@@ -246,7 +249,6 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
     } catch (err) {
       // Don't set error state for stats - it's not critical
       console.warn('Failed to load lead stats:', err);
-      set({ leadStats: null });
     }
   },
 

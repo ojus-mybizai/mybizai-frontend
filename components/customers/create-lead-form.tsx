@@ -1,39 +1,81 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { CustomFieldsEditor } from './custom-fields-editor';
+import { DynamicLeadFieldsInput } from './dynamic-lead-fields-input';
 import type { LeadCreate } from '@/services/customers';
+import type { LeadFieldConfig } from '@/services/lead-fields';
 
 interface CreateLeadFormProps {
   onSubmit: (data: LeadCreate) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
+  fieldConfigs?: LeadFieldConfig[];
 }
 
-const statusOptions = [
-  { value: 'new', label: 'New' },
+const STATUS_OPTIONS = [
+  { value: 'new',       label: 'New' },
   { value: 'contacted', label: 'Contacted' },
   { value: 'qualified', label: 'Qualified' },
-  { value: 'lost', label: 'Lost' },
-  { value: 'won', label: 'Won' },
+  { value: 'lost',      label: 'Lost' },
+  { value: 'won',       label: 'Won' },
 ];
 
-const priorityOptions = [
-  { value: 'low', label: 'Low' },
+const PRIORITY_OPTIONS = [
+  { value: 'low',    label: 'Low' },
   { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
+  { value: 'high',   label: 'High' },
 ];
 
-const sourceOptions = [
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'website', label: 'Website' },
-  { value: 'referral', label: 'Referral' },
-  { value: 'walk-in', label: 'Walk-in' },
-  { value: 'ad_campaign', label: 'Ad Campaign' },
-  { value: 'other', label: 'Other' },
+const SOURCE_OPTIONS = [
+  { value: 'whatsapp',   label: 'WhatsApp' },
+  { value: 'website',    label: 'Website' },
+  { value: 'referral',   label: 'Referral' },
+  { value: 'walk-in',    label: 'Walk-in' },
+  { value: 'ad_campaign',label: 'Ad Campaign' },
+  { value: 'other',      label: 'Other' },
 ];
 
-export function CreateLeadForm({ onSubmit, onCancel, isLoading = false }: CreateLeadFormProps) {
+const STATUS_COLORS: Record<string, string> = {
+  new:       'bg-gray-100 text-gray-700 dark:bg-gray-700/40 dark:text-gray-300',
+  contacted: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  qualified: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+  lost:      'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+  won:       'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+};
+
+const PRIORITY_COLORS: Record<string, string> = {
+  low:    'bg-gray-100 text-gray-700 dark:bg-gray-700/40 dark:text-gray-300',
+  medium: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  high:   'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+};
+
+const INPUT_CLS =
+  'w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary placeholder-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/40 transition-colors';
+const INPUT_ERROR_CLS =
+  'w-full rounded-lg border border-red-400 bg-red-50/30 dark:bg-red-950/10 px-3 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-red-400/40 transition-colors';
+
+function SectionCard({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border-color bg-card-bg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border-color bg-bg-secondary/50">
+        <span className="text-base">{icon}</span>
+        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
+function FieldLabel({ label, required }: { label: string; required?: boolean }) {
+  return (
+    <label className="block text-xs font-medium text-text-secondary mb-1.5">
+      {label}
+      {required && <span className="text-red-500 ml-0.5">*</span>}
+    </label>
+  );
+}
+
+export function CreateLeadForm({ onSubmit, onCancel, isLoading = false, fieldConfigs }: CreateLeadFormProps) {
   const [formData, setFormData] = useState<LeadCreate>({
     name: '',
     phone: '',
@@ -44,207 +86,195 @@ export function CreateLeadForm({ onSubmit, onCancel, isLoading = false }: Create
     notes: '',
     extra_data: {},
   });
-
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required';
-    }
-
+  const validate = (): boolean => {
+    const e: Record<string, string> = {};
+    if (!formData.name.trim()) e.name = 'Name is required';
     if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone number is required';
+      e.phone = 'Phone is required';
     } else if (formData.phone.length < 10 || formData.phone.length > 20) {
-      newErrors.phone = 'Phone number must be between 10-20 characters';
+      e.phone = 'Must be 10–20 characters';
     }
-
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
+      e.email = 'Invalid email address';
     }
-
     if (formData.notes && formData.notes.length > 2000) {
-      newErrors.notes = 'Notes must be 2000 characters or less';
+      e.notes = 'Max 2000 characters';
     }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
-
-    const submitData: LeadCreate = {
+    if (!validate()) return;
+    await onSubmit({
       ...formData,
       email: formData.email || undefined,
       notes: formData.notes || undefined,
       extra_data: Object.keys(formData.extra_data || {}).length > 0 ? formData.extra_data : undefined,
-    };
-
-    await onSubmit(submitData);
+    });
   };
 
-  const handleInputChange = (field: keyof LeadCreate, value: any) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: '' }));
-    }
+  const set = (field: keyof LeadCreate, value: unknown) => {
+    setFormData((p) => ({ ...p, [field]: value }));
+    if (errors[field as string]) setErrors((p) => ({ ...p, [field]: '' }));
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Basic Information */}
-      <div className="space-y-4 rounded-2xl border border-border-color bg-card-bg p-5">
-        <h3 className="text-sm font-semibold text-text-primary">Lead Information</h3>
+    <form onSubmit={handleSubmit} className="space-y-4">
+
+      {/* ── Contact information ── */}
+      <SectionCard title="Contact Information" icon="👤">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Name */}
           <div className="md:col-span-2">
-            <label className="block text-xs font-medium text-text-secondary mb-1">
-              Full Name *
-            </label>
+            <FieldLabel label="Full Name" required />
             <input
               type="text"
               value={formData.name}
-              onChange={(e) => handleInputChange('name', e.target.value)}
-              placeholder="Enter full name"
-              className={`w-full rounded-md border ${
-                errors.name ? 'border-red-500' : 'border-border-color'
-              } bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent`}
+              onChange={(e) => set('name', e.target.value)}
+              placeholder="e.g. Harish Kumar"
+              className={errors.name ? INPUT_ERROR_CLS : INPUT_CLS}
+              autoFocus
             />
-            {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
+            {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
           </div>
 
+          {/* Phone */}
           <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">
-              Phone *
-            </label>
+            <FieldLabel label="Phone" required />
             <input
               type="tel"
               value={formData.phone}
-              onChange={(e) => handleInputChange('phone', e.target.value)}
+              onChange={(e) => set('phone', e.target.value)}
               placeholder="+91 9999999999"
-              className={`w-full rounded-md border ${
-                errors.phone ? 'border-red-500' : 'border-border-color'
-              } bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent`}
+              className={errors.phone ? INPUT_ERROR_CLS : INPUT_CLS}
             />
-            {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
+            {errors.phone && <p className="mt-1 text-xs text-red-500">{errors.phone}</p>}
           </div>
 
+          {/* Email */}
           <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Email</label>
+            <FieldLabel label="Email" />
             <input
               type="email"
               value={formData.email}
-              onChange={(e) => handleInputChange('email', e.target.value)}
+              onChange={(e) => set('email', e.target.value)}
               placeholder="lead@example.com"
-              className={`w-full rounded-md border ${
-                errors.email ? 'border-red-500' : 'border-border-color'
-              } bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent`}
+              className={errors.email ? INPUT_ERROR_CLS : INPUT_CLS}
             />
-            {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+            {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email}</p>}
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* ── Lead classification ── */}
+      <SectionCard title="Classification" icon="🏷">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+          {/* Status pill selector */}
+          <div>
+            <FieldLabel label="Status" />
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => set('status', o.value)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold border transition-all ${
+                    formData.status === o.value
+                      ? `${STATUS_COLORS[o.value]} border-transparent ring-2 ring-offset-1 ring-current/30`
+                      : 'border-border-color bg-bg-secondary text-text-secondary hover:border-accent/40'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
 
+          {/* Priority pill selector */}
           <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Source</label>
+            <FieldLabel label="Priority" />
+            <div className="flex flex-wrap gap-1.5">
+              {PRIORITY_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => set('priority', o.value)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold border transition-all ${
+                    formData.priority === o.value
+                      ? `${PRIORITY_COLORS[o.value]} border-transparent ring-2 ring-offset-1 ring-current/30`
+                      : 'border-border-color bg-bg-secondary text-text-secondary hover:border-accent/40'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Source */}
+          <div>
+            <FieldLabel label="Source" />
             <select
               value={formData.source}
-              onChange={(e) => handleInputChange('source', e.target.value)}
-              className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              onChange={(e) => set('source', e.target.value)}
+              className={INPUT_CLS}
             >
-              {sourceOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
+              {SOURCE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           </div>
         </div>
-      </div>
+      </SectionCard>
 
-      {/* Status & Priority */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-border-color bg-card-bg p-5">
-          <h3 className="text-sm font-semibold text-text-primary mb-4">Status</h3>
-          <select
-            value={formData.status}
-            onChange={(e) => handleInputChange('status', e.target.value)}
-            className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-          >
-            {statusOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="rounded-2xl border border-border-color bg-card-bg p-5">
-          <h3 className="text-sm font-semibold text-text-primary mb-4">Priority</h3>
-          <select
-            value={formData.priority}
-            onChange={(e) => handleInputChange('priority', e.target.value)}
-            className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-          >
-            {priorityOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Custom Fields */}
-      <div className="rounded-2xl border border-border-color bg-card-bg p-5">
-        <h3 className="text-sm font-semibold text-text-primary mb-4">Custom Fields</h3>
-        <CustomFieldsEditor
-          data={formData.extra_data || {}}
-          onChange={(data) => handleInputChange('extra_data', data)}
-          placeholder={{
-            key: 'Field name (e.g., budget, location, interest)',
-            value: 'Field value',
-          }}
+      {/* ── Custom / dynamic fields ── */}
+      <SectionCard title="Custom Fields" icon="⚙">
+        <DynamicLeadFieldsInput
+          value={formData.extra_data ?? {}}
+          onChange={(v) => set('extra_data', v)}
+          fields={fieldConfigs}
         />
-        <p className="mt-3 text-xs text-text-secondary">
-          Add custom fields to capture specific information about this lead (budget, preferences, product interest, etc.).
-        </p>
-      </div>
+      </SectionCard>
 
-      {/* Notes */}
-      <div className="rounded-2xl border border-border-color bg-card-bg p-5">
-        <h3 className="text-sm font-semibold text-text-primary mb-4">Additional Notes</h3>
+      {/* ── Notes ── */}
+      <SectionCard title="Notes" icon="📝">
         <textarea
           value={formData.notes}
-          onChange={(e) => handleInputChange('notes', e.target.value)}
-          placeholder="Additional information about this lead, requirements, preferences, etc."
-          rows={4}
+          onChange={(e) => set('notes', e.target.value)}
+          placeholder="Requirements, preferences, or any other details…"
+          rows={3}
           maxLength={2000}
-          className={`w-full rounded-md border ${
-            errors.notes ? 'border-red-500' : 'border-border-color'
-          } bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent`}
+          className={errors.notes ? INPUT_ERROR_CLS : INPUT_CLS}
         />
-        <div className="mt-2 flex justify-between text-xs text-text-secondary">
-          <span>{errors.notes && <span className="text-red-600">{errors.notes}</span>}</span>
-          <span>{formData.notes?.length || 0}/2000 characters</span>
+        <div className="mt-1.5 flex justify-between text-xs text-text-secondary">
+          <span>{errors.notes && <span className="text-red-500">{errors.notes}</span>}</span>
+          <span>{formData.notes?.length ?? 0} / 2000</span>
         </div>
-      </div>
+      </SectionCard>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-3">
+      {/* ── Actions ── */}
+      <div className="flex items-center justify-end gap-3 pt-1">
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent"
+          className="rounded-lg border border-border-color bg-bg-primary px-4 py-2.5 text-sm font-semibold text-text-primary hover:bg-bg-secondary transition-colors"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={isLoading}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60 transition-colors"
         >
-          {isLoading ? 'Creating...' : 'Create Lead'}
+          {isLoading && (
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          )}
+          {isLoading ? 'Creating…' : 'Create Lead'}
         </button>
       </div>
     </form>

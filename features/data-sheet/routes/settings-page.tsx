@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
@@ -84,7 +84,7 @@ function SortableFieldRow({
 export function SettingsPage() {
   const router = useRouter();
   const ctx = useDataSheetContext();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | ReturnType<typeof normalizeApiError> | null>(null);
   const [saving, setSaving] = useState(false);
   const [addFieldOpen, setAddFieldOpen] = useState(false);
   const [editFieldId, setEditFieldId] = useState<number | null>(null);
@@ -119,23 +119,7 @@ export function SettingsPage() {
     [modelId, saving, ctx?.refetchFields]
   );
 
-  const handleCreateField = useCallback(
-    async (payload: DynamicFieldCreate) => {
-      if (!modelId || saving) return;
-      setSaving(true);
-      setError(null);
-      try {
-        await createField(modelId, payload);
-        setAddFieldOpen(false);
-        if (ctx?.refetchFields) await ctx.refetchFields();
-      } catch (e) {
-        setError(normalizeApiError(e).message);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [modelId, saving, ctx?.refetchFields]
-  );
+  // Field creation is handled by InlineAddField directly (no modal, stays open for multi-add)
 
   const handleUpdateField = useCallback(
     async (fieldId: number, payload: Partial<DynamicField>) => {
@@ -220,7 +204,7 @@ export function SettingsPage() {
       setDeleteModelOpen(false);
       router.push('/data-sheet');
     } catch (e) {
-      setError(normalizeApiError(e).message);
+      setError(normalizeApiError(e));
     } finally {
       setDeletingModel(false);
     }
@@ -267,49 +251,99 @@ export function SettingsPage() {
       </section>
 
       <section className="rounded-xl border border-border-color bg-card-bg p-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-text-primary">Fields</h2>
-          <button
-            type="button"
-            onClick={() => setAddFieldOpen(true)}
-            className="rounded-md border border-border-color bg-bg-secondary px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-bg-primary"
-          >
-            Add field
-          </button>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Fields</h2>
+            <p className="text-xs text-text-secondary mt-0.5">
+              {fields.length} field{fields.length !== 1 ? 's' : ''} · drag to reorder
+            </p>
+          </div>
+          {!addFieldOpen && (
+            <button
+              type="button"
+              onClick={() => setAddFieldOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity shrink-0"
+            >
+              <span className="text-base leading-none font-bold">+</span>
+              Add field
+            </button>
+          )}
         </div>
 
         {error && (
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
-            {error}
+            {typeof error === 'string' ? error : error.message}
+            {typeof error === 'object' && error.linked_tool_names?.length ? (
+              <p className="mt-2 text-sm">
+                Linked tools: {error.linked_tool_names.join(', ')}
+              </p>
+            ) : null}
           </div>
         )}
 
-        {fields.length === 0 ? (
-          <p className="mt-4 text-sm text-text-secondary">
-            No fields yet. Add your first field to define columns for the table.
-          </p>
-        ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEndFields}
-          >
-            <SortableContext
-              items={fields.map((f) => String(f.id))}
-              strategy={verticalListSortingStrategy}
+        {fields.length === 0 && !addFieldOpen ? (
+          <div className="mt-6 flex flex-col items-center gap-3 rounded-xl border border-dashed border-border-color py-10 text-center">
+            <span className="text-3xl">📋</span>
+            <p className="text-sm font-medium text-text-primary">No fields yet</p>
+            <p className="text-xs text-text-secondary">Add your first field to define columns for the table.</p>
+            <button
+              type="button"
+              onClick={() => setAddFieldOpen(true)}
+              className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
             >
-              <ul className="mt-4 space-y-2">
-                {fields.map((field) => (
-                  <SortableFieldRow
-                    key={field.id}
-                    field={field}
-                    onEditClick={() => setEditFieldId(editFieldId === field.id ? null : field.id)}
-                    isEditing={editFieldId === field.id}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
+              <span className="text-base leading-none">+</span>
+              Add first field
+            </button>
+          </div>
+        ) : fields.length === 0 && addFieldOpen ? (
+          <div className="mt-4">
+            <InlineAddField
+              modelId={modelId}
+              onClose={() => setAddFieldOpen(false)}
+              onFieldAdded={ctx?.refetchFields ?? (async () => {})}
+            />
+          </div>
+        ) : (
+          <>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEndFields}
+            >
+              <SortableContext
+                items={fields.map((f) => String(f.id))}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="mt-4 space-y-2">
+                  {fields.map((field) => (
+                    <SortableFieldRow
+                      key={field.id}
+                      field={field}
+                      onEditClick={() => setEditFieldId(editFieldId === field.id ? null : field.id)}
+                      isEditing={editFieldId === field.id}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+            {/* Inline add field panel or "+ Add field" row */}
+            {addFieldOpen ? (
+              <InlineAddField
+                modelId={modelId}
+                onClose={() => setAddFieldOpen(false)}
+                onFieldAdded={ctx?.refetchFields ?? (async () => {})}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddFieldOpen(true)}
+                className="mt-3 flex w-full items-center gap-2 rounded-lg border border-dashed border-border-color px-4 py-3 text-sm text-text-secondary hover:border-accent/60 hover:text-accent transition-colors group"
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded border border-dashed border-current text-sm font-bold leading-none group-hover:border-accent">+</span>
+                Add field
+              </button>
+            )}
+          </>
         )}
         {reordering && (
           <p className="mt-2 text-xs text-text-secondary" role="status">Updating order…</p>
@@ -329,15 +363,6 @@ export function SettingsPage() {
           Delete this model
         </button>
       </section>
-
-      {addFieldOpen && (
-        <AddFieldModal
-          modelId={modelId}
-          onClose={() => setAddFieldOpen(false)}
-          onSubmit={handleCreateField}
-          saving={saving}
-        />
-      )}
 
       {editFieldId && (
         <EditFieldModal
@@ -387,123 +412,227 @@ export function SettingsPage() {
   );
 }
 
-function AddFieldModal({
+/* ─── Field type metadata ─────────────────────────────────────────────────── */
+
+const FIELD_TYPE_META: Record<string, { icon: string; color: string; desc: string }> = {
+  text:      { icon: 'Aa',  color: 'text-blue-500',    desc: 'Short text, names, titles' },
+  long_text: { icon: '¶',   color: 'text-indigo-500',  desc: 'Paragraphs, notes, descriptions' },
+  number:    { icon: '123', color: 'text-green-500',   desc: 'Integer or decimal numbers' },
+  currency:  { icon: '$',   color: 'text-emerald-500', desc: 'Money / price amount' },
+  boolean:   { icon: '✓',   color: 'text-teal-500',    desc: 'Yes / No checkbox' },
+  date:      { icon: '📅',  color: 'text-orange-400',  desc: 'Date or date-time value' },
+  enum:      { icon: '≡',   color: 'text-purple-500',  desc: 'Fixed dropdown options' },
+  image:     { icon: '🖼',  color: 'text-pink-500',    desc: 'Image file upload' },
+  file:      { icon: '📎',  color: 'text-rose-500',    desc: 'Any file attachment' },
+  relation:  { icon: '↗',   color: 'text-cyan-500',    desc: 'Link to another sheet' },
+};
+
+const TYPE_ROWS: string[][] = [
+  ['text', 'long_text', 'number', 'currency', 'boolean'],
+  ['date', 'enum', 'image', 'file', 'relation'],
+];
+
+/* ─── InlineAddField ──────────────────────────────────────────────────────── */
+
+/**
+ * Inline panel (not a modal) for adding fields one-by-one.
+ * - Stays open after each successful add so you can keep adding
+ * - Shows a "Fields added" counter
+ * - Press Enter or click "Add field" to submit
+ * - Click "Done adding fields" to close
+ */
+function InlineAddField({
   modelId,
   onClose,
-  onSubmit,
-  saving,
+  onFieldAdded,
 }: {
   modelId: string | number;
   onClose: () => void;
-  onSubmit: (p: DynamicFieldCreate) => void;
-  saving: boolean;
+  onFieldAdded: () => Promise<void>;
 }) {
-  const [name, setName] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [customName, setCustomName] = useState('');
   const [fieldType, setFieldType] = useState<string>('text');
   const [isRequired, setIsRequired] = useState(false);
-  const [isUnique, setIsUnique] = useState(false);
-  const [isEditable, setIsEditable] = useState(true);
-  const [isSearchable, setIsSearchable] = useState(true);
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [relationModelId, setRelationModelId] = useState<number | null>(null);
   const [relationKind, setRelationKind] = useState<'many_to_one' | 'one_to_many' | 'many_to_many' | null>(null);
   const [defaultValue, setDefaultValue] = useState<unknown>(undefined);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [addedCount, setAddedCount] = useState(0);
+  const [lastAdded, setLastAdded] = useState('');
+  const [fieldError, setFieldError] = useState('');
+  const nameRef = useRef<HTMLInputElement>(null);
 
-  const slugName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || '';
+  // Auto-focus on open
+  useEffect(() => {
+    const t = setTimeout(() => nameRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const finalName = slugName(name) || slugName(displayName) || 'field';
-    const normalizedConfig =
-      Object.keys(config).length && config
-        ? {
-            ...config,
-            ...(Array.isArray(config.options)
-              ? { options: config.options.filter((x: unknown) => x != null && String(x).trim() !== '') }
-              : {}),
-          }
-        : undefined;
-    onSubmit({
-      name: finalName,
-      display_name: displayName.trim() || finalName,
-      field_type: fieldType,
-      is_required: isRequired,
-      is_unique: isUnique,
-      is_editable: isEditable,
-      is_searchable: isSearchable,
-      config: normalizedConfig,
-      relation_model_id: fieldType === 'relation' ? relationModelId : undefined,
-      relation_kind: fieldType === 'relation' ? relationKind : undefined,
-      default_value: defaultValue,
-    });
+  const slugify = (s: string) =>
+    s.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || '';
+
+  const autoSlug = slugify(displayName);
+  const finalName = slugify(customName) || autoSlug || 'field';
+
+  const resetForm = () => {
+    setDisplayName('');
+    setCustomName('');
+    setFieldType('text');
+    setIsRequired(false);
+    setConfig({});
+    setRelationModelId(null);
+    setRelationKind(null);
+    setDefaultValue(undefined);
+    setShowAdvanced(false);
+    setFieldError('');
+    setTimeout(() => nameRef.current?.focus(), 40);
   };
 
-  const slugPreview = slugName(name) || slugName(displayName) || '';
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!displayName.trim()) return;
+    const name = finalName;
+    if (!name) { setFieldError('Invalid field name.'); return; }
+    setSaving(true);
+    setFieldError('');
+    try {
+      const normalizedConfig = Object.keys(config).length
+        ? { ...config, ...(Array.isArray(config.options) ? { options: (config.options as unknown[]).filter((x) => x != null && String(x).trim() !== '') } : {}) }
+        : undefined;
+      await createField(modelId, {
+        name,
+        display_name: displayName.trim(),
+        field_type: fieldType,
+        is_required: isRequired,
+        is_unique: false,
+        is_editable: true,
+        is_searchable: true,
+        config: normalizedConfig,
+        relation_model_id: fieldType === 'relation' ? relationModelId : undefined,
+        relation_kind: fieldType === 'relation' ? relationKind : undefined,
+        default_value: defaultValue,
+      });
+      setLastAdded(displayName.trim());
+      setAddedCount((n) => n + 1);
+      await onFieldAdded();
+      resetForm();
+    } catch (e) {
+      setFieldError(normalizeApiError(e).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const hasConfig = ['enum', 'relation', 'currency', 'boolean', 'image', 'file'].includes(fieldType);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
-      <div
-        className="w-full max-w-md rounded-xl border border-border-color bg-card-bg p-6 shadow-lg max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-lg font-semibold text-text-primary">Add field</h3>
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary">Display name</label>
+    <div className="mt-4 rounded-xl border-2 border-accent/30 bg-bg-secondary/40 overflow-hidden">
+      {/* Header bar */}
+      <div className="flex items-center justify-between gap-3 border-b border-border-color bg-card-bg px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white text-xs font-bold leading-none">+</span>
+          <span className="text-sm font-semibold text-text-primary">Add fields</span>
+          {addedCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
+              <span>✓</span>
+              <span>{addedCount} added{lastAdded ? ` · "${lastAdded}"` : ''}</span>
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs text-text-secondary hover:text-text-primary font-medium px-2 py-1 rounded hover:bg-bg-secondary transition-colors"
+        >
+          Done adding
+        </button>
+      </div>
+
+      <form onSubmit={handleAdd} className="p-4 space-y-4">
+        {/* Field name */}
+        <div className="flex items-start gap-3">
+          <div className="flex-1">
             <input
+              ref={nameRef}
               type="text"
               value={displayName}
-              onChange={(e) => {
-                setDisplayName(e.target.value);
-                if (!name || name === slugName(displayName)) setName(slugName(e.target.value) || '');
-              }}
-              placeholder="e.g. Product Name"
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Field name, e.g. Product Name, Due Date…"
               required
-              className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
+              className="block w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
-            {slugPreview && (
-              <p className="mt-1 text-xs text-text-secondary">
-                Slug: <code className="rounded bg-bg-secondary px-1">{slugPreview}</code>
+            {autoSlug && (
+              <p className="mt-1 text-[11px] text-text-secondary">
+                slug: <code className="rounded bg-bg-primary px-1">{finalName}</code>
               </p>
             )}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary">Internal name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. product_name"
-              required
-              className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary">Type</label>
-            <select
-              value={fieldType}
-              onChange={(e) => {
-                setFieldType(e.target.value);
-                setConfig({});
-                setRelationModelId(null);
-                setRelationKind(null);
-              }}
-              className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
-            >
-              {FIELD_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {getFieldTypeLabel(t)}
-                </option>
-              ))}
-            </select>
+          {/* Required pill toggle */}
+          <button
+            type="button"
+            onClick={() => setIsRequired((v) => !v)}
+            title={isRequired ? 'Required: on' : 'Required: off'}
+            className={`mt-0.5 shrink-0 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${
+              isRequired
+                ? 'border-accent bg-accent text-white'
+                : 'border-border-color bg-bg-primary text-text-secondary hover:border-accent/50'
+            }`}
+          >
+            Required
+          </button>
+        </div>
+
+        {/* Type picker — 2 rows × 5 chips */}
+        <div className="space-y-1.5">
+          {TYPE_ROWS.map((row, ri) => (
+            <div key={ri} className="flex gap-1.5">
+              {row.map((t) => {
+                const meta = FIELD_TYPE_META[t] ?? { icon: '?', color: '', desc: '' };
+                const selected = fieldType === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    title={`${getFieldTypeLabel(t)} — ${meta.desc}`}
+                    onClick={() => {
+                      setFieldType(t);
+                      setConfig({});
+                      setRelationModelId(null);
+                      setRelationKind(null);
+                    }}
+                    className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-2.5 text-center transition-all ${
+                      selected
+                        ? 'border-accent bg-accent/10 shadow-sm'
+                        : 'border-border-color bg-bg-primary hover:border-accent/40 hover:bg-bg-secondary'
+                    }`}
+                  >
+                    <span className={`text-sm font-bold leading-none ${selected ? 'text-accent' : meta.color}`}>
+                      {meta.icon}
+                    </span>
+                    <span className={`text-[10px] font-medium leading-tight ${selected ? 'text-accent' : 'text-text-secondary'}`}>
+                      {getFieldTypeLabel(t).split(' ')[0]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+          <p className="text-[11px] text-text-secondary pt-0.5">
+            <span className="font-medium text-text-primary">{getFieldTypeLabel(fieldType)}</span>
+            {' — '}
+            {FIELD_TYPE_META[fieldType]?.desc ?? ''}
             {fieldType === 'relation' && (
-              <p className="mt-1 text-xs text-text-secondary">
-                Relation target and type cannot be changed after creation.
-              </p>
+              <span className="ml-1 text-amber-500">· Cannot be changed after creation</span>
             )}
-          </div>
-          <div className="border-t border-border-color pt-3">
+          </p>
+        </div>
+
+        {/* Type-specific config */}
+        {hasConfig && (
+          <div className="rounded-lg border border-border-color bg-bg-primary p-3">
             <FieldConfigPanel
               fieldType={fieldType}
               config={config}
@@ -517,38 +646,60 @@ function AddFieldModal({
               onDefaultValueChange={setDefaultValue}
             />
           </div>
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={isRequired} onChange={(e) => setIsRequired(e.target.checked)} />
-              <span className="text-sm text-text-secondary">Required</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={isUnique} onChange={(e) => setIsUnique(e.target.checked)} />
-              <span className="text-sm text-text-secondary">Unique</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={isEditable} onChange={(e) => setIsEditable(e.target.checked)} />
-              <span className="text-sm text-text-secondary">Editable</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={isSearchable} onChange={(e) => setIsSearchable(e.target.checked)} />
-              <span className="text-sm text-text-secondary">Searchable</span>
-            </label>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="rounded-md border border-border-color px-3 py-1.5 text-sm">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !(slugName(name) || slugName(displayName))}
-              className="rounded-md border border-border-color bg-bg-secondary px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-            >
-              {saving ? 'Adding…' : 'Add field'}
-            </button>
-          </div>
-        </form>
-      </div>
+        )}
+
+        {/* Advanced toggle (internal name + Unique/Editable/Searchable) */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="text-xs text-text-secondary hover:text-text-primary transition-colors"
+          >
+            {showAdvanced ? '▾' : '▸'} Advanced options
+          </button>
+          {showAdvanced && (
+            <div className="mt-2 rounded-lg border border-border-color bg-bg-primary p-3 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Internal name</label>
+                <input
+                  type="text"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder={autoSlug || 'field_name'}
+                  className="block w-full rounded border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+                />
+                <p className="mt-0.5 text-[10px] text-text-secondary">Lowercase, underscores. Auto-generated if blank.</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Error */}
+        {fieldError && (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+            {fieldError}
+          </p>
+        )}
+
+        {/* Submit */}
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="submit"
+            disabled={saving || !displayName.trim()}
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            {saving ? (
+              <>
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Adding…
+              </>
+            ) : (
+              <>+ Add field</>
+            )}
+          </button>
+          <span className="text-xs text-text-secondary">or press Enter</span>
+        </div>
+      </form>
     </div>
   );
 }
@@ -590,7 +741,7 @@ function EditFieldModal({
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-xl border border-border-color bg-card-bg p-6 shadow-lg max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-[calc(100vw-2rem)] rounded-xl border border-border-color bg-card-bg p-6 shadow-lg max-h-[90vh] overflow-y-auto sm:max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-text-primary">Edit field</h3>

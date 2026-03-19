@@ -12,6 +12,7 @@ declare global {
       ) => void;
     };
     fbAsyncInit?: () => void;
+    __fbReady?: boolean;
   }
 }
 
@@ -21,11 +22,17 @@ export function FacebookSDKLoader() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if (window.FB) {
+    // If already initialized, nothing to do
+    if (window.__fbReady) {
       return;
     }
 
-    const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+    // If SDK script already loaded but init not yet done, just wait — fbAsyncInit will fire
+    if (window.FB && !window.__fbReady) {
+      return;
+    }
+
+    const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID?.trim();
     if (!appId) {
       return;
     }
@@ -45,9 +52,10 @@ export function FacebookSDKLoader() {
         window.FB.init({
           appId,
           cookie: true,
-          xfbml: true,
+          xfbml: false,
           version: GRAPH_API_VERSION,
         });
+        window.__fbReady = true;
       } catch (e) {
         console.warn('[FacebookSDK] init failed:', e);
       }
@@ -57,7 +65,8 @@ export function FacebookSDKLoader() {
     script.async = true;
     script.defer = true;
     script.crossOrigin = 'anonymous';
-    script.src = `https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=${GRAPH_API_VERSION}`;
+    // Load SDK without hash params — fbAsyncInit handles all initialization
+    script.src = 'https://connect.facebook.net/en_US/sdk.js';
     document.body.appendChild(script);
   }, []);
 

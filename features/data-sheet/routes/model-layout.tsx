@@ -9,6 +9,7 @@ import { DataSheetProvider, type DataSheetContextValue } from '@/features/data-s
 
 const TABS = [
   { slug: '', label: 'Table', href: (id: string) => `/data-sheet/${id}` },
+  { slug: 'reports/ai', label: 'AI Report', href: (id: string) => `/data-sheet/${id}/reports/ai` },
   { slug: 'reports', label: 'Reports', href: (id: string) => `/data-sheet/${id}/reports` },
   { slug: 'settings', label: 'Settings', href: (id: string) => `/data-sheet/${id}/settings` },
   { slug: 'import', label: 'Import', href: (id: string) => `/data-sheet/${id}/import` },
@@ -97,8 +98,8 @@ export function ModelLayout({ children }: { children: ReactNode }) {
   return (
     <ModuleGuard module="lms">
       <DataSheetProvider value={contextValue}>
-          <div className="w-full max-w-full space-y-4">
-            <nav className="text-xs text-text-secondary">
+          <div className="flex w-full max-w-full flex-1 flex-col gap-4 min-h-0">
+            <nav className="shrink-0 text-xs text-text-secondary">
               <Link href="/data-sheet" className="font-semibold text-accent hover:underline">
                 Data Sheet
               </Link>
@@ -112,13 +113,13 @@ export function ModelLayout({ children }: { children: ReactNode }) {
               )}
             </nav>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h1 className="text-xl font-semibold text-text-primary sm:text-2xl">
                 {model.display_name}
               </h1>
             </div>
 
-            <div className="flex gap-1 overflow-x-auto rounded-xl border border-border-color bg-bg-primary px-1 py-1 text-sm">
+            <div className="flex shrink-0 gap-1 overflow-x-auto rounded-xl border border-border-color bg-bg-primary px-1 py-1 text-sm">
               {TABS.map((tab) => {
                 const href = tab.href(String(model.id));
                 const active =
@@ -141,7 +142,7 @@ export function ModelLayout({ children }: { children: ReactNode }) {
               })}
             </div>
 
-            <div>{children}</div>
+            <div className="min-h-0 flex-1 flex flex-col overflow-hidden">{children}</div>
           </div>
         </DataSheetProvider>
     </ModuleGuard>

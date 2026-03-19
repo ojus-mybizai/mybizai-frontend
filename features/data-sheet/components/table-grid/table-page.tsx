@@ -79,11 +79,14 @@ export function TablePage() {
   const [columnPopoverOpen, setColumnPopoverOpen] = useState(false);
   const [views, setViews] = useState<Array<{ id: number; name: string; config: Record<string, unknown> }>>([]);
   const [viewsDropdownOpen, setViewsDropdownOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmDeleteRowId, setConfirmDeleteRowId] = useState<number | null>(null);
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
   const [deletingRowId, setDeletingRowId] = useState<number | null>(null);
+  const [scrollHintDismissed, setScrollHintDismissed] = useState(false);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
   const hasLoadedOnceRef = useRef(false);
 
   // Sync URL -> state once on mount / URL change
@@ -103,33 +106,48 @@ export function TablePage() {
     return () => clearTimeout(t);
   }, [keyword]);
 
-  const refetch = useCallback(async (options?: { background?: boolean }) => {
-    if (!ctx?.modelId) return;
-    const background = options?.background === true;
-    if (!background) {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const res = await queryRecords(ctx.modelId, {
-        page,
-        per_page: perPage,
-        sort: sort.map((s) => ({ field: s.field, direction: s.direction || 'asc' })),
-        filters,
-        keyword: keywordDebounced || undefined,
-      });
-      setItems(res.items);
-      setTotal(res.total);
-      setTotalPages(res.total_pages ?? (Math.ceil(res.total / perPage) || 1));
-    } catch (e) {
-      setError(normalizeApiError(e).message);
-      setItems([]);
-      setTotal(0);
-      setTotalPages(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [ctx?.modelId, page, perPage, sort, filters, keywordDebounced]);
+  const refetch = useCallback(
+    async (options?: { background?: boolean; preserveOrder?: boolean }) => {
+      if (!ctx?.modelId) return;
+      const background = options?.background === true;
+      const preserveOrder = options?.preserveOrder === true;
+      if (!background) {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        const res = await queryRecords(ctx.modelId, {
+          page,
+          per_page: perPage,
+          sort: sort.map((s) => ({ field: s.field, direction: s.direction || 'asc' })),
+          filters,
+          keyword: keywordDebounced || undefined,
+        });
+        if (preserveOrder) {
+          setItems((prev) => {
+            if (prev.length === 0) return res.items;
+            const byId = new Map(res.items.map((r) => [Number(r.id), r]));
+            const merged = prev
+              .map((row) => byId.get(Number(row.id)))
+              .filter((r): r is NonNullable<typeof r> => r != null);
+            return merged.length > 0 ? merged : res.items;
+          });
+        } else {
+          setItems(res.items);
+        }
+        setTotal(res.total);
+        setTotalPages(res.total_pages ?? (Math.ceil(res.total / perPage) || 1));
+      } catch (e) {
+        setError(normalizeApiError(e).message);
+        setItems([]);
+        setTotal(0);
+        setTotalPages(0);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [ctx?.modelId, page, perPage, sort, filters, keywordDebounced]
+  );
 
   useEffect(() => {
     const background = hasLoadedOnceRef.current;
@@ -175,10 +193,8 @@ export function TablePage() {
         return next;
       });
       try {
-        const item = items.find((r) => Number(r.id) === recordId);
-        const data = (item?.data ?? item?.normalized_data ?? {}) as Record<string, unknown>;
         await updateRecord(ctx.modelId, recordId, {
-          data: { ...data, [fieldName]: value },
+          data: { [fieldName]: value },
           mode: 'merge',
         });
         setItems((prev) =>
@@ -192,7 +208,7 @@ export function TablePage() {
               : r
           )
         );
-        void refetch({ background: true });
+        void refetch({ background: true, preserveOrder: true });
       } catch (e) {
         const msg = normalizeApiError(e).message;
         setCellErrors((prev) => ({
@@ -202,7 +218,7 @@ export function TablePage() {
         throw e;
       }
     },
-    [ctx?.modelId, items, refetch]
+    [ctx?.modelId, refetch]
   );
 
   const handleAddRow = useCallback(async () => {
@@ -214,7 +230,10 @@ export function TablePage() {
       const data: Record<string, unknown> = {};
       for (const f of fieldList) {
         const raw = addRowData[f.name];
-        data[f.name] = parseAddRowValue(f, raw);
+        const parsed = parseAddRowValue(f, raw);
+        if (parsed !== null || f.is_required) {
+          data[f.name] = parsed;
+        }
       }
       const created = await createRecord(ctx.modelId, data);
       const recordId = created.id;
@@ -347,7 +366,7 @@ export function TablePage() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-14rem)] min-h-0 flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
           {error}
@@ -355,7 +374,7 @@ export function TablePage() {
       )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <div className="relative flex items-center">
+        <div className="relative flex min-w-0 flex-1 items-center sm:flex-initial">
           <span className="pointer-events-none absolute left-3 text-text-secondary" aria-hidden>
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -366,7 +385,7 @@ export function TablePage() {
             placeholder="Search…"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            className="w-64 rounded-lg border border-border-color bg-bg-primary py-2 pl-9 pr-9 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            className="w-full min-w-0 rounded-lg border border-border-color bg-bg-primary py-2 pl-9 pr-9 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent sm:w-64"
           />
           {keyword && (
             <button
@@ -381,10 +400,90 @@ export function TablePage() {
             </button>
           )}
         </div>
+        {/* Mobile: single Options dropdown */}
+        <div className="relative md:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setOptionsOpen(!optionsOpen);
+              if (!optionsOpen) void loadViews();
+            }}
+            className="min-h-[44px] rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-bg-secondary"
+          >
+            Options
+          </button>
+          {optionsOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setOptionsOpen(false)} aria-hidden />
+              <div className="absolute right-0 top-full z-30 mt-1 w-[min(280px,100vw-2rem)] rounded-lg border border-border-color bg-card-bg p-3 shadow-lg">
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterBuilderOpen(true);
+                      setOptionsOpen(false);
+                    }}
+                    className={`flex min-h-[44px] w-full items-center rounded-lg border px-3 py-2 text-sm font-medium ${
+                      filters.length > 0
+                        ? 'border-accent/60 bg-accent-soft text-accent'
+                        : 'border-border-color bg-bg-primary text-text-secondary hover:bg-bg-secondary'
+                    }`}
+                  >
+                    Filters {filters.length ? `(${filters.length})` : ''}
+                  </button>
+                  <div>
+                    <p className="mb-1 px-1 text-xs font-medium text-text-secondary">Views</p>
+                    {views.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-text-secondary">No saved views</p>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {views.map((v) => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              applyView(v.config);
+                              setOptionsOpen(false);
+                            }}
+                            className="flex min-h-[44px] w-full items-center rounded-lg px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary"
+                          >
+                            {v.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-1 px-1 text-xs font-medium text-text-secondary">Columns</p>
+                    <div className="space-y-0.5">
+                      {searchableFields.map((f) => (
+                        <label key={f.id} className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-3 py-2 hover:bg-bg-secondary">
+                          <input
+                            type="checkbox"
+                            checked={visibleColumns === null ? true : visibleColumns.has(f.name)}
+                            onChange={(e) => {
+                              const next =
+                                visibleColumns === null ? new Set(searchableFields.map((x) => x.name)) : new Set(visibleColumns);
+                              if (e.target.checked) next.add(f.name);
+                              else next.delete(f.name);
+                              setVisibleColumns(next.size === searchableFields.length ? null : next);
+                            }}
+                          />
+                          <span className="text-sm text-text-primary">{f.display_name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        {/* Desktop: Filters, Views, Columns */}
         <button
           type="button"
           onClick={() => setFilterBuilderOpen(true)}
-          className={`rounded-lg border px-4 py-2 text-sm font-medium hover:bg-bg-secondary ${
+          className={`hidden rounded-lg border px-4 py-2 text-sm font-medium hover:bg-bg-secondary md:inline-flex ${
             filters.length > 0
               ? 'border-accent/60 bg-accent-soft text-accent'
               : 'border-border-color bg-card-bg text-text-secondary'
@@ -392,7 +491,7 @@ export function TablePage() {
         >
           Filters {filters.length ? `(${filters.length})` : ''}
         </button>
-        <div className="relative">
+        <div className="relative hidden md:block">
           <button
             type="button"
             onClick={() => {
@@ -425,7 +524,7 @@ export function TablePage() {
             </>
           )}
         </div>
-        <div className="relative">
+        <div className="relative hidden md:block">
           <button
             type="button"
             onClick={() => setColumnPopoverOpen(!columnPopoverOpen)}
@@ -460,7 +559,7 @@ export function TablePage() {
         <button
           type="button"
           onClick={() => setAddRowOpen(true)}
-          className="rounded-lg border border-border-color bg-bg-secondary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-accent-soft"
+          className="min-h-[44px] shrink-0 rounded-lg border border-border-color bg-bg-secondary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-accent-soft"
         >
           Add row
         </button>
@@ -505,32 +604,39 @@ export function TablePage() {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           {selectedIds.size > 0 && (
-            <div className="flex shrink-0 items-center gap-2 rounded-lg border border-border-color bg-accent-soft px-4 py-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-border-color bg-accent-soft px-3 py-2 sm:px-4">
               <span className="text-sm font-medium text-text-primary">{selectedIds.size} selected</span>
               <button
                 type="button"
                 onClick={handleBulkDeleteClick}
                 disabled={bulkDeleting}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                className="min-h-[44px] rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
               >
                 {bulkDeleting ? 'Deleting…' : 'Delete selected'}
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set())}
-                className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-bg-secondary"
+                className="min-h-[44px] rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-bg-secondary"
               >
                 Clear selection
               </button>
             </div>
           )}
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-sm">
-          <div className="min-h-0 flex-1 overflow-auto">
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-sm">
+          <div
+            ref={tableScrollRef}
+            onScroll={() => {
+              const el = tableScrollRef.current;
+              if (el && el.scrollLeft > 10) setScrollHintDismissed(true);
+            }}
+            className="min-h-0 min-w-0 flex-1 w-full overflow-x-auto"
+          >
           <table className="w-full min-w-[600px] text-left text-sm">
             <thead className="sticky top-0 z-10 bg-bg-secondary">
               <tr className="border-b border-border-color bg-bg-secondary">
-                <th className="sticky left-0 z-10 w-10 border-r border-border-color bg-bg-secondary px-2 py-2.5">
+                <th className="w-11 min-w-[44px] border-r border-border-color bg-bg-secondary px-2 py-2.5">
                   <input
                     type="checkbox"
                     checked={items.length > 0 && selectedIds.size === items.length}
@@ -538,7 +644,7 @@ export function TablePage() {
                     aria-label="Select all"
                   />
                 </th>
-                <th className="sticky left-10 z-10 min-w-[120px] border-r border-border-color bg-bg-secondary px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">
+                <th className="min-w-[120px] border-r border-border-color bg-bg-secondary px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">
                   Record
                 </th>
                 {visibleFields.map((f) => {
@@ -593,7 +699,7 @@ export function TablePage() {
                 const rowErrors = cellErrors[String(recordId)] ?? {};
                 return (
                   <tr key={recordId} className="border-b border-border-color last:border-b-0 even:bg-bg-primary/50 hover:bg-bg-secondary/60">
-                    <td className="sticky left-0 z-10 w-10 border-r border-border-color bg-inherit px-2 py-2.5">
+                    <td className="w-11 min-w-[44px] border-r border-border-color bg-inherit px-2 py-2.5">
                       <input
                         type="checkbox"
                         checked={selectedIds.has(recordId)}
@@ -601,7 +707,7 @@ export function TablePage() {
                         aria-label={`Select row ${recordId}`}
                       />
                     </td>
-                    <td className="sticky left-10 z-10 border-r border-border-color bg-inherit px-4 py-2.5 text-sm text-text-secondary">
+                    <td className="border-r border-border-color bg-inherit px-4 py-2.5 text-sm text-text-secondary">
                       {String(row.record_key ?? row.id)}
                     </td>
                     {visibleFields.map((field) =>
@@ -625,7 +731,7 @@ export function TablePage() {
                           error={rowErrors[field.name]}
                           fetchRelatedRecords={fetchRelatedRecords}
                           modelId={modelId}
-                          onAttachmentAdded={() => void refetch({ background: true })}
+                          onAttachmentAdded={() => void refetch({ background: true, preserveOrder: true })}
                         />
                       )
                     )}
@@ -633,7 +739,7 @@ export function TablePage() {
                       <button
                         type="button"
                         onClick={() => handleDeleteRowClick(recordId)}
-                        className="rounded-lg px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                        className="min-h-[44px] min-w-[44px] rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-400"
                       >
                         Delete
                       </button>
@@ -644,18 +750,29 @@ export function TablePage() {
             </tbody>
           </table>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border-color bg-card-bg px-4 py-3 text-sm text-text-secondary">
-            <div className="flex items-center gap-4">
-              <span>Page {page} of {totalPages || 1} · {total} total</span>
-              <label className="flex items-center gap-2">
-                <span>Per page</span>
+          {!scrollHintDismissed && (
+            <div
+              className="pointer-events-none absolute bottom-2 right-2 z-10 rounded bg-black/60 px-2 py-1 text-xs text-white md:hidden"
+              aria-hidden
+            >
+              Scroll →
+            </div>
+          )}
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border-color bg-card-bg px-3 py-3 text-sm text-text-secondary sm:px-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+              <span className="text-xs sm:text-sm">
+                <span className="sm:hidden">{page} / {totalPages || 1} · {total} total</span>
+                <span className="hidden sm:inline">Page {page} of {totalPages || 1} · {total} total</span>
+              </span>
+              <label className="flex min-h-[44px] items-center gap-2">
+                <span className="text-xs sm:text-sm">Per page</span>
                 <select
                   value={perPage}
                   onChange={(e) => {
                     setPerPage(Number(e.target.value));
                     setPage(1);
                   }}
-                  className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary"
+                  className="min-h-[44px] rounded-lg border border-border-color bg-bg-primary px-2 py-2 text-sm text-text-primary"
                 >
                   {[10, 25, 50, 100].map((n) => (
                     <option key={n} value={n}>{n}</option>
@@ -668,15 +785,15 @@ export function TablePage() {
                 type="button"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm disabled:opacity-50 hover:bg-bg-secondary"
+                className="min-h-[44px] min-w-[44px] rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm disabled:opacity-50 hover:bg-bg-secondary"
               >
-                Previous
+                Prev
               </button>
               <button
                 type="button"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
-                className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm disabled:opacity-50 hover:bg-bg-secondary"
+                className="min-h-[44px] min-w-[44px] rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm disabled:opacity-50 hover:bg-bg-secondary"
               >
                 Next
               </button>
@@ -743,7 +860,7 @@ function AddRowModal({
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-hidden />
-      <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 max-h-[90vh] overflow-y-auto rounded-xl border border-border-color bg-card-bg p-6 shadow-xl">
+      <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 max-h-[90vh] overflow-y-auto rounded-xl border border-border-color bg-card-bg p-4 shadow-xl sm:p-6">
         <h3 className="text-lg font-semibold text-text-primary">Add row</h3>
         <div className="mt-4 space-y-3">
           {fields.map((f) => {

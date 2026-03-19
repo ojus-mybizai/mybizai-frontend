@@ -7,8 +7,6 @@ const SCOPE_OPTIONS = [
   { mention: '@work', model: 'work', label: 'Work & tasks' },
   { mention: '@employees', model: 'employees', label: 'Team & employees' },
   { mention: '@leads', model: 'leads', label: 'Leads' },
-  { mention: '@orders', model: 'orders', label: 'Orders' },
-  { mention: '@catalog', model: 'catalog', label: 'Catalog' },
   { mention: '@conversations', model: 'conversations', label: 'Conversations' },
   { mention: '@contacts', model: 'contacts', label: 'Contacts' },
   { mention: '@channels', model: 'channels', label: 'Channels' },
@@ -266,7 +264,7 @@ export default function FloatingChatInput({
                 onKeyDown={handleKeyDown}
                 onSelect={handleCaret}
                 onClick={handleCaret}
-                placeholder="Ask about work, team, leads, orders…"
+                placeholder="Ask about work, team, leads…"
                 aria-label="Message for AI Manager"
                 aria-describedby={showScopePopover ? 'scope-list' : undefined}
                 aria-disabled={isLoading}
@@ -300,7 +298,7 @@ export default function FloatingChatInput({
               )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <label className="cursor-pointer inline-flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-secondary focus-within:ring-2 focus-within:ring-accent/50 focus-within:ring-offset-2 focus-within:ring-offset-bg-primary">
+              <label className="cursor-pointer inline-flex h-11 min-h-[44px] min-w-[44px] w-11 items-center justify-center rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-secondary focus-within:ring-2 focus-within:ring-accent/50 focus-within:ring-offset-2 focus-within:ring-offset-bg-primary">
                 <input
                   type="file"
                   accept={ACCEPT}
@@ -324,7 +322,7 @@ export default function FloatingChatInput({
                 onClick={handleSend}
                 aria-label="Send message"
                 aria-busy={isLoading}
-                className="inline-flex h-9 px-3 sm:px-4 items-center justify-center gap-1.5 rounded-md bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg-primary"
+                className="inline-flex h-11 min-h-[44px] min-w-[44px] px-3 sm:px-4 items-center justify-center gap-1.5 rounded-md bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg-primary"
               >
                 {isLoading ? (
                   <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />

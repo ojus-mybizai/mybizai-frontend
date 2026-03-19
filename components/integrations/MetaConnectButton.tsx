@@ -28,20 +28,36 @@ export function MetaConnectButton({ channel, onConnected }: MetaConnectButtonPro
   const handleClick = () => {
     setError(null);
 
+    const hasAppId = typeof process.env.NEXT_PUBLIC_FACEBOOK_APP_ID === 'string' && process.env.NEXT_PUBLIC_FACEBOOK_APP_ID.trim().length > 0;
+
     if (typeof window === 'undefined' || !window.FB) {
-      const hasAppId = typeof process.env.NEXT_PUBLIC_FACEBOOK_APP_ID === 'string' && process.env.NEXT_PUBLIC_FACEBOOK_APP_ID.length > 0;
       setError(
         hasAppId
           ? 'Facebook SDK not loaded yet. Refresh the page and try again.'
-          : 'Facebook SDK not available. Add NEXT_PUBLIC_FACEBOOK_APP_ID to .env.local and restart the dev server.'
+          : 'Facebook App ID is not configured. Add NEXT_PUBLIC_FACEBOOK_APP_ID to .env.local and restart the dev server.'
       );
+      return;
+    }
+
+    if (!window.__fbReady) {
+      setError('Facebook SDK is still initializing. Please wait a moment and try again.');
       return;
     }
 
     setLoading(true);
 
+    // Safety timeout: if FB.login() never calls its callback (e.g. popup blocked by browser),
+    // reset the loading state so the button doesn't stay stuck forever.
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+      setError(
+        'The Facebook login window did not open. Please allow pop-ups for this site in your browser and try again.'
+      );
+    }, 30000);
+
     try {
       window.FB.login((response) => {
+        clearTimeout(timeoutId);
         (async () => {
           try {
             if (!response.authResponse) {
@@ -72,10 +88,11 @@ export function MetaConnectButton({ channel, onConnected }: MetaConnectButtonPro
         })();
       }, { scope: getScope(channel) });
     } catch (err) {
+      clearTimeout(timeoutId);
       setLoading(false);
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('init') && msg.includes('version')) {
-        setError('Meta login is not ready. Refresh the page and try again, or check that NEXT_PUBLIC_FACEBOOK_APP_ID is set.');
+      if (msg.toLowerCase().includes('init')) {
+        setError('Meta login is not ready. Refresh the page and try again.');
       } else {
         setError(msg || 'Failed to open Meta login.');
       }

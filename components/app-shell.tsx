@@ -4,23 +4,27 @@ import { ReactNode, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
-  Sheet,
   FileText,
   Users,
   MessageSquare,
-  Radio,
+  Target,
   Briefcase,
+  ClipboardList,
   UserCog,
-  Store,
   Bot,
   LogOut,
   Settings,
+  MessagesSquare,
+  BarChart2,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { performLogout } from '@/lib/auth-actions';
 import { useThemeStore } from '@/lib/theme-store';
 import { useAgentStore } from '@/lib/agent-store';
+import { DataSheetNav } from '@/components/data-sheet-nav';
+
+/* ─── Types ──────────────────────────────────────────────────────────────── */
 
 interface AppShellProps {
   children: ReactNode;
@@ -34,65 +38,82 @@ interface NavChild {
 }
 
 interface NavItem {
+  kind?: never;
   label: string;
   href: string;
-  short: string;
   icon: LucideIcon;
   children?: NavChild[];
 }
 
-type NavSection = {
-  kind: 'section';
-  label: string;
-};
+type NavSection = { kind: 'section'; label: string };
+type DataSheetSlot = { kind: 'datasheet' };
+type NavEntry = NavItem | NavSection | DataSheetSlot;
 
-type NavEntry = NavItem | NavSection;
-
-function isNavItem(entry: NavEntry): entry is NavItem {
-  return typeof (entry as NavItem | undefined)?.href === 'string';
+function isNavItem(e: NavEntry): e is NavItem {
+  return !('kind' in e) || e.kind === undefined;
 }
+function isSection(e: NavEntry): e is NavSection {
+  return (e as NavSection).kind === 'section';
+}
+function isDataSheetSlot(e: NavEntry): e is DataSheetSlot {
+  return (e as DataSheetSlot).kind === 'datasheet';
+}
+
+/* ─── Nav builder ────────────────────────────────────────────────────────── */
 
 function buildNavItems(
   lmsEnabled: boolean,
   agentsEnabled: boolean,
   hasPermission: (key: string) => boolean,
 ): NavEntry[] {
-  const items: NavEntry[] = [
-    { kind: 'section', label: 'Foundation' },
-    { label: 'Dashboard', href: '/dashboard', short: 'DB', icon: LayoutDashboard },
-    { label: 'Data Sheet', href: '/data-sheet', short: 'DS', icon: Sheet },
-  ];
-  if (hasPermission('view_reports')) {
-    items.push({ label: 'Reports', href: '/reports', short: 'RP', icon: FileText });
-  }
+  const items: NavEntry[] = [];
 
+  // ── Dashboard (always, no section header) ────────────────────────────────
+  items.push({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard });
+
+  // ── Work (daily employee flow) ────────────────────────────────────────────
   if (lmsEnabled) {
-    items.push({ label: 'My Workstation', href: '/employee-dashboard', short: 'MW', icon: Briefcase });
-    items.push({ label: 'Customers', href: '/customers', short: 'CU', icon: Users });
-    items.push({ label: 'Conversations', href: '/conversations', short: 'CV', icon: MessageSquare });
-    items.push({ label: 'Channels', href: '/channels', short: 'CH', icon: Radio });
-    items.push({ label: 'Work & Tasks', href: '/work', short: 'WK', icon: Briefcase });
-    if (hasPermission('manage_employees')) {
-      items.push({ label: 'Employees', href: '/employees', short: 'EM', icon: UserCog });
-    }
+    items.push({ kind: 'section', label: 'Work' });
+    items.push({ label: 'My Workstation', href: '/employee-dashboard', icon: Briefcase });
+    items.push({ label: 'Work & Tasks',   href: '/work',               icon: ClipboardList });
+    items.push({ label: 'Team Chats',     href: '/chats',              icon: MessagesSquare });
   }
 
-  items.push({ kind: 'section', label: 'Purchased Modules' });
-  // items.push({ label: 'Storefront', href: '/storefront/settings', short: 'SF', icon: Store });
+  // ── CRM (customer-facing) ─────────────────────────────────────────────────
+  if (lmsEnabled) {
+    items.push({ kind: 'section', label: 'CRM' });
+    items.push({ label: 'Customers',     href: '/customers',     icon: Users });
+    items.push({ label: 'Conversations', href: '/conversations', icon: MessageSquare });
+    items.push({ label: 'Lead Sources',  href: '/lead-sources',  icon: Target });
+  }
 
+  // ── Data & Insights ───────────────────────────────────────────────────────
+  items.push({ kind: 'section', label: 'Data & Insights' });
+  items.push({ kind: 'datasheet' }); // DataSheetNav dropdown renders here
+  if (hasPermission('view_reports')) {
+    items.push({ label: 'Reports', href: '/reports', icon: BarChart2 });
+  }
+
+  // ── People ────────────────────────────────────────────────────────────────
+  if (lmsEnabled && hasPermission('manage_employees')) {
+    items.push({ kind: 'section', label: 'People' });
+    items.push({ label: 'Employees', href: '/employees', icon: UserCog });
+  }
+
+  // ── Modules ───────────────────────────────────────────────────────────────
   if (agentsEnabled && hasPermission('manage_agents')) {
+    items.push({ kind: 'section', label: 'Modules' });
     items.push({
       label: 'Business Agents',
       href: '/agents',
-      short: 'BA',
       icon: Bot,
       children: [
-        { label: 'All Agents', href: '/agents', group: 'manage' },
-        { label: 'New Agent', href: '/agents/new', group: 'manage' },
-        { label: 'Last Opened Agent', href: '/agents', group: 'workspace', isLastAgent: true },
-        { label: 'Lead Templates', href: '/lead-templates', group: 'analytics' },
-        { label: 'Agent Analytics', href: '/analytics', group: 'analytics' },
-        { label: 'Message Templates', href: '/agents/templates', group: 'analytics' },
+        { label: 'All Agents',          href: '/agents',            group: 'manage' },
+        { label: 'New Agent',           href: '/agents/new',        group: 'manage' },
+        { label: 'Last Opened Agent',   href: '/agents',            group: 'workspace', isLastAgent: true },
+        { label: 'Lead Templates',      href: '/lead-templates',    group: 'analytics' },
+        { label: 'Agent Analytics',     href: '/analytics',         group: 'analytics' },
+        { label: 'Message Templates',   href: '/agents/templates',  group: 'analytics' },
       ],
     });
   }
@@ -100,30 +121,52 @@ function buildNavItems(
   return items;
 }
 
-function getTitle(pathname: string | null, navItems: NavEntry[]): string {
+/* ─── Page title resolver ────────────────────────────────────────────────── */
+
+const TITLE_MAP: Record<string, string> = {
+  '/dashboard':          'Dashboard',
+  '/employee-dashboard': 'My Workstation',
+  '/work':               'Work & Tasks',
+  '/chats':              'Team Chats',
+  '/customers':          'Customers',
+  '/conversations':      'Conversations',
+  '/lead-sources':       'Lead Sources',
+  '/data-sheet':         'Data Sheet',
+  '/reports':            'Reports',
+  '/employees':          'Employees',
+  '/agents':             'Business Agents',
+  '/lead-templates':     'Lead Templates',
+  '/analytics':          'Agent Analytics',
+  '/settings':           'Settings',
+};
+
+function getTitle(pathname: string | null): string {
   if (!pathname) return 'MyBizAI';
-  const items = navItems.filter(isNavItem);
-  const match = items.find((entry) => {
-    if (entry.href === '/dashboard') return pathname === '/dashboard';
-    return pathname.startsWith(entry.href);
-  });
-  return match ? match.label : 'MyBizAI';
+  const exact = TITLE_MAP[pathname];
+  if (exact) return exact;
+  for (const [prefix, label] of Object.entries(TITLE_MAP)) {
+    if (pathname.startsWith(prefix + '/') || pathname.startsWith(prefix + '?')) return label;
+  }
+  return 'MyBizAI';
 }
+
+/* ─── AppShell ───────────────────────────────────────────────────────────── */
 
 export default function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user as any);
   const business = user?.businesses?.[0];
-  const lmsEnabled = business?.lms_enabled !== false;
+  const lmsEnabled  = business?.lms_enabled  !== false;
   const agentsEnabled = business?.agents_enabled !== false;
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const navItems = buildNavItems(lmsEnabled, agentsEnabled, hasPermission);
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [openNavHref, setOpenNavHref] = useState<string | null>(
-    pathname && pathname.startsWith('/agents') ? '/agents' : null,
+    pathname?.startsWith('/agents') ? '/agents' : null,
   );
-  const theme = useThemeStore((s) => s.theme);
+  const theme     = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const lastAgentId = useAgentStore((s) => s.lastAgentId);
 
@@ -138,164 +181,208 @@ export default function AppShell({ children }: AppShellProps) {
     router.replace('/login');
   };
 
-  const isActive = (item: NavItem) => {
+  const isActive = (href: string) => {
     if (!pathname) return false;
-    if (item.href === '/dashboard') {
-      return pathname === '/dashboard';
-    }
-    return pathname.startsWith(item.href);
+    if (href === '/dashboard') return pathname === '/dashboard';
+    return pathname.startsWith(href);
   };
 
-  const title = getTitle(pathname, navItems);
+  const title = getTitle(pathname);
 
+  // User avatar initials
+  const userDisplay = user?.name || user?.email || '';
+  const initials = userDisplay
+    ? userDisplay.split(/[\s@.]/).filter(Boolean).slice(0, 2).map((s: string) => s[0].toUpperCase()).join('')
+    : '?';
+
+  /* ── Sidebar nav item render ─────────────────────────────────────────── */
+  const renderNavItem = (item: NavItem) => {
+    const active = isActive(item.href);
+    const isAgents = item.href === '/agents';
+    const isOpen = !!item.children && openNavHref === item.href;
+
+    const handleAgentSubClick = (child: NavChild) => {
+      if (child.isLastAgent) {
+        handleNavigate(lastAgentId ? `/agents/${lastAgentId}/overview` : '/agents');
+      } else {
+        handleNavigate(child.href);
+      }
+    };
+
+    return (
+      <div key={item.href}>
+        <button
+          type="button"
+          onClick={() => {
+            if (isAgents && item.children) {
+              setOpenNavHref(isOpen ? null : item.href);
+              handleNavigate(item.href);
+            } else {
+              setOpenNavHref(null);
+              handleNavigate(item.href);
+            }
+          }}
+          className={`group flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm text-left transition-all ${
+            active
+              ? 'bg-accent/10 text-accent font-medium'
+              : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <item.icon
+              className={`h-4 w-4 shrink-0 transition-colors ${
+                active ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'
+              }`}
+              aria-hidden
+            />
+            <span className="truncate">{item.label}</span>
+          </div>
+          {item.children && (
+            <span className={`text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''} ${active ? 'text-accent' : 'text-text-secondary'}`}>
+              ▸
+            </span>
+          )}
+        </button>
+
+        {/* Agent submenu */}
+        {isAgents && item.children && isOpen && (
+          <div className="ml-6 mt-0.5 border-l border-border-color pl-3 space-y-0.5">
+            {item.children.map((child) => {
+              const childActive =
+                pathname === child.href ||
+                (child.isLastAgent && !!pathname?.startsWith('/agents/'));
+              const disabled = child.isLastAgent && !lastAgentId;
+              return (
+                <button
+                  key={child.label}
+                  type="button"
+                  onClick={() => handleAgentSubClick(child)}
+                  disabled={disabled}
+                  title={disabled ? 'Open an agent to pin it here.' : undefined}
+                  className={`flex w-full items-center rounded-md px-2 py-2 text-xs text-left transition-colors ${
+                    childActive
+                      ? 'text-accent font-semibold'
+                      : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+                  } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                  <span className="truncate">
+                    {child.isLastAgent && !lastAgentId ? 'Last Opened (none yet)' : child.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /* ── Sidebar content ─────────────────────────────────────────────────── */
   const SidebarContent = (
-    <div className="flex h-full flex-col border-r border-border-color bg-bg-primary">
-      <div className="flex h-14 items-center gap-2 px-4 border-b border-border-color">
-        <div className="inline-flex items-center gap-2 rounded-full border border-border-color bg-bg-secondary px-3 py-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
-            MyBizAI
-          </span>
+    <div className="flex h-full flex-col bg-bg-primary border-r border-border-color">
+
+      {/* Brand header */}
+      <div className="flex h-14 shrink-0 items-center gap-3 px-4 border-b border-border-color">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent">
+          <span className="text-xs font-bold text-white leading-none">M</span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-text-primary truncate leading-tight">MyBizAI</p>
+          {business?.name && (
+            <p className="text-[11px] text-text-secondary truncate leading-tight">{business.name}</p>
+          )}
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
-        {navItems.map((entry) => {
-          if (!isNavItem(entry)) {
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
+        {navItems.map((entry, idx) => {
+          // Section divider
+          if (isSection(entry)) {
             return (
-              <div
-                key={`section-${entry.label}`}
-                className="mt-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary"
-              >
-                {entry.label}
+              <div key={`s-${entry.label}`} className={`${idx > 0 ? 'mt-4' : 'mt-2'} mb-1 flex items-center gap-2`}>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary/60 whitespace-nowrap">
+                  {entry.label}
+                </span>
+                <div className="h-px flex-1 bg-border-color/60" />
               </div>
             );
           }
 
-          const item = entry;
-          const active = isActive(item);
-          const isAgents = item.href === '/agents';
-          const isOpen = !!item.children && openNavHref === item.href;
+          // DataSheetNav slot
+          if (isDataSheetSlot(entry)) {
+            return (
+              <DataSheetNav key="datasheet" onNavigate={() => setSidebarOpen(false)} />
+            );
+          }
 
-          const handleAgentSubClick = (child: NavChild) => {
-            if (child.isLastAgent) {
-              if (lastAgentId) {
-                handleNavigate(`/agents/${lastAgentId}/overview`);
-              } else {
-                handleNavigate('/agents');
-              }
-            } else {
-              handleNavigate(child.href);
-            }
-          };
-
-          return (
-            <div key={item.href} className="space-y-1">
-              <button
-                type="button"
-                onClick={() => {
-                  if (item.children && item.href === '/agents') {
-                    setOpenNavHref(isOpen ? null : item.href);
-                    handleNavigate(item.href);
-                  } else {
-                    setOpenNavHref(null);
-                    handleNavigate(item.href);
-                  }
-                }}
-                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-left transition-colors ${
-                  active
-                    ? 'bg-card-bg text-text-primary'
-                    : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-text-secondary">
-                    <item.icon className="h-3.5 w-3.5" aria-hidden />
-                  </div>
-                  <span className="truncate">{item.label}</span>
-                </div>
-                {item.children && (
-                  <span className="text-xs text-text-secondary">
-                    {isOpen ? '▾' : '▸'}
-                  </span>
-                )}
-              </button>
-
-              {isAgents && item.children && isOpen && (
-                <div className="ml-8 mt-1 space-y-0.5 border-l border-border-color pl-3 text-xs">
-                  {item.children.map((child) => {
-                    const childActive =
-                      pathname === child.href ||
-                      (child.isLastAgent && pathname.startsWith('/agents/'));
-                    const isDisabledLast = child.isLastAgent && !lastAgentId;
-                    const label =
-                      child.isLastAgent && !lastAgentId
-                        ? 'Last Opened Agent (none yet)'
-                        : child.label;
-                    return (
-                      <button
-                        key={child.label}
-                        type="button"
-                        onClick={() => handleAgentSubClick(child)}
-                        disabled={isDisabledLast}
-                        title={
-                          child.isLastAgent && !lastAgentId
-                            ? 'Open an agent to pin it here.'
-                            : undefined
-                        }
-                        className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-left transition-colors ${
-                          childActive
-                            ? 'bg-card-bg text-text-primary font-semibold'
-                            : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
-                        } ${isDisabledLast ? 'opacity-60 cursor-not-allowed' : ''}`}
-                      >
-                        <span className="truncate">{label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
+          // Regular nav item
+          return renderNavItem(entry);
         })}
       </nav>
 
-      <div className="border-t border-border-color px-2 py-3">
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-left text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
-        >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-text-secondary">
-            <LogOut className="h-3.5 w-3.5" aria-hidden />
+      {/* Footer — user info + settings/logout */}
+      <div className="shrink-0 border-t border-border-color">
+        {/* User identity row */}
+        <div className="flex items-center gap-2.5 px-3 py-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/20 text-accent text-xs font-bold">
+            {initials}
           </div>
-          <span>Logout</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push('/settings')}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-left text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
-        >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-text-secondary">
-            <Settings className="h-3.5 w-3.5" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium text-text-primary leading-tight">
+              {user?.name || user?.email?.split('@')[0] || 'Account'}
+            </p>
+            {user?.email && user?.name && (
+              <p className="truncate text-[10px] text-text-secondary leading-tight">{user.email}</p>
+            )}
           </div>
-          <span>Settings</span>
-        </button>
+        </div>
+        {/* Action row */}
+        <div className="flex items-center gap-1 px-3 pb-3">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border-color py-1.5 text-xs text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+          >
+            <span>{theme === 'dark' ? '🌙' : '☀️'}</span>
+            <span className="hidden lg:inline">{theme === 'dark' ? 'Dark' : 'Light'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSidebarOpen(false); router.push('/settings'); }}
+            title="Settings"
+            className="flex items-center justify-center rounded-md border border-border-color p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+          >
+            <Settings className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Logout"
+            className="flex items-center justify-center rounded-md border border-border-color p-1.5 text-text-secondary hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 transition-colors"
+          >
+            <LogOut className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </div>
     </div>
   );
 
+  /* ── Shell layout ────────────────────────────────────────────────────── */
   return (
     <div className="h-screen overflow-hidden bg-bg-secondary text-text-primary flex">
+
       {/* Desktop sidebar */}
-      <aside className="hidden md:block md:w-56 lg:w-64">
+      <aside className="hidden md:block md:w-52 lg:w-60 shrink-0">
         {SidebarContent}
       </aside>
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">
-          <div className="w-64 max-w-[80vw] bg-bg-primary border-r border-border-color">
+          <div className="w-60 max-w-[80vw] bg-bg-primary border-r border-border-color overflow-hidden">
             {SidebarContent}
           </div>
           <button
@@ -307,48 +394,53 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
       )}
 
+      {/* Main area */}
       <div className="flex min-w-0 min-h-0 flex-1 flex-col">
+
         {/* Topbar */}
-        <header className="h-14 border-b border-border-color bg-bg-primary px-4 md:px-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <header className="h-14 shrink-0 border-b border-border-color bg-bg-primary px-4 md:px-6 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Mobile menu toggle */}
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-md border border-border-color bg-bg-secondary px-2 py-1 text-xs text-text-secondary hover:text-text-primary md:hidden"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-text-secondary hover:text-text-primary md:hidden shrink-0"
               onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
             >
-              Menu
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
             </button>
-            <h1 className="text-sm font-semibold text-text-primary md:text-base truncate max-w-[50vw] md:max-w-none">
-              {title}
-            </h1>
+            <h1 className="text-sm font-semibold text-text-primary truncate">{title}</h1>
           </div>
-          <div className="flex items-center gap-3 text-xs text-text-secondary max-w-[40vw] md:max-w-xs truncate">
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Theme toggle — desktop only (also in sidebar) */}
             <button
               type="button"
               aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
               onClick={toggleTheme}
-              className="inline-flex items-center gap-1 rounded-full border border-border-color bg-bg-secondary px-2 py-1 text-xs font-medium text-text-secondary hover:bg-accent-soft hover:text-text-primary transition-colors"
+              className="hidden md:inline-flex h-9 items-center gap-1.5 rounded-full border border-border-color bg-bg-secondary px-3 text-xs font-medium text-text-secondary hover:bg-accent-soft hover:text-text-primary transition-colors"
             >
-              <span className="text-xs" aria-hidden="true">
-                {theme === 'dark' ? '🌙' : '☀️'}
-              </span>
-              <span className="hidden sm:inline">
-                {theme === 'dark' ? 'Dark' : 'Light'}
-              </span>
+              <span aria-hidden>{theme === 'dark' ? '🌙' : '☀️'}</span>
+              <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
             </button>
             {user && (
-              <span className="truncate">
-                {user.email || user.username || 'Account'}
+              <span className="hidden sm:block text-xs text-text-secondary max-w-[160px] truncate">
+                {user.email || user.username || ''}
               </span>
             )}
           </div>
         </header>
 
+        {/* Page content */}
         <main
           className={
-            pathname?.startsWith('/conversations')
-              ? 'min-h-0 flex-1 overflow-y-auto'
-              : 'min-h-0 flex-1 px-2 md:px-3 py-4 md:py-5 overflow-y-auto'
+            pathname?.startsWith('/conversations') || pathname?.startsWith('/chats') || pathname === '/dashboard'
+              ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-2 md:p-3'
+              : pathname?.match(/^\/data-sheet\/[^/]+(\/)?$/)
+                ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-2 md:px-3 py-4 md:py-5'
+                : 'min-h-0 flex-1 overflow-y-auto px-2 md:px-3 py-4 md:py-5'
           }
         >
           {children}

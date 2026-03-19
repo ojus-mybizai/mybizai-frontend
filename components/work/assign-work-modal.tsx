@@ -21,78 +21,128 @@ export interface AssignWorkModalProps {
   onClose: () => void;
   onCreated?: (workId: number) => void;
   initialLeadId?: number | null;
-  /** When set, modal opens with this template pre-selected; work type and assignee are pre-filled from template. */
   initialTemplateId?: number | null;
 }
 
-export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = null, initialTemplateId = null }: AssignWorkModalProps) {
+type ModalStep = 'pick' | 'details';
+
+function templateTypeIcon(type?: string | null): string {
+  if (type === 'checklist') return '☑';
+  if (type === 'datasheet') return '📊';
+  return '📋';
+}
+
+function templateTypeBadge(type?: string | null): string {
+  if (type === 'checklist') return 'Checklist';
+  if (type === 'datasheet') return 'Datasheet';
+  return 'Simple';
+}
+
+function templateTypeBadgeClass(type?: string | null): string {
+  if (type === 'checklist') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  if (type === 'datasheet') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300';
+  return 'bg-bg-secondary text-text-secondary';
+}
+
+export function AssignWorkModal({
+  isOpen,
+  onClose,
+  onCreated,
+  initialLeadId = null,
+  initialTemplateId = null,
+}: AssignWorkModalProps) {
   const router = useRouter();
   const currentUserId = useAuthStore((s) => (s.user as { id?: number } | null)?.id ?? null);
+
+  // Data
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [workTypes, setWorkTypes] = useState<WorkType[]>([]);
   const [templates, setTemplates] = useState<WorkTemplate[]>([]);
   const [leads, setLeads] = useState<LeadOption[]>([]);
-  const [leadQuery, setLeadQuery] = useState('');
-  const [templateId, setTemplateId] = useState<number | null>(null);
+  const [datasheetFields, setDatasheetFields] = useState<DynamicField[]>([]);
+
+  // Navigation
+  const [step, setStep] = useState<ModalStep>('pick');
+  const [noTemplateMode, setNoTemplateMode] = useState(false);
+  const [search, setSearch] = useState('');
+
+  // Selected template
+  const [selectedTemplate, setSelectedTemplate] = useState<WorkTemplate | null>(null);
+
+  // Form fields
   const [assignedToId, setAssignedToId] = useState<number | null>(null);
   const [workTypeId, setWorkTypeId] = useState<number | null>(null);
-  const [leadId, setLeadId] = useState<number | null>(null);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [dueDate, setDueDate] = useState('');
-  const [recordLimit, setRecordLimit] = useState<string>('');
+  const [leadId, setLeadId] = useState<number | null>(null);
+  const [leadQuery, setLeadQuery] = useState('');
+  const [recordLimit, setRecordLimit] = useState('');
   const [filterRows, setFilterRows] = useState<RecordFilterRow[]>([]);
-  const [datasheetFields, setDatasheetFields] = useState<DynamicField[]>([]);
+
+  // UI state
+  const [showCustomer, setShowCustomer] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const [fieldsLoading, setFieldsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const selectedTemplate = templateId != null ? templates.find((t) => t.id === templateId) : null;
-  const isDatasheetTemplate = selectedTemplate?.template_type === 'datasheet';
-  const linkedModelId = selectedTemplate?.linked_dynamic_model_id ?? null;
   const prevLinkedModelId = useRef<number | null>(null);
+  const didPickFromInitial = useRef(false);
 
-  const filteredLeads = leads.filter((lead) => {
-    const query = leadQuery.trim().toLowerCase();
-    if (!query) return true;
-    const label = `${lead.name || ''} ${lead.phone || ''} ${lead.id}`.toLowerCase();
-    return label.includes(query);
-  });
+  const isDatasheet = selectedTemplate?.template_type === 'datasheet';
+  const linkedModelId = selectedTemplate?.linked_dynamic_model_id ?? null;
 
-  const applyDueOffset = (days: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    setDueDate(d.toISOString().slice(0, 10));
-  };
-
+  // ── Load data on open ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (isOpen) {
-      listEmployees()
-        .then((list) => setEmployees(list.filter((emp) => emp.id === 0 || emp.is_active)))
-        .catch(() => setEmployees([]));
-      listWorkTypes().then(setWorkTypes).catch(() => setWorkTypes([]));
-      listWorkTemplates().then(setTemplates).catch(() => setTemplates([]));
-      listLeadsForSelect({ per_page: 100 }).then(setLeads).catch(() => setLeads([]));
-      setTemplateId(initialTemplateId ?? null);
-      setWorkTypeId(null);
-      setAssignedToId(null);
-      setLeadId(initialLeadId);
-      setLeadQuery('');
-      setTitle('');
-      setNotes('');
-      setPriority('medium');
-      setDueDate('');
-      setRecordLimit('');
-      setFilterRows([]);
-      setDatasheetFields([]);
-      setError(null);
-    }
-  }, [initialLeadId, initialTemplateId, isOpen]);
+    if (!isOpen) return;
+    didPickFromInitial.current = false;
 
-  // When a datasheet template is selected, load its fields for the filter builder
+    Promise.all([
+      listEmployees().catch(() => [] as Employee[]),
+      listWorkTemplates().catch(() => [] as WorkTemplate[]),
+      listWorkTypes().catch(() => [] as WorkType[]),
+      listLeadsForSelect({ per_page: 200 }).catch(() => [] as LeadOption[]),
+    ]).then(([emps, tpls, wts, lds]) => {
+      setEmployees(emps.filter((e) => e.id === 0 || e.is_active));
+      setTemplates(tpls);
+      setWorkTypes(wts);
+      setLeads(lds);
+
+      // Auto-pick initialTemplateId after templates load
+      if (initialTemplateId != null && !didPickFromInitial.current) {
+        const t = tpls.find((x) => x.id === initialTemplateId);
+        if (t) {
+          didPickFromInitial.current = true;
+          applyTemplate(t);
+        }
+      }
+    });
+
+    // Reset all
+    setStep(initialTemplateId != null ? 'details' : 'pick');
+    setNoTemplateMode(false);
+    setSearch('');
+    setSelectedTemplate(null);
+    setAssignedToId(null);
+    setWorkTypeId(null);
+    setTitle('');
+    setNotes('');
+    setPriority('medium');
+    setDueDate('');
+    setLeadId(initialLeadId);
+    setLeadQuery('');
+    setRecordLimit('');
+    setFilterRows([]);
+    setShowCustomer(!!initialLeadId);
+    setShowNotes(false);
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Load datasheet fields when datasheet template selected
   useEffect(() => {
-    if (!isOpen || !isDatasheetTemplate || linkedModelId == null) {
+    if (!isDatasheet || linkedModelId == null) {
       setDatasheetFields([]);
       prevLinkedModelId.current = null;
       return;
@@ -106,31 +156,68 @@ export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = nu
       .then(setDatasheetFields)
       .catch(() => setDatasheetFields([]))
       .finally(() => setFieldsLoading(false));
-  }, [isOpen, isDatasheetTemplate, linkedModelId]);
+  }, [isDatasheet, linkedModelId]);
 
-  // When template is selected (by user or via initialTemplateId), pre-fill work type and assignee
-  useEffect(() => {
-    if (!isOpen || templateId == null || templates.length === 0) return;
-    const t = templates.find((x) => x.id === templateId);
-    if (t) {
-      setWorkTypeId(t.work_type_id);
-      setAssignedToId((prev) => prev ?? t.default_assigned_to_id ?? null);
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  const applyTemplate = (t: WorkTemplate) => {
+    setSelectedTemplate(t);
+    setWorkTypeId(t.work_type_id);
+    setAssignedToId(t.default_assigned_to_id ?? null);
+    setTitle(t.default_title ?? '');
+    setNotes(t.default_notes ?? '');
+    if (t.default_due_days != null) {
+      const d = new Date();
+      d.setDate(d.getDate() + t.default_due_days);
+      setDueDate(d.toISOString().slice(0, 10));
     }
-  }, [isOpen, templateId, templates]);
+  };
+
+  const pickTemplate = (t: WorkTemplate) => {
+    applyTemplate(t);
+    setStep('details');
+  };
+
+  const applyDue = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    setDueDate(d.toISOString().slice(0, 10));
+  };
+
+  const filteredTemplates = templates.filter(
+    (t) =>
+      t.is_active &&
+      (search === '' ||
+        t.name.toLowerCase().includes(search.toLowerCase()) ||
+        t.work_type_name.toLowerCase().includes(search.toLowerCase())),
+  );
+
+  const filteredLeads = leads.filter((l) => {
+    const q = leadQuery.trim().toLowerCase();
+    if (!q) return true;
+    return `${l.name ?? ''} ${l.phone ?? ''} ${l.id}`.toLowerCase().includes(q);
+  });
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (templateId != null && assignedToId == null) {
-      setError('Please select an assignee when creating work from a template.');
-      return;
-    }
-    setLoading(true);
     setError(null);
+
+    if (!noTemplateMode) {
+      if (!selectedTemplate) { setError('Please select a template.'); return; }
+      if (!assignedToId) { setError('Please select who to assign this work to.'); return; }
+    } else {
+      if (!workTypeId) { setError('Please select a work type.'); return; }
+      if (!assignedToId) { setError('Please select an employee.'); return; }
+    }
+
+    setLoading(true);
     try {
       let created;
-      if (templateId != null) {
+      if (!noTemplateMode && selectedTemplate) {
         const payload: Parameters<typeof createWorkFromTemplate>[1] = {
-          assigned_to_id: assignedToId ?? undefined,
+          assigned_to_id: assignedToId!,
           work_type_id: workTypeId ?? undefined,
           lead_id: leadId || undefined,
           title: title.trim() || undefined,
@@ -138,16 +225,19 @@ export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = nu
           priority,
           due_date: dueDate || undefined,
         };
-        const selTpl = templates.find((t) => t.id === templateId);
-        if (selTpl?.template_type === 'datasheet') {
+        if (isDatasheet) {
           if (recordLimit.trim()) {
             const n = parseInt(recordLimit, 10);
             if (!Number.isNaN(n) && n >= 1 && n <= 500) payload.record_limit = n;
           }
-          const filters = filterRows.filter((r) => r.field && (r.value !== undefined && r.value !== '' || ['is_null', 'is_not_null'].includes(r.op || 'eq')));
+          const filters = filterRows.filter(
+            (r) =>
+              r.field &&
+              (r.value !== undefined && r.value !== '' || ['is_null', 'is_not_null'].includes(r.op ?? 'eq')),
+          );
           if (filters.length > 0) {
             payload.record_filters = filters.map((r) => {
-              const op = r.op || 'eq';
+              const op = r.op ?? 'eq';
               let value = r.value;
               if (op === 'in' && typeof value === 'string') {
                 value = value.split(',').map((s) => s.trim()).filter(Boolean);
@@ -156,16 +246,11 @@ export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = nu
             });
           }
         }
-        created = await createWorkFromTemplate(templateId, payload);
+        created = await createWorkFromTemplate(selectedTemplate.id, payload);
       } else {
-        if (workTypeId == null || assignedToId == null) {
-          setError('Please select a work type and an employee.');
-          setLoading(false);
-          return;
-        }
         created = await createWork({
-          work_type_id: workTypeId,
-          assigned_to_id: assignedToId,
+          work_type_id: workTypeId!,
+          assigned_to_id: assignedToId!,
           lead_id: leadId || undefined,
           title: title.trim() || undefined,
           notes: notes.trim() || undefined,
@@ -185,288 +270,483 @@ export function AssignWorkModal({ isOpen, onClose, onCreated, initialLeadId = nu
 
   if (!isOpen) return null;
 
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-border-color bg-card-bg p-6 m-4 shadow-xl"
+        className="relative flex w-full max-w-[560px] flex-col rounded-2xl border border-border-color bg-card-bg shadow-2xl"
+        style={{ maxHeight: '90vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-text-primary">Assign work</h2>
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between border-b border-border-color px-5 py-4 shrink-0">
+          <div className="flex items-center gap-2">
+            {step === 'details' && !noTemplateMode && (
+              <button
+                type="button"
+                onClick={() => { setStep('pick'); setSelectedTemplate(null); }}
+                className="rounded-lg p-1.5 text-text-secondary hover:bg-bg-secondary"
+                aria-label="Back"
+              >
+                ←
+              </button>
+            )}
+            <div>
+              <h2 className="font-semibold text-text-primary">
+                {step === 'pick' && !noTemplateMode ? 'Choose a template' : 'Assign work'}
+              </h2>
+              <p className="text-xs text-text-secondary">
+                {step === 'pick' && !noTemplateMode
+                  ? `${filteredTemplates.length} template${filteredTemplates.length !== 1 ? 's' : ''} available`
+                  : selectedTemplate
+                  ? `Template: ${selectedTemplate.name}`
+                  : 'Manual assignment'}
+              </p>
+            </div>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-2 text-text-secondary hover:text-text-primary hover:bg-bg-secondary"
+            className="rounded-lg p-1.5 text-text-secondary hover:bg-bg-secondary"
             aria-label="Close"
           >
             ✕
           </button>
         </div>
-        <p className="mb-4 text-sm text-text-secondary">
-          Assign work quickly with defaults, priority, and optional customer linking.
-        </p>
 
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-            {error}
+        {/* ── Step 1: Template picker ── */}
+        {step === 'pick' && !noTemplateMode && (
+          <div className="flex flex-col overflow-hidden min-h-0 flex-1">
+            <div className="shrink-0 border-b border-border-color px-4 pt-3 pb-3">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">
+                  🔍
+                </span>
+                <input
+                  type="text"
+                  autoFocus
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search templates…"
+                  className="w-full rounded-lg border border-border-color bg-bg-primary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {filteredTemplates.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-3xl mb-2">📭</p>
+                  <p className="text-sm font-medium text-text-primary">No templates found</p>
+                  <p className="mt-1 text-xs text-text-secondary">
+                    {templates.length === 0
+                      ? 'Go to Work › Templates to create your first template.'
+                      : 'Try a different search.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {filteredTemplates.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => pickTemplate(t)}
+                      className="group flex items-start gap-3 rounded-xl border border-border-color bg-bg-primary p-3 text-left transition hover:border-accent hover:shadow-sm"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-xl">
+                        {templateTypeIcon(t.template_type)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-text-primary group-hover:text-accent text-sm">
+                          {t.name}
+                        </p>
+                        <p className="truncate text-xs text-text-secondary">{t.work_type_name}</p>
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          <span className={`rounded-full px-1.5 py-0.5 text-xs ${templateTypeBadgeClass(t.template_type)}`}>
+                            {templateTypeBadge(t.template_type)}
+                          </span>
+                          {t.default_assigned_to_name && (
+                            <span className="max-w-[80px] truncate rounded-full bg-bg-secondary px-1.5 py-0.5 text-xs text-text-secondary">
+                              {t.default_assigned_to_name}
+                            </span>
+                          )}
+                          {t.default_due_days != null && (
+                            <span className="rounded-full bg-bg-secondary px-1.5 py-0.5 text-xs text-text-secondary">
+                              +{t.default_due_days}d
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="shrink-0 self-center text-text-secondary group-hover:text-accent">›</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* No-template escape hatch */}
+            <div className="shrink-0 border-t border-border-color px-4 py-3 text-center">
+              <button
+                type="button"
+                onClick={() => setNoTemplateMode(true)}
+                className="text-xs text-text-secondary hover:text-text-primary hover:underline"
+              >
+                Assign without a template (advanced)
+              </button>
+            </div>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-text-secondary">Template (optional)</label>
-            <select
-              value={templateId ?? ''}
-              onChange={(e) => setTemplateId(e.target.value === '' ? null : Number(e.target.value))}
-              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">No template</option>
-              {templates.filter((t) => t.is_active).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.template_type && t.template_type !== 'simple' ? ` (${t.template_type})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          {isDatasheetTemplate && (
-            <>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-text-secondary">Filter records (optional)</label>
-                <p className="mb-2 text-xs text-text-secondary">Only assign rows that match these conditions (e.g. payment = pending).</p>
-                {fieldsLoading ? (
-                  <p className="text-sm text-text-secondary">Loading fields…</p>
-                ) : (
-                  <div className="space-y-2">
-                    {filterRows.map((row, idx) => (
-                      <div key={idx} className="flex flex-wrap items-center gap-2 rounded-lg border border-border-color bg-bg-primary p-2">
-                        <select
-                          value={row.field}
-                          onChange={(e) => {
-                            const next = [...filterRows];
-                            next[idx] = { ...next[idx], field: e.target.value };
-                            setFilterRows(next);
-                          }}
-                          className="min-w-[100px] rounded border border-border-color bg-bg-secondary px-2 py-1.5 text-sm text-text-primary"
-                        >
-                          <option value="">Field</option>
-                          {datasheetFields.map((f) => (
-                            <option key={f.id} value={f.name}>{f.display_name || f.name}</option>
-                          ))}
-                        </select>
-                        <select
-                          value={row.op ?? 'eq'}
-                          onChange={(e) => {
-                            const next = [...filterRows];
-                            next[idx] = { ...next[idx], op: e.target.value };
-                            setFilterRows(next);
-                          }}
-                          className="rounded border border-border-color bg-bg-secondary px-2 py-1.5 text-sm text-text-primary"
-                        >
-                          <option value="eq">equals</option>
-                          <option value="ne">not equals</option>
-                          <option value="contains">contains</option>
-                          <option value="gt">&gt;</option>
-                          <option value="gte">≥</option>
-                          <option value="lt">&lt;</option>
-                          <option value="lte">≤</option>
-                          <option value="in">in (comma-separated)</option>
-                          <option value="is_null">is empty</option>
-                          <option value="is_not_null">is not empty</option>
-                        </select>
-                        {row.op !== 'is_null' && row.op !== 'is_not_null' && (
-                          <input
-                            type="text"
-                            value={row.value != null ? String(row.value) : ''}
-                            onChange={(e) => {
-                              const next = [...filterRows];
-                              const v = e.target.value;
-                              next[idx] = { ...next[idx], value: v };
-                              setFilterRows(next);
-                            }}
-                            placeholder="Value"
-                            className="min-w-[80px] flex-1 rounded border border-border-color bg-bg-secondary px-2 py-1.5 text-sm text-text-primary"
-                          />
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setFilterRows((prev) => prev.filter((_, i) => i !== idx))}
-                          className="rounded p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
-                          aria-label="Remove filter"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+        {/* ── Step 2: Details form ── */}
+        {(step === 'details' || noTemplateMode) && (
+          <form
+            onSubmit={(e) => void handleSubmit(e)}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                  {error}
+                </div>
+              )}
+
+              {/* No-template mode: work type selector */}
+              {noTemplateMode && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:bg-amber-900/20 dark:border-amber-700">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                      Manual assignment — no template
+                    </span>
                     <button
                       type="button"
-                      onClick={() => setFilterRows((prev) => [...prev, { field: '', op: 'eq', value: '' }])}
-                      className="rounded-md border border-dashed border-border-color px-3 py-1.5 text-sm text-text-secondary hover:border-accent hover:text-accent"
+                      onClick={() => setNoTemplateMode(false)}
+                      className="ml-auto text-xs text-accent hover:underline"
                     >
-                      + Add filter
+                      ← Use template instead
                     </button>
+                  </div>
+                  <select
+                    value={workTypeId ?? ''}
+                    onChange={(e) => setWorkTypeId(e.target.value === '' ? null : Number(e.target.value))}
+                    required
+                    className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                  >
+                    <option value="">Select work type *</option>
+                    {workTypes.filter((t) => t.is_active).map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Assign to */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text-primary">
+                  Assign to <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={assignedToId ?? ''}
+                  onChange={(e) =>
+                    setAssignedToId(e.target.value === '' ? null : Number(e.target.value))
+                  }
+                  className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                >
+                  <option value="">Select employee</option>
+                  {employees.map((emp) => (
+                    <option key={emp.user_id} value={emp.user_id}>
+                      {emp.name || emp.email}
+                      {emp.id === 0 ? ' (Owner)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {currentUserId != null && (
+                  <button
+                    type="button"
+                    onClick={() => setAssignedToId(currentUserId)}
+                    className="mt-1.5 text-xs font-medium text-accent hover:underline"
+                  >
+                    Assign to me
+                  </button>
+                )}
+              </div>
+
+              {/* Title */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text-primary">Title</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={
+                    selectedTemplate?.default_title ?? 'Give this work a title (optional)'
+                  }
+                  className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+                />
+              </div>
+
+              {/* Due date */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text-primary">
+                  Due date
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex overflow-hidden rounded-lg border border-border-color">
+                    {[
+                      { label: 'Today', days: 0 },
+                      { label: 'Tomorrow', days: 1 },
+                      { label: '+3d', days: 3 },
+                      { label: '+1w', days: 7 },
+                    ].map((chip) => (
+                      <button
+                        key={chip.label}
+                        type="button"
+                        onClick={() => applyDue(chip.days)}
+                        className="border-r border-border-color px-2.5 py-1.5 text-xs text-text-secondary last:border-r-0 hover:bg-bg-secondary hover:text-text-primary transition"
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-sm text-text-primary focus:border-accent focus:outline-none"
+                  />
+                  {dueDate && (
+                    <button
+                      type="button"
+                      onClick={() => setDueDate('')}
+                      className="text-xs text-text-secondary hover:text-text-primary"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Priority */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text-primary">
+                  Priority
+                </label>
+                <div className="flex gap-2">
+                  {(['low', 'medium', 'high'] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriority(p)}
+                      className={`flex-1 rounded-lg border py-2 text-xs font-medium transition ${
+                        priority === p
+                          ? p === 'high'
+                            ? 'border-red-500 bg-red-500 text-white'
+                            : p === 'low'
+                            ? 'border-blue-400 bg-blue-400 text-white'
+                            : 'border-accent bg-accent text-white'
+                          : 'border-border-color bg-bg-primary text-text-secondary hover:border-accent hover:text-text-primary'
+                      }`}
+                    >
+                      {p === 'high' ? '↑ High' : p === 'low' ? '↓ Low' : '● Medium'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Datasheet filters — visible when datasheet template */}
+              {isDatasheet && (
+                <div className="space-y-3 rounded-xl border border-border-color bg-bg-primary p-4">
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">Record filters</p>
+                    <p className="text-xs text-text-secondary">
+                      Only assign rows matching these conditions
+                    </p>
+                  </div>
+                  {fieldsLoading ? (
+                    <p className="text-xs text-text-secondary">Loading fields…</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {filterRows.map((row, idx) => (
+                        <div key={idx} className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={row.field}
+                            onChange={(e) => {
+                              const n = [...filterRows];
+                              n[idx] = { ...n[idx], field: e.target.value };
+                              setFilterRows(n);
+                            }}
+                            className="min-w-[100px] flex-1 rounded-lg border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary"
+                          >
+                            <option value="">Field</option>
+                            {datasheetFields.map((f) => (
+                              <option key={f.id} value={f.name}>
+                                {f.display_name || f.name}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={row.op ?? 'eq'}
+                            onChange={(e) => {
+                              const n = [...filterRows];
+                              n[idx] = { ...n[idx], op: e.target.value };
+                              setFilterRows(n);
+                            }}
+                            className="rounded-lg border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary"
+                          >
+                            <option value="eq">equals</option>
+                            <option value="ne">not equals</option>
+                            <option value="contains">contains</option>
+                            <option value="in">in (comma-sep)</option>
+                            <option value="is_null">is empty</option>
+                            <option value="is_not_null">has value</option>
+                          </select>
+                          {row.op !== 'is_null' && row.op !== 'is_not_null' && (
+                            <input
+                              type="text"
+                              value={row.value != null ? String(row.value) : ''}
+                              onChange={(e) => {
+                                const n = [...filterRows];
+                                n[idx] = { ...n[idx], value: e.target.value };
+                                setFilterRows(n);
+                              }}
+                              placeholder="Value"
+                              className="min-w-[80px] flex-1 rounded-lg border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFilterRows((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                            className="text-text-secondary hover:text-red-500"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFilterRows((prev) => [...prev, { field: '', op: 'eq', value: '' }])
+                        }
+                        className="text-xs text-accent hover:underline"
+                      >
+                        + Add filter
+                      </button>
+                    </div>
+                  )}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-text-secondary">
+                      Record limit (optional)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={recordLimit}
+                      onChange={(e) => setRecordLimit(e.target.value)}
+                      placeholder="e.g. 20 — blank = all matching"
+                      className="w-full rounded-lg border border-border-color bg-bg-secondary px-3 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* ── Collapsible: Link customer ── */}
+              <div className="overflow-hidden rounded-xl border border-border-color">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomer((v) => !v)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-bg-secondary transition"
+                >
+                  <span className="font-medium text-text-primary">
+                    {leadId ? '👤 Customer linked' : '👤 Link to customer'}
+                  </span>
+                  <span
+                    className={`text-text-secondary transition-transform ${showCustomer ? 'rotate-180' : ''}`}
+                  >
+                    ▾
+                  </span>
+                </button>
+                {showCustomer && (
+                  <div className="space-y-2 border-t border-border-color px-4 py-3">
+                    <input
+                      type="text"
+                      value={leadQuery}
+                      onChange={(e) => setLeadQuery(e.target.value)}
+                      placeholder="Search by name or phone…"
+                      className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                    />
+                    <select
+                      value={leadId ?? ''}
+                      onChange={(e) =>
+                        setLeadId(e.target.value === '' ? null : Number(e.target.value))
+                      }
+                      className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                    >
+                      <option value="">No customer</option>
+                      {filteredLeads.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name || l.phone || `Lead #${l.id}`}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-text-secondary">Record limit (optional)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  value={recordLimit}
-                  onChange={(e) => setRecordLimit(e.target.value)}
-                  placeholder="e.g. 20 — leave empty for all matching records"
-                  className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                />
-                <p className="mt-1 text-xs text-text-secondary">Max records to assign (after filters). Empty = all matching.</p>
+
+              {/* ── Collapsible: Notes ── */}
+              <div className="overflow-hidden rounded-xl border border-border-color">
+                <button
+                  type="button"
+                  onClick={() => setShowNotes((v) => !v)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-bg-secondary transition"
+                >
+                  <span className="font-medium text-text-primary">
+                    {notes ? '📝 Notes added' : '📝 Add notes / instructions'}
+                  </span>
+                  <span
+                    className={`text-text-secondary transition-transform ${showNotes ? 'rotate-180' : ''}`}
+                  >
+                    ▾
+                  </span>
+                </button>
+                {showNotes && (
+                  <div className="border-t border-border-color px-4 py-3">
+                    <textarea
+                      rows={3}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Instructions or context for the assignee…"
+                      className="w-full resize-none rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
-            </>
-          )}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-text-secondary">
-              Work type {templateId != null ? '(from template)' : '*'}
-            </label>
-            <select
-              value={workTypeId ?? ''}
-              onChange={(e) => setWorkTypeId(e.target.value === '' ? null : Number(e.target.value))}
-              disabled={templateId != null}
-              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              <option value="">Select type</option>
-              {workTypes.filter((t) => t.is_active).map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-text-secondary">
-              {templateId != null ? 'Pre-filled from template.' : 'Required when no template is selected.'}
-            </p>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-text-secondary">Assign to *</label>
-            <div className="space-y-2">
-              <select
-                value={assignedToId ?? ''}
-                onChange={(e) => setAssignedToId(e.target.value === '' ? null : Number(e.target.value))}
-                className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+            </div>
+
+            {/* ── Footer ── */}
+            <div className="flex shrink-0 gap-3 border-t border-border-color px-5 py-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-lg border border-border-color py-2.5 text-sm font-medium text-text-secondary hover:bg-bg-secondary"
               >
-                <option value="">Select employee</option>
-                {employees.map((emp) => (
-                  <option key={emp.user_id} value={emp.user_id}>
-                    {emp.name || emp.email}{emp.id === 0 ? ' (Owner)' : ''}
-                  </option>
-                ))}
-              </select>
-              {currentUserId != null && (
-                <button
-                  type="button"
-                  onClick={() => setAssignedToId(currentUserId)}
-                  className="text-xs font-semibold text-accent hover:underline"
-                >
-                  Assign to me
-                </button>
-              )}
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+              >
+                {loading ? 'Creating…' : 'Assign Work →'}
+              </button>
             </div>
-            <p className="mt-1 text-xs text-text-secondary">Required when no template default assignee is available.</p>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-text-secondary">Title (optional)</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Deliver order #123"
-              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-text-secondary">Link to lead (optional)</label>
-            <input
-              type="text"
-              value={leadQuery}
-              onChange={(e) => setLeadQuery(e.target.value)}
-              placeholder="Search customer by name or phone"
-              className="mb-2 w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <select
-              value={leadId ?? ''}
-              onChange={(e) => setLeadId(e.target.value === '' ? null : Number(e.target.value))}
-              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">None</option>
-              {filteredLeads.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name || l.phone || `Lead #${l.id}`}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-text-secondary">Priority</label>
-            <div className="flex flex-wrap gap-2">
-              {(['low', 'medium', 'high'] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setPriority(value)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    priority === value
-                      ? 'bg-accent text-white'
-                      : 'border border-border-color bg-bg-primary text-text-secondary hover:border-accent hover:text-text-primary'
-                  }`}
-                >
-                  {value.charAt(0).toUpperCase() + value.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-text-secondary">Due date (optional)</label>
-            <div className="space-y-2">
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full max-w-xs rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => applyDueOffset(0)} className="rounded-md border border-border-color px-2 py-1 text-xs text-text-secondary hover:border-accent">Today</button>
-                <button type="button" onClick={() => applyDueOffset(1)} className="rounded-md border border-border-color px-2 py-1 text-xs text-text-secondary hover:border-accent">Tomorrow</button>
-                <button type="button" onClick={() => applyDueOffset(3)} className="rounded-md border border-border-color px-2 py-1 text-xs text-text-secondary hover:border-accent">+3 days</button>
-                <button type="button" onClick={() => applyDueOffset(7)} className="rounded-md border border-border-color px-2 py-1 text-xs text-text-secondary hover:border-accent">+1 week</button>
-              </div>
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-text-secondary">Notes (optional)</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              placeholder="Instructions or context"
-              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-            >
-              {loading ? 'Creating…' : 'Assign work'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+          </form>
+        )}
       </div>
     </div>
   );

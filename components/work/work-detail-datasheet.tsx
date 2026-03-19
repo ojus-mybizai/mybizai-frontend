@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { Work, AssignedRecordOut } from '@/services/work';
-import { getWorkAssignedRecords, updateWorkRecordStatus, startWork, getWork } from '@/services/work';
+import type { Work, AssignedRecordOut, FormField } from '@/services/work';
+import { getWorkAssignedRecords, updateWorkRecordStatus, startWork, getWork, submitRecordFormData } from '@/services/work';
 import { useAuthStore } from '@/lib/auth-store';
 import { WorkDetailHeader } from '@/components/work/work-detail-header';
+import { DynamicWorkForm } from '@/components/work/dynamic-work-form';
 
 function formatDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -15,26 +16,167 @@ function formatDate(d: string | null | undefined): string {
 interface WorkDetailDatasheetProps {
   work: Work;
   onWorkUpdated: (w: Work) => void;
-  /** From template.datasheet_ui_schema: display_fields, editable_fields, record_actions */
   uiSchema?: {
     display_fields?: string[];
     editable_fields?: string[];
     record_actions?: Array<{ type: string; label: string; field: string }>;
     auto_complete_work_when_all_done?: boolean;
+    form_mode?: 'per_record' | 'single';
   } | null;
+  /** Only passed when form_mode === 'per_record'. Single-form mode is handled in the parent page. */
+  formSchema?: FormField[] | null;
 }
 
-export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema }: WorkDetailDatasheetProps) {
+/** Gets a short readable label for a record from its data */
+function getRecordLabel(rec: AssignedRecordOut, displayFields: string[]): string {
+  if (displayFields.length > 0) {
+    const parts = displayFields.slice(0, 2).map((f) => String(rec.data[f] ?? '')).filter(Boolean);
+    if (parts.length > 0) return parts.join(' · ');
+  }
+  const entries = Object.entries(rec.data).slice(0, 2);
+  return entries.map(([, v]) => String(v)).filter(Boolean).join(' · ') || `Record #${rec.dynamic_record_id}`;
+}
+
+/** Modal for filling a form for a record — shows record context in header */
+function RecordFormModal({
+  record,
+  fields,
+  displayFields,
+  markDoneAfterSave,
+  onSave,
+  onClose,
+}: {
+  record: AssignedRecordOut;
+  fields: FormField[];
+  displayFields: string[];
+  markDoneAfterSave?: boolean;
+  onSave: (recordId: number, values: Record<string, unknown>) => Promise<void>;
+  onClose: () => void;
+}) {
+  const label = getRecordLabel(record, displayFields);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center"
+      role="dialog"
+      aria-modal
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-border-color bg-card-bg shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border-color px-5 py-4">
+          <div className="min-w-0 flex-1 pr-4">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold text-text-primary">
+                {markDoneAfterSave ? 'Fill form to complete' : 'Fill form'}
+              </h3>
+              {markDoneAfterSave && (
+                <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                  → marks done
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 truncate text-xs text-text-secondary">{label}</p>
+            {markDoneAfterSave && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                Submit this form to mark the record as done
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
+            aria-label="Close"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+          <DynamicWorkForm
+            fields={fields}
+            initialValues={(record.form_data as Record<string, unknown>) ?? {}}
+            onSubmit={(values) => onSave(record.dynamic_record_id, values)}
+            onCancel={onClose}
+            submitLabel={markDoneAfterSave ? 'Submit & mark done ✓' : 'Save form data'}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Read-only view of submitted form data for a record */
+function RecordFormDataView({
+  formData,
+  fields,
+}: {
+  formData: Record<string, unknown>;
+  fields: FormField[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const filled = fields.filter((f) => formData[f.id] !== '' && formData[f.id] != null);
+  if (filled.length === 0) return null;
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="text-xs font-medium text-accent hover:underline"
+      >
+        {expanded ? 'Hide form data ↑' : `View form (${filled.length} field${filled.length > 1 ? 's' : ''}) ↓`}
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-1 rounded-lg border border-border-color bg-bg-secondary p-3">
+          {filled.map((f) => (
+            <div key={f.id} className="grid grid-cols-[140px_1fr] gap-2 text-xs">
+              <span className="truncate font-medium text-text-secondary">{f.label}</span>
+              <span className="break-words text-text-primary">
+                {f.type === 'image' && formData[f.id] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={String(formData[f.id])}
+                    alt={f.label}
+                    className="max-h-24 rounded object-contain border border-border-color"
+                  />
+                ) : f.type === 'location' && formData[f.id] ? (
+                  <a
+                    href={`https://www.google.com/maps?q=${encodeURIComponent(String(formData[f.id]))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent hover:underline"
+                  >
+                    {String(formData[f.id])}
+                  </a>
+                ) : (
+                  String(formData[f.id])
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, formSchema }: WorkDetailDatasheetProps) {
   const user = useAuthStore((s) => s.user as { id?: number } | null);
   const canAct = work.assigned_to_id === user?.id || useAuthStore.getState().hasPermission('manage_work');
+  const isManager = useAuthStore.getState().hasPermission('manage_work');
 
   const [records, setRecords] = useState<AssignedRecordOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [formModalRecord, setFormModalRecord] = useState<AssignedRecordOut | null>(null);
+  const [markDoneAfterForm, setMarkDoneAfterForm] = useState(false);
+  const [markAllConfirm, setMarkAllConfirm] = useState(false);
 
   const displayFields = uiSchema?.display_fields ?? [];
-  const recordActions = uiSchema?.record_actions ?? [];
+  const hasFormFields = formSchema && formSchema.length > 0;
 
   const loadRecords = useCallback(async () => {
     try {
@@ -81,16 +223,73 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema }: W
     }
   };
 
+  const handleMarkAllDone = async () => {
+    if (!canAct) return;
+    setMarkAllConfirm(false);
+    setActionLoading('mark-all');
+    try {
+      const pending = records.filter((r) => r.status !== 'done' && r.status !== 'skipped');
+      for (const rec of pending) {
+        await updateWorkRecordStatus(work.id, rec.dynamic_record_id, 'done');
+      }
+      await loadRecords();
+      const updated = await getWork(work.id);
+      onWorkUpdated(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to mark all done');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleFormSave = async (recordId: number, values: Record<string, unknown>) => {
+    await submitRecordFormData(work.id, recordId, values);
+    // If the form was opened as a gate for marking done, also mark done now
+    if (markDoneAfterForm) {
+      await updateWorkRecordStatus(work.id, recordId, 'done');
+    }
+    await loadRecords();
+    const updated = await getWork(work.id);
+    onWorkUpdated(updated);
+    setFormModalRecord(null);
+    setMarkDoneAfterForm(false);
+  };
+
+  /** Open the form modal. If afterDone=true, submitting form will also mark the record done. */
+  const openFormModal = (rec: AssignedRecordOut, afterDone = false) => {
+    setFormModalRecord(rec);
+    setMarkDoneAfterForm(afterDone);
+  };
+
+  /** Handle the "Done" button click. Gates on form fill if formSchema present and form not yet filled. */
+  const handleDoneClick = (rec: AssignedRecordOut) => {
+    if (!canAct) return;
+    const hasFilledForm = rec.form_data && Object.keys(rec.form_data).some(
+      (k) => rec.form_data![k] !== '' && rec.form_data![k] != null,
+    );
+    if (hasFormFields && !hasFilledForm) {
+      // Form not yet filled — open form modal, which will also mark done after submit
+      openFormModal(rec, true);
+    } else {
+      void handleRecordStatus(rec.dynamic_record_id, 'done');
+    }
+  };
+
   const doneCount = records.filter((r) => r.status === 'done').length;
+  const skippedCount = records.filter((r) => r.status === 'skipped').length;
   const totalCount = records.length;
+  const pendingCount = totalCount - doneCount - skippedCount;
   const progressPct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
-  const progressLabel = totalCount > 0 ? `${doneCount} of ${totalCount} records` : '';
+
+  const filledFormCount = hasFormFields
+    ? records.filter((r) => r.form_data && Object.keys(r.form_data).some((k) => r.form_data![k] !== '' && r.form_data![k] != null)).length
+    : 0;
 
   const startAction =
     work.status === 'pending' && canAct ? (
       <button
         type="button"
-        onClick={handleStart}
+        onClick={() => void handleStart()}
         disabled={!!actionLoading}
         className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
       >
@@ -99,27 +298,100 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema }: W
     ) : null;
 
   return (
-    <div className="space-y-6">
-      <WorkDetailHeader work={work} action={startAction} />
+    <div className="space-y-5">
+      <WorkDetailHeader work={work} action={startAction} showBack={false} />
 
-      {progressLabel && (
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="font-medium text-text-primary">{progressLabel}</span>
-            <span className="text-text-secondary">{progressPct}%</span>
+      {/* Notes */}
+      {work.notes && (
+        <div className="rounded-lg border border-border-color bg-bg-secondary/60 px-4 py-3">
+          <p className="text-sm text-text-secondary whitespace-pre-wrap">{work.notes}</p>
+        </div>
+      )}
+
+      {/* "Start work first" callout */}
+      {work.status === 'pending' && canAct && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/10">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg" aria-hidden>⏳</span>
+            <div>
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Work hasn't started yet</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">Start this work to begin processing records</p>
+            </div>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-bg-secondary">
+          <button
+            type="button"
+            onClick={() => void handleStart()}
+            disabled={!!actionLoading}
+            className="shrink-0 rounded-lg bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
+          >
+            {actionLoading === 'start' ? 'Starting…' : 'Start →'}
+          </button>
+        </div>
+      )}
+
+      {/* Progress */}
+      {totalCount > 0 && (
+        <div className="rounded-xl border border-border-color bg-bg-secondary/60 p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <span className="text-sm font-semibold text-text-primary">
+                {doneCount} of {totalCount} records done
+              </span>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-secondary">
+                {pendingCount > 0 && <span>{pendingCount} pending</span>}
+                {skippedCount > 0 && <span>{skippedCount} skipped</span>}
+                {hasFormFields && <span>{filledFormCount}/{totalCount} forms filled</span>}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-bold text-accent">{progressPct}%</span>
+              {/* Mark all done — managers only, when there are pending records */}
+              {isManager && canAct && pendingCount > 0 && work.status !== 'pending' && (
+                <>
+                  {markAllConfirm ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-text-secondary">Confirm?</span>
+                      <button
+                        type="button"
+                        onClick={() => void handleMarkAllDone()}
+                        disabled={actionLoading === 'mark-all'}
+                        className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMarkAllConfirm(false)}
+                        className="rounded-lg border border-border-color px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setMarkAllConfirm(true)}
+                      disabled={!!actionLoading}
+                      className="rounded-lg border border-border-color bg-bg-primary px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:border-emerald-400 hover:text-emerald-700 disabled:opacity-60"
+                    >
+                      Mark all done
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-bg-primary border border-border-color">
             <div
-              className="h-full rounded-full bg-accent transition-all duration-300"
+              className="h-full rounded-full bg-accent transition-all duration-500"
               style={{ width: `${progressPct}%` }}
             />
           </div>
           {(work.started_at || work.completed_at) && (
-            <p className="text-xs text-text-secondary">
-              {work.started_at && `Started ${formatDate(work.started_at)}`}
-              {work.started_at && work.completed_at && ' · '}
-              {work.completed_at && `Completed ${formatDate(work.completed_at)}`}
-            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-text-secondary">
+              {work.started_at && <span>Started {formatDate(work.started_at)}</span>}
+              {work.completed_at && <span>Completed {formatDate(work.completed_at)}</span>}
+            </div>
           )}
         </div>
       )}
@@ -138,101 +410,280 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema }: W
           ))}
         </div>
       ) : records.length === 0 ? (
-        <p className="rounded-xl border border-border-color bg-bg-secondary px-4 py-8 text-center text-sm text-text-secondary">
-          No records assigned to this work.
-        </p>
+        <div className="rounded-xl border border-border-color bg-bg-secondary px-4 py-10 text-center">
+          <p className="text-sm font-medium text-text-secondary">No records assigned to this work</p>
+          <p className="mt-1 text-xs text-text-secondary">Records are assigned when the work is created from a datasheet template</p>
+        </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border-color shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-border-color bg-bg-secondary">
-                  {displayFields.length > 0 ? (
-                    displayFields.map((key) => (
-                      <th
-                        key={key}
-                        className="px-4 py-3 font-semibold uppercase tracking-wide text-text-secondary"
-                      >
-                        {key.replace(/_/g, ' ')}
-                      </th>
-                    ))
-                  ) : (
-                    <th className="px-4 py-3 font-semibold uppercase tracking-wide text-text-secondary">Data</th>
-                  )}
-                  <th className="px-4 py-3 font-semibold uppercase tracking-wide text-text-secondary">Status</th>
-                  {canAct && (
-                    <th className="px-4 py-3 font-semibold uppercase tracking-wide text-text-secondary text-right">
-                      Actions
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {records.map((rec) => (
-                  <tr
-                    key={rec.dynamic_record_id}
-                    className={`border-b border-border-color last:border-0 transition-colors ${
-                      rec.status === 'done' ? 'bg-bg-secondary/50' : 'bg-card-bg hover:bg-bg-secondary/30'
-                    }`}
-                  >
+        <>
+          {/* Desktop table */}
+          <div className="hidden overflow-hidden rounded-xl border border-border-color shadow-sm sm:block">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border-color bg-bg-secondary">
                     {displayFields.length > 0 ? (
                       displayFields.map((key) => (
-                        <td key={key} className="px-4 py-3 text-text-primary">
-                          {String(rec.data[key] ?? '—')}
-                        </td>
+                        <th key={key} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                          {key.replace(/_/g, ' ')}
+                        </th>
                       ))
                     ) : (
-                      <td className="px-4 py-3 text-text-primary">
-                        {Object.entries(rec.data)
-                          .map(([k, v]) => `${k}: ${v}`)
-                          .join(', ') || '—'}
-                      </td>
+                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">Data</th>
                     )}
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          rec.status === 'done'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                            : rec.status === 'skipped'
-                              ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-                        }`}
-                      >
-                        {rec.status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    {canAct && (
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          {rec.status !== 'done' && (
-                            <button
-                              type="button"
-                              onClick={() => handleRecordStatus(rec.dynamic_record_id, 'done')}
-                              disabled={!!actionLoading}
-                              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                            >
-                              Mark done
-                            </button>
-                          )}
-                          {rec.status !== 'skipped' && rec.status !== 'done' && (
-                            <button
-                              type="button"
-                              onClick={() => handleRecordStatus(rec.dynamic_record_id, 'skipped')}
-                              disabled={!!actionLoading}
-                              className="rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-xs font-medium text-text-primary hover:bg-bg-secondary disabled:opacity-60"
-                            >
-                              Skip
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">Status</th>
+                    {hasFormFields && (
+                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">Form</th>
+                    )}
+                    {canAct && work.status !== 'pending' && (
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                        Actions
+                      </th>
                     )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {records.map((rec) => {
+                    const isLoading = actionLoading === `record-${rec.dynamic_record_id}`;
+                    const hasFilledForm = rec.form_data && Object.keys(rec.form_data).some(
+                      (k) => rec.form_data![k] !== '' && rec.form_data![k] != null
+                    );
+
+                    return (
+                      <tr
+                        key={rec.dynamic_record_id}
+                        className={`border-b border-border-color last:border-0 transition-colors ${
+                          rec.status === 'done' ? 'bg-bg-secondary/40' : 'bg-card-bg hover:bg-bg-secondary/20'
+                        }`}
+                      >
+                        {displayFields.length > 0 ? (
+                          displayFields.map((key) => (
+                            <td key={key} className="px-4 py-3 align-top text-text-primary">
+                              {String(rec.data[key] ?? '—')}
+                              {key === displayFields[0] && hasFormFields && hasFilledForm && (
+                                <RecordFormDataView
+                                  formData={rec.form_data as Record<string, unknown>}
+                                  fields={formSchema!}
+                                />
+                              )}
+                            </td>
+                          ))
+                        ) : (
+                          <td className="px-4 py-3 align-top text-text-primary">
+                            {Object.entries(rec.data)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(', ') || '—'}
+                            {hasFormFields && hasFilledForm && (
+                              <RecordFormDataView
+                                formData={rec.form_data as Record<string, unknown>}
+                                fields={formSchema!}
+                              />
+                            )}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 align-top">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                              rec.status === 'done'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                : rec.status === 'skipped'
+                                  ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                            }`}
+                          >
+                            {rec.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        {hasFormFields && (
+                          <td className="px-4 py-3 align-top">
+                            {canAct ? (
+                              <button
+                                type="button"
+                                onClick={() => openFormModal(rec, false)}
+                                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                                  hasFilledForm
+                                    ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
+                                    : 'border border-border-color bg-bg-primary text-text-secondary hover:border-accent hover:text-text-primary'
+                                }`}
+                              >
+                                {hasFilledForm ? '✓ Filled' : '+ Fill form'}
+                              </button>
+                            ) : (
+                              <span className={`text-xs ${hasFilledForm ? 'text-emerald-600' : 'text-text-secondary'}`}>
+                                {hasFilledForm ? '✓ Filled' : '—'}
+                              </span>
+                            )}
+                          </td>
+                        )}
+                        {canAct && work.status !== 'pending' && (
+                          <td className="px-4 py-3 text-right align-top">
+                            <div className="flex justify-end gap-1.5">
+                              {rec.status !== 'done' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDoneClick(rec)}
+                                  disabled={!!actionLoading || isLoading}
+                                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60 ${
+                                    hasFormFields && !(rec.form_data && Object.keys(rec.form_data).some((k) => rec.form_data![k] !== '' && rec.form_data![k] != null))
+                                      ? 'bg-amber-500'
+                                      : 'bg-accent'
+                                  }`}
+                                  title={hasFormFields && !(rec.form_data && Object.keys(rec.form_data).some((k) => rec.form_data![k] !== '' && rec.form_data![k] != null)) ? 'Fill form first' : undefined}
+                                >
+                                  {isLoading ? '…' : hasFormFields && !(rec.form_data && Object.keys(rec.form_data).some((k) => rec.form_data![k] !== '' && rec.form_data![k] != null)) ? '📋 Fill & Done' : 'Done'}
+                                </button>
+                              )}
+                              {rec.status !== 'skipped' && rec.status !== 'done' && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRecordStatus(rec.dynamic_record_id, 'skipped')}
+                                  disabled={!!actionLoading}
+                                  className="rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-xs font-medium text-text-primary hover:bg-bg-secondary disabled:opacity-60"
+                                >
+                                  Skip
+                                </button>
+                              )}
+                              {rec.status === 'done' && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRecordStatus(rec.dynamic_record_id, 'in_progress')}
+                                  disabled={!!actionLoading}
+                                  className="rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary disabled:opacity-60"
+                                >
+                                  Undo
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* Mobile card list */}
+          <div className="space-y-2 sm:hidden">
+            {records.map((rec) => {
+              const isLoading = actionLoading === `record-${rec.dynamic_record_id}`;
+              const hasFilledForm = rec.form_data && Object.keys(rec.form_data).some(
+                (k) => rec.form_data![k] !== '' && rec.form_data![k] != null
+              );
+              const label = getRecordLabel(rec, displayFields);
+
+              return (
+                <div
+                  key={rec.dynamic_record_id}
+                  className={`overflow-hidden rounded-xl border p-4 transition-colors ${
+                    rec.status === 'done'
+                      ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-800/40 dark:bg-emerald-900/10'
+                      : 'border-border-color bg-card-bg'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-text-primary truncate">{label}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                            rec.status === 'done'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                              : rec.status === 'skipped'
+                                ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                          }`}
+                        >
+                          {rec.status.replace('_', ' ')}
+                        </span>
+                        {hasFormFields && hasFilledForm && (
+                          <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ Form filled</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {canAct && (
+                      <div className="flex shrink-0 flex-col gap-1.5">
+                        {/* Status actions — only when work has started */}
+                        {work.status !== 'pending' && rec.status !== 'done' && (
+                          <button
+                            type="button"
+                            onClick={() => handleDoneClick(rec)}
+                            disabled={!!actionLoading || isLoading}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60 ${
+                              hasFormFields && !hasFilledForm ? 'bg-amber-500' : 'bg-accent'
+                            }`}
+                          >
+                            {isLoading ? '…' : hasFormFields && !hasFilledForm ? '📋 Fill & Done' : 'Done'}
+                          </button>
+                        )}
+                        {work.status !== 'pending' && rec.status !== 'skipped' && rec.status !== 'done' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleRecordStatus(rec.dynamic_record_id, 'skipped')}
+                            disabled={!!actionLoading}
+                            className="rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-xs font-medium text-text-primary hover:bg-bg-secondary disabled:opacity-60"
+                          >
+                            Skip
+                          </button>
+                        )}
+                        {work.status !== 'pending' && rec.status === 'done' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleRecordStatus(rec.dynamic_record_id, 'in_progress')}
+                            disabled={!!actionLoading}
+                            className="rounded-lg border border-border-color px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary disabled:opacity-60"
+                          >
+                            Undo
+                          </button>
+                        )}
+                        {/* Form fill — always available regardless of work status */}
+                        {hasFormFields && (
+                          <button
+                            type="button"
+                            onClick={() => openFormModal(rec, false)}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                              hasFilledForm
+                                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
+                                : 'border border-border-color bg-bg-primary text-text-secondary hover:border-accent'
+                            }`}
+                          >
+                            {hasFilledForm ? 'Edit form' : 'Fill form'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Show all display field data on mobile */}
+                  {displayFields.length > 1 && (
+                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-border-color pt-3">
+                      {displayFields.slice(1).map((key) => (
+                        <div key={key} className="text-xs">
+                          <dt className="capitalize text-text-secondary">{key.replace(/_/g, ' ')}</dt>
+                          <dd className="font-medium text-text-primary">{String(rec.data[key] ?? '—')}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Record form modal */}
+      {formModalRecord && formSchema && (
+        <RecordFormModal
+          record={formModalRecord}
+          fields={formSchema}
+          displayFields={displayFields}
+          markDoneAfterSave={markDoneAfterForm}
+          onSave={handleFormSave}
+          onClose={() => { setFormModalRecord(null); setMarkDoneAfterForm(false); }}
+        />
       )}
     </div>
   );

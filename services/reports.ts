@@ -70,12 +70,40 @@ export interface DatasheetReportFieldGroup {
   count: number;
 }
 
+export interface DatasheetReportFieldSummary {
+  count: number;
+  sum: number;
+  avg: number;
+  min: number;
+  max: number;
+}
+
 export interface DatasheetReport {
   dynamic_model_id: number;
   model_display_name: string;
   total_records: number;
   over_time: DatasheetReportSeriesPoint[];
   by_field: Record<string, DatasheetReportFieldGroup[]>;
+  field_summaries?: Record<string, DatasheetReportFieldSummary>;
+}
+
+/** Suggested report layout section (from backend report-layout). */
+export interface ReportLayoutSection {
+  type: 'time_series' | 'pie' | 'bar' | 'summary';
+  field: string;
+  title: string;
+}
+
+export interface ReportLayout {
+  dynamic_model_id: number;
+  sections: ReportLayoutSection[];
+}
+
+export async function getReportLayout(modelId: number): Promise<ReportLayout> {
+  return apiFetch<ReportLayout>(
+    `/dynamic-data/models/${modelId}/report-layout`,
+    { method: 'GET', auth: true }
+  );
 }
 
 export async function getDatasheetReport(
@@ -88,5 +116,34 @@ export async function getDatasheetReport(
   return apiFetch<DatasheetReport>(
     `/dynamic-data/models/${modelId}/report?${params.toString()}`,
     { method: 'GET', auth: true }
+  );
+}
+
+/** AI-generated report (stored, on-demand generation). */
+export interface DatasheetAIReportResponse {
+  layout: ReportLayout;
+  report: DatasheetReport;
+  generated_at: string;
+}
+
+export async function getAIDatasheetReport(modelId: number): Promise<DatasheetAIReportResponse | null> {
+  try {
+    return await apiFetch<DatasheetAIReportResponse>(
+      `/dynamic-data/models/${modelId}/ai-report`,
+      { method: 'GET', auth: true }
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function generateAIDatasheetReport(
+  modelId: number,
+  days: number = 30
+): Promise<DatasheetAIReportResponse> {
+  const params = new URLSearchParams({ days: String(days) });
+  return apiFetch<DatasheetAIReportResponse>(
+    `/dynamic-data/models/${modelId}/ai-report/generate?${params.toString()}`,
+    { method: 'POST', auth: true }
   );
 }

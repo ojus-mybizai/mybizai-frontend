@@ -27,12 +27,16 @@ export interface Customer {
   notes?: string | null;
   leadScore?: number;
   lastScoreUpdate?: string;
-  customFields?: Record<string, any>;
+  customFields?: Record<string, unknown>;
   templateId?: number;
   lastFilled?: string;
   createdAt?: string;
   updatedAt?: string;
   latestConversationId?: string | null;
+  /** Custom field values keyed by field_key (from LeadFieldConfig) */
+  custom_fields?: Record<string, unknown>;
+  /** Relation counts: {work: N, order: M, appointment: K} */
+  relations_summary?: Record<string, number>;
 }
 
 export interface Conversation {
@@ -599,9 +603,50 @@ export async function deleteLead(id: string): Promise<void> {
 
 export async function getLeadStats(): Promise<LeadStats> {
   return apiFetch<LeadStats>('/leads/stats', { method: 'GET' });
-}export async function recalcConversationAnalytics(conversationId: string): Promise<void> {
+}export interface LeadStatsOverTime {
+  series: Array<{ date: string; count: number }>;
+}
+
+export async function getLeadStatsOverTime(days = 30): Promise<LeadStatsOverTime> {
+  return apiFetch<LeadStatsOverTime>(`/leads/stats/over_time?days=${days}`, { method: 'GET' });
+}
+
+export async function recalcConversationAnalytics(conversationId: string): Promise<void> {
   const convoId = Number(conversationId);
   await apiFetch(`/analytics/conversations/${convoId}/recalculate`, {
     method: 'POST',
   });
+}
+
+// ─── Lead Notes ───────────────────────────────────────────────────────────────
+
+export interface LeadNote {
+  id: number;
+  lead_id: number;
+  content: string;
+  category: string | null;
+  source: string; // "manual" | "agent"
+  created_at: string | null;
+}
+
+export interface LeadNoteCreate {
+  content: string;
+  category?: string;
+}
+
+export async function listLeadNotes(leadId: number | string): Promise<LeadNote[]> {
+  return apiFetch<LeadNote[]>(`/leads/${leadId}/notes`, { method: 'GET', auth: true });
+}
+
+export async function createLeadNote(leadId: number | string, payload: LeadNoteCreate): Promise<LeadNote> {
+  return apiFetch<LeadNote>(`/leads/${leadId}/notes`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function deleteLeadNote(leadId: number | string, noteId: number): Promise<void> {
+  await apiFetch<void>(`/leads/${leadId}/notes/${noteId}`, { method: 'DELETE', auth: true });
 }

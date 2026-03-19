@@ -45,6 +45,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   lastAgentId: null,
 
   async list() {
+    // Guard: if a list request is already in-flight, skip to avoid duplicate network calls
+    if (get().loading) return;
     set({ loading: true, error: null });
     try {
       const data = await listAgents();

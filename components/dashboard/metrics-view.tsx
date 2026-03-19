@@ -32,7 +32,7 @@ export default function MetricsView({
   return (
     <div className="space-y-6">
       {/* KPI strip */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <button
           type="button"
           onClick={() => router.push('/customers')}
@@ -56,38 +56,6 @@ export default function MetricsView({
             {loading ? '—' : `${(stats?.conversionRate ?? 0).toFixed(1)}%`}
           </div>
           <div className="text-sm text-text-secondary">Won / total leads</div>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push('/orders')}
-          className="rounded-xl border border-border-color bg-card-bg px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent hover:shadow-md"
-        >
-          <div className="mb-1 text-sm font-medium text-text-secondary">Orders (30 days)</div>
-          <div className="mb-1 text-2xl font-semibold text-text-primary">
-            {reportsLoading
-              ? '—'
-              : reportsDashboard
-              ? reportsDashboard.orders.total_orders
-              : '—'}
-          </div>
-          <div className="text-sm text-text-secondary">
-            {reportsError ? 'Failed to load orders' : 'From reports'}
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push('/orders')}
-          className="rounded-xl border border-border-color bg-card-bg px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent hover:shadow-md"
-        >
-          <div className="mb-1 text-sm font-medium text-text-secondary">Revenue (30 days)</div>
-          <div className="mb-1 text-2xl font-semibold text-text-primary">
-            {reportsLoading
-              ? '—'
-              : reportsDashboard
-              ? `₹${reportsDashboard.orders.total_revenue.toLocaleString()}`
-              : '—'}
-          </div>
-          <div className="text-sm text-text-secondary">Non-cancelled orders</div>
         </button>
       </div>
 
@@ -129,39 +97,6 @@ export default function MetricsView({
           </div>
         </div>
 
-        <div className="rounded-xl border border-border-color bg-card-bg p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-base font-semibold text-text-primary">Orders & revenue</h3>
-            <span className="text-sm text-text-secondary">Last 30 days</span>
-          </div>
-          <div className="flex h-40 items-center justify-center rounded-md bg-bg-secondary px-3">
-            {reportsLoading ? (
-              <span className="text-sm text-text-secondary">Loading orders…</span>
-            ) : reportsError ? (
-              <span className="text-sm text-text-secondary">{reportsError}</span>
-            ) : !reportsDashboard?.orders.over_time.length ? (
-              <span className="text-sm text-text-secondary">
-                No orders created in this period.
-              </span>
-            ) : (
-              <div className="flex h-full w-full items-end gap-[4px]">
-                {reportsDashboard.orders.over_time.map((point) => {
-                  const maxRevenue = Math.max(
-                    ...reportsDashboard.orders.over_time.map((p) => p.revenue || 0),
-                  );
-                  const heightPct = maxRevenue === 0 ? 0 : (point.revenue / maxRevenue) * 100;
-                  return (
-                    <div
-                      key={point.date}
-                      className="flex-1 rounded-t bg-accent-soft"
-                      style={{ height: `${heightPct}%` }}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Work & team snapshot + Insights / Recent activity */}

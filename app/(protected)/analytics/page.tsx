@@ -207,6 +207,7 @@ export default function AnalyticsPage() {
                   <h3 className="text-sm font-semibold text-text-primary p-4 border-b border-border-color">
                     Top agents
                   </h3>
+                  <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-border-color">
                     <thead className="bg-bg-secondary text-xs uppercase text-text-secondary">
                       <tr>
@@ -231,6 +232,7 @@ export default function AnalyticsPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
 
@@ -243,6 +245,7 @@ export default function AnalyticsPage() {
                     No conversation analytics rows for this range yet.
                   </div>
                 ) : (
+                  <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-border-color">
                     <thead className="bg-bg-secondary text-xs uppercase text-text-secondary">
                       <tr>
@@ -269,6 +272,7 @@ export default function AnalyticsPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             </>
