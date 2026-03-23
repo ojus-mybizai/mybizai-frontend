@@ -29,18 +29,21 @@ type ModalStep = 'pick' | 'details';
 function templateTypeIcon(type?: string | null): string {
   if (type === 'checklist') return '☑';
   if (type === 'datasheet') return '📊';
+  if (type === 'calling') return '📞';
   return '📋';
 }
 
 function templateTypeBadge(type?: string | null): string {
   if (type === 'checklist') return 'Checklist';
   if (type === 'datasheet') return 'Datasheet';
+  if (type === 'calling') return 'Calling';
   return 'Simple';
 }
 
 function templateTypeBadgeClass(type?: string | null): string {
   if (type === 'checklist') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
   if (type === 'datasheet') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300';
+  if (type === 'calling') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
   return 'bg-bg-secondary text-text-secondary';
 }
 
@@ -90,7 +93,13 @@ export function AssignWorkModal({
   const prevLinkedModelId = useRef<number | null>(null);
   const didPickFromInitial = useRef(false);
 
+  const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
+  const [callingLeadQuery, setCallingLeadQuery] = useState('');
+  const [datasheetMode, setDatasheetMode] = useState<'existing' | 'create'>('existing');
+  const [createRecordCount, setCreateRecordCount] = useState('');
+
   const isDatasheet = selectedTemplate?.template_type === 'datasheet';
+  const isCalling = selectedTemplate?.template_type === 'calling';
   const linkedModelId = selectedTemplate?.linked_dynamic_model_id ?? null;
 
   // ── Load data on open ──────────────────────────────────────────────────────
@@ -136,6 +145,10 @@ export function AssignWorkModal({
     setFilterRows([]);
     setShowCustomer(!!initialLeadId);
     setShowNotes(false);
+    setSelectedLeadIds([]);
+    setCallingLeadQuery('');
+    setDatasheetMode('existing');
+    setCreateRecordCount('');
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -207,6 +220,7 @@ export function AssignWorkModal({
     if (!noTemplateMode) {
       if (!selectedTemplate) { setError('Please select a template.'); return; }
       if (!assignedToId) { setError('Please select who to assign this work to.'); return; }
+      if (isCalling && selectedLeadIds.length === 0) { setError('Please select at least one lead to call.'); return; }
     } else {
       if (!workTypeId) { setError('Please select a work type.'); return; }
       if (!assignedToId) { setError('Please select an employee.'); return; }
@@ -225,25 +239,39 @@ export function AssignWorkModal({
           priority,
           due_date: dueDate || undefined,
         };
+        if (isCalling) {
+          payload.lead_ids = selectedLeadIds;
+        }
         if (isDatasheet) {
-          if (recordLimit.trim()) {
-            const n = parseInt(recordLimit, 10);
-            if (!Number.isNaN(n) && n >= 1 && n <= 500) payload.record_limit = n;
-          }
-          const filters = filterRows.filter(
-            (r) =>
-              r.field &&
-              (r.value !== undefined && r.value !== '' || ['is_null', 'is_not_null'].includes(r.op ?? 'eq')),
-          );
-          if (filters.length > 0) {
-            payload.record_filters = filters.map((r) => {
-              const op = r.op ?? 'eq';
-              let value = r.value;
-              if (op === 'in' && typeof value === 'string') {
-                value = value.split(',').map((s) => s.trim()).filter(Boolean);
-              }
-              return { field: r.field, op, value };
-            });
+          if (datasheetMode === 'create') {
+            const n = parseInt(createRecordCount, 10);
+            if (!Number.isNaN(n) && n >= 1) {
+              payload.create_record_count = n;
+            } else {
+              setError('Please enter a valid number of records to create.');
+              setLoading(false);
+              return;
+            }
+          } else {
+            if (recordLimit.trim()) {
+              const n = parseInt(recordLimit, 10);
+              if (!Number.isNaN(n) && n >= 1 && n <= 500) payload.record_limit = n;
+            }
+            const filters = filterRows.filter(
+              (r) =>
+                r.field &&
+                (r.value !== undefined && r.value !== '' || ['is_null', 'is_not_null'].includes(r.op ?? 'eq')),
+            );
+            if (filters.length > 0) {
+              payload.record_filters = filters.map((r) => {
+                const op = r.op ?? 'eq';
+                let value = r.value;
+                if (op === 'in' && typeof value === 'string') {
+                  value = value.split(',').map((s) => s.trim()).filter(Boolean);
+                }
+                return { field: r.field, op, value };
+              });
+            }
           }
         }
         created = await createWorkFromTemplate(selectedTemplate.id, payload);
@@ -556,102 +584,265 @@ export function AssignWorkModal({
                 </div>
               </div>
 
-              {/* Datasheet filters — visible when datasheet template */}
+              {/* Datasheet mode & filters — visible when datasheet template */}
               {isDatasheet && (
                 <div className="space-y-3 rounded-xl border border-border-color bg-bg-primary p-4">
+                  {/* Assignment mode toggle */}
                   <div>
-                    <p className="text-sm font-medium text-text-primary">Record filters</p>
-                    <p className="text-xs text-text-secondary">
-                      Only assign rows matching these conditions
-                    </p>
+                    <p className="text-sm font-medium text-text-primary mb-2">Assignment mode</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDatasheetMode('existing')}
+                        className={`flex-1 rounded-lg border py-2 text-xs font-medium transition ${
+                          datasheetMode === 'existing'
+                            ? 'border-accent bg-accent text-white'
+                            : 'border-border-color bg-bg-secondary text-text-secondary hover:border-accent hover:text-text-primary'
+                        }`}
+                      >
+                        Assign existing records
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDatasheetMode('create')}
+                        className={`flex-1 rounded-lg border py-2 text-xs font-medium transition ${
+                          datasheetMode === 'create'
+                            ? 'border-accent bg-accent text-white'
+                            : 'border-border-color bg-bg-secondary text-text-secondary hover:border-accent hover:text-text-primary'
+                        }`}
+                      >
+                        Create new records
+                      </button>
+                    </div>
                   </div>
-                  {fieldsLoading ? (
-                    <p className="text-xs text-text-secondary">Loading fields…</p>
+
+                  {datasheetMode === 'create' ? (
+                    /* Create new records mode */
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-text-secondary">
+                        Number of records to create <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={createRecordCount}
+                        onChange={(e) => setCreateRecordCount(e.target.value)}
+                        placeholder="e.g. 10"
+                        className="w-full rounded-lg border border-border-color bg-bg-secondary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                      />
+                      <p className="mt-1.5 text-xs text-text-secondary">
+                        The employee will create records in the datasheet as part of this work.
+                      </p>
+                    </div>
                   ) : (
-                    <div className="space-y-2">
-                      {filterRows.map((row, idx) => (
-                        <div key={idx} className="flex flex-wrap items-center gap-2">
-                          <select
-                            value={row.field}
-                            onChange={(e) => {
-                              const n = [...filterRows];
-                              n[idx] = { ...n[idx], field: e.target.value };
-                              setFilterRows(n);
-                            }}
-                            className="min-w-[100px] flex-1 rounded-lg border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary"
-                          >
-                            <option value="">Field</option>
-                            {datasheetFields.map((f) => (
-                              <option key={f.id} value={f.name}>
-                                {f.display_name || f.name}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={row.op ?? 'eq'}
-                            onChange={(e) => {
-                              const n = [...filterRows];
-                              n[idx] = { ...n[idx], op: e.target.value };
-                              setFilterRows(n);
-                            }}
-                            className="rounded-lg border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary"
-                          >
-                            <option value="eq">equals</option>
-                            <option value="ne">not equals</option>
-                            <option value="contains">contains</option>
-                            <option value="in">in (comma-sep)</option>
-                            <option value="is_null">is empty</option>
-                            <option value="is_not_null">has value</option>
-                          </select>
-                          {row.op !== 'is_null' && row.op !== 'is_not_null' && (
-                            <input
-                              type="text"
-                              value={row.value != null ? String(row.value) : ''}
-                              onChange={(e) => {
-                                const n = [...filterRows];
-                                n[idx] = { ...n[idx], value: e.target.value };
-                                setFilterRows(n);
-                              }}
-                              placeholder="Value"
-                              className="min-w-[80px] flex-1 rounded-lg border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary"
-                            />
-                          )}
+                    /* Assign existing records mode */
+                    <>
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Record filters</p>
+                        <p className="text-xs text-text-secondary">
+                          Only assign rows matching these conditions
+                        </p>
+                      </div>
+                      {fieldsLoading ? (
+                        <p className="text-xs text-text-secondary">Loading fields…</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {filterRows.map((row, idx) => (
+                            <div key={idx} className="flex flex-wrap items-center gap-2">
+                              <select
+                                value={row.field}
+                                onChange={(e) => {
+                                  const n = [...filterRows];
+                                  n[idx] = { ...n[idx], field: e.target.value };
+                                  setFilterRows(n);
+                                }}
+                                className="min-w-[100px] flex-1 rounded-lg border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary"
+                              >
+                                <option value="">Field</option>
+                                {datasheetFields.map((f) => (
+                                  <option key={f.id} value={f.name}>
+                                    {f.display_name || f.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                value={row.op ?? 'eq'}
+                                onChange={(e) => {
+                                  const n = [...filterRows];
+                                  n[idx] = { ...n[idx], op: e.target.value };
+                                  setFilterRows(n);
+                                }}
+                                className="rounded-lg border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary"
+                              >
+                                <option value="eq">equals</option>
+                                <option value="ne">not equals</option>
+                                <option value="contains">contains</option>
+                                <option value="in">in (comma-sep)</option>
+                                <option value="is_null">is empty</option>
+                                <option value="is_not_null">has value</option>
+                              </select>
+                              {row.op !== 'is_null' && row.op !== 'is_not_null' && (
+                                <input
+                                  type="text"
+                                  value={row.value != null ? String(row.value) : ''}
+                                  onChange={(e) => {
+                                    const n = [...filterRows];
+                                    n[idx] = { ...n[idx], value: e.target.value };
+                                    setFilterRows(n);
+                                  }}
+                                  placeholder="Value"
+                                  className="min-w-[80px] flex-1 rounded-lg border border-border-color bg-bg-secondary px-2 py-1.5 text-xs text-text-primary"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFilterRows((prev) => prev.filter((_, i) => i !== idx))
+                                }
+                                className="text-text-secondary hover:text-red-500"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
                           <button
                             type="button"
                             onClick={() =>
-                              setFilterRows((prev) => prev.filter((_, i) => i !== idx))
+                              setFilterRows((prev) => [...prev, { field: '', op: 'eq', value: '' }])
                             }
-                            className="text-text-secondary hover:text-red-500"
+                            className="text-xs text-accent hover:underline"
                           >
-                            ✕
+                            + Add filter
                           </button>
                         </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setFilterRows((prev) => [...prev, { field: '', op: 'eq', value: '' }])
-                        }
-                        className="text-xs text-accent hover:underline"
-                      >
-                        + Add filter
-                      </button>
+                      )}
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-text-secondary">
+                          Record limit (optional)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={500}
+                          value={recordLimit}
+                          onChange={(e) => setRecordLimit(e.target.value)}
+                          placeholder="e.g. 20 — blank = all matching"
+                          className="w-full rounded-lg border border-border-color bg-bg-secondary px-3 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Calling: Lead multi-selector */}
+              {isCalling && (
+                <div className="space-y-3 rounded-xl border border-border-color bg-bg-primary p-4">
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">
+                      Leads to call <span className="text-red-500">*</span>
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      Select leads to assign for calling ({selectedLeadIds.length} selected)
+                    </p>
+                  </div>
+                  <input
+                    type="text"
+                    value={callingLeadQuery}
+                    onChange={(e) => setCallingLeadQuery(e.target.value)}
+                    placeholder="Search by name or phone..."
+                    className="w-full rounded-lg border border-border-color bg-bg-secondary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+                  />
+                  {selectedLeadIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedLeadIds.map((lid) => {
+                        const lead = leads.find((l) => l.id === lid);
+                        return (
+                          <span
+                            key={lid}
+                            className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
+                          >
+                            {lead?.name || lead?.phone || `#${lid}`}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedLeadIds((prev) => prev.filter((id) => id !== lid))}
+                              className="ml-0.5 hover:text-red-500"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">
-                      Record limit (optional)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={500}
-                      value={recordLimit}
-                      onChange={(e) => setRecordLimit(e.target.value)}
-                      placeholder="e.g. 20 — blank = all matching"
-                      className="w-full rounded-lg border border-border-color bg-bg-secondary px-3 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none"
-                    />
+                  <div className="max-h-[200px] overflow-y-auto space-y-1 rounded-lg border border-border-color bg-bg-secondary p-2">
+                    {leads
+                      .filter((l) => {
+                        const q = callingLeadQuery.trim().toLowerCase();
+                        if (!q) return true;
+                        return `${l.name ?? ''} ${l.phone ?? ''} ${l.id}`.toLowerCase().includes(q);
+                      })
+                      .map((l) => {
+                        const isSelected = selectedLeadIds.includes(l.id);
+                        return (
+                          <label
+                            key={l.id}
+                            className={`flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
+                              isSelected
+                                ? 'bg-accent/10 text-accent'
+                                : 'text-text-primary hover:bg-bg-primary'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                setSelectedLeadIds((prev) =>
+                                  isSelected
+                                    ? prev.filter((id) => id !== l.id)
+                                    : [...prev, l.id]
+                                );
+                              }}
+                              className="rounded border-border-color text-accent focus:ring-accent"
+                            />
+                            <span className="flex-1 truncate font-medium">
+                              {l.name || l.phone || `Lead #${l.id}`}
+                            </span>
+                            {l.phone && (
+                              <span className="text-xs text-text-secondary">{l.phone}</span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    {leads.filter((l) => {
+                      const q = callingLeadQuery.trim().toLowerCase();
+                      if (!q) return true;
+                      return `${l.name ?? ''} ${l.phone ?? ''} ${l.id}`.toLowerCase().includes(q);
+                    }).length === 0 && (
+                      <p className="py-4 text-center text-xs text-text-secondary">No leads found</p>
+                    )}
                   </div>
+                  {leads.length > 0 && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLeadIds(leads.filter((l) => l.phone).map((l) => l.id))}
+                        className="text-xs text-accent hover:underline"
+                      >
+                        Select all with phone
+                      </button>
+                      {selectedLeadIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLeadIds([])}
+                          className="text-xs text-text-secondary hover:underline"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

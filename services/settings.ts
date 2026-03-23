@@ -24,6 +24,7 @@ export interface WorkspaceSettings {
   default_currency?: string | null;
   default_channel_id?: number | null;
   lead_auto_assign_strategy?: string | null;
+  lead_assignment_lock_days: number;
   working_hours?: Record<string, any> | null;
   lms_enabled: boolean;
   agents_enabled: boolean;
@@ -35,6 +36,7 @@ export interface WorkspaceUpdate {
   default_currency?: string;
   default_channel_id?: number;
   lead_auto_assign_strategy?: string;
+  lead_assignment_lock_days?: number;
   working_hours?: Record<string, any>;
 }
 

@@ -9,7 +9,9 @@ import { listEmployees } from '@/services/employees';
 import { listLeadsForSelect, type LeadOption } from '@/services/customers';
 import {
   getWork, updateWork, startWork, getWorkTemplate, submitWorkForm,
+  getAssignedLeads, updateLeadAssignmentStatus,
   type Work, type WorkUpdate, type DatasheetUiSchema, type FormField,
+  type WorkLeadAssignment,
 } from '@/services/work';
 import { WorkDetailHeader } from '@/components/work/work-detail-header';
 import WorkDetailChecklist from '@/components/work/work-detail-checklist';
@@ -476,6 +478,25 @@ export default function WorkDetailPage() {
     );
   }
 
+  // ── Calling work ─────────────────────────────────────────────────────────
+
+  if (templateType === 'calling') {
+    return (
+      <ModuleGuard module="lms">
+        <div className="w-full max-w-3xl space-y-4">
+          <BackNav />
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+              {error}
+            </div>
+          )}
+          <WorkDetailHeader work={work} />
+          <CallingWorkView workId={work.id} />
+        </div>
+      </ModuleGuard>
+    );
+  }
+
   // ── Simple work ──────────────────────────────────────────────────────────
 
   const hasSubmittedForm = !!(work.form_data && Object.keys(work.form_data as object).length > 0);
@@ -808,5 +829,100 @@ export default function WorkDetailPage() {
         ) : null}
       </div>
     </ModuleGuard>
+  );
+}
+
+
+// ── Calling Work View ────────────────────────────────────────────────────
+
+const CALL_STATUS_STYLES: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  called: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+  skipped: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+  callback: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+};
+
+function CallingWorkView({ workId }: { workId: number }) {
+  const [leads, setLeads] = useState<WorkLeadAssignment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchLeads = useCallback(async () => {
+    try {
+      const data = await getAssignedLeads(workId);
+      setLeads(data);
+    } catch {
+      // silent
+    } finally {
+      setLoading(false);
+    }
+  }, [workId]);
+
+  useEffect(() => {
+    fetchLeads();
+  }, [fetchLeads]);
+
+  const handleStatusChange = async (leadId: number, status: string) => {
+    try {
+      await updateLeadAssignmentStatus(workId, leadId, status);
+      await fetchLeads();
+    } catch {
+      // silent
+    }
+  };
+
+  if (loading) {
+    return <p className="animate-pulse text-center text-sm text-text-secondary py-8">Loading leads...</p>;
+  }
+
+  const calledCount = leads.filter((l) => l.status === 'called').length;
+  const progress = leads.length > 0 ? (calledCount / leads.length) * 100 : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Progress */}
+      <div className="rounded-xl border border-border-color bg-card-bg p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-text-primary">Calling Progress</h3>
+          <span className="text-sm font-bold text-accent">{calledCount}/{leads.length}</span>
+        </div>
+        <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+          <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+
+      {/* Lead List */}
+      <div className="rounded-xl border border-border-color bg-card-bg shadow-sm divide-y divide-border-color">
+        <div className="px-5 py-3">
+          <h3 className="text-sm font-semibold text-text-primary">Leads to Call ({leads.length})</h3>
+        </div>
+        {leads.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-text-secondary">No leads assigned</p>
+        ) : (
+          leads.map((a) => (
+            <div key={a.id} className="flex items-center gap-4 px-5 py-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-text-primary truncate">{a.lead_name || 'Unknown'}</p>
+                <p className="text-xs text-text-secondary">{a.lead_phone || 'No phone'}</p>
+              </div>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${CALL_STATUS_STYLES[a.status] || CALL_STATUS_STYLES.pending}`}>
+                {a.status}
+              </span>
+              {a.last_disposition && (
+                <span className="text-xs text-text-secondary capitalize">{a.last_disposition.replace(/_/g, ' ')}</span>
+              )}
+              {a.status === 'pending' && (
+                <button
+                  type="button"
+                  onClick={() => handleStatusChange(a.lead_id, 'skipped')}
+                  className="text-xs text-text-secondary hover:text-text-primary"
+                >
+                  Skip
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }

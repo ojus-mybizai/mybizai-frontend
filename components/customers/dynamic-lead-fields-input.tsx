@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { listLeadFields, type LeadFieldConfig, type EntityType } from '@/services/lead-fields';
 import { listWork } from '@/services/work';
-import { listOrders } from '@/services/orders';
-import { listAppointments } from '@/services/appointments';
 import { listContacts } from '@/services/contacts';
 import { listEmployees } from '@/services/employees';
 import { queryRecords } from '@/services/dynamic-data';
@@ -20,8 +18,6 @@ export interface RelationValue {
 
 export const RELATION_ENTITY_TYPE_MAP: Record<string, EntityType | null> = {
   work: null,               // Work has no EntityType in LeadEntityLink
-  order: 'order',
-  appointment: 'appointment',
   contact: 'contact',
   employee: 'employee',
   datasheet: 'datasheet_record',
@@ -31,8 +27,6 @@ export const RELATION_ENTITY_TYPE_MAP: Record<string, EntityType | null> = {
 
 const RELATION_META: Record<string, { icon: string; label: string }> = {
   work:        { icon: '🔧', label: 'Work Item' },
-  order:       { icon: '🛒', label: 'Order' },
-  appointment: { icon: '📆', label: 'Appointment' },
   contact:     { icon: '👤', label: 'Contact' },
   employee:    { icon: '👥', label: 'Employee' },
   datasheet:   { icon: '🗄', label: 'Record' },
@@ -317,26 +311,6 @@ async function fetchRelationOptions(
       case 'work': {
         const res = await listWork({ q: search || undefined, per_page: 30 });
         return res.items.map((w) => ({ id: w.id, label: w.title || `Work #${w.id}` }));
-      }
-      case 'order': {
-        const orders = await listOrders({});
-        const filtered = search
-          ? orders.filter((o) => `#${o.id} ${o.status}`.toLowerCase().includes(search.toLowerCase()))
-          : orders;
-        return filtered.slice(0, 30).map((o) => ({ id: o.id, label: `Order #${o.id} — ${o.status}` }));
-      }
-      case 'appointment': {
-        const appts = await listAppointments({});
-        const filtered = search
-          ? appts.filter((a) => new Date(a.date_time).toLocaleString().toLowerCase().includes(search.toLowerCase()))
-          : appts;
-        return filtered.slice(0, 30).map((a) => {
-          const d = new Date(a.date_time);
-          return {
-            id: a.id,
-            label: d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
-          };
-        });
       }
       case 'contact': {
         const contacts = await listContacts({ search: search || undefined });

@@ -40,6 +40,7 @@ export interface DynamicField {
   default_value: unknown;
   config: Record<string, unknown>;
   relation_model_id: number | null;
+  relation_builtin_model?: string | null;
   relation_kind: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -57,6 +58,7 @@ export interface DynamicFieldCreate {
   default_value?: unknown;
   config?: Record<string, unknown>;
   relation_model_id?: number | null;
+  relation_builtin_model?: string | null;
   relation_kind?: 'many_to_one' | 'one_to_many' | 'many_to_many' | null;
 }
 
@@ -434,6 +436,19 @@ export async function createView(
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// Built-in model search
+export async function searchBuiltinModel(
+  modelKey: string,
+  keyword: string = '',
+  page: number = 1,
+  perPage: number = 20
+) {
+  return apiFetch<{ items: { id: number; label: string }[]; total: number }>(
+    `/dynamic-data/builtin-models/${modelKey}/search?keyword=${encodeURIComponent(keyword)}&page=${page}&per_page=${perPage}`,
+    { method: 'GET', auth: true }
+  );
 }
 
 // Record history

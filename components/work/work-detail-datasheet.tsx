@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import type { Work, AssignedRecordOut, FormField } from '@/services/work';
-import { getWorkAssignedRecords, updateWorkRecordStatus, startWork, getWork, submitRecordFormData } from '@/services/work';
+import { getWorkAssignedRecords, updateWorkRecordStatus, startWork, getWork, submitRecordFormData, createWorkRecord } from '@/services/work';
+import { listFields, queryRecords, updateRecord, uploadFileForAttachment, bindAttachment, listAttachments, deleteAttachment, type DynamicField } from '@/services/dynamic-data';
 import { useAuthStore } from '@/lib/auth-store';
 import { WorkDetailHeader } from '@/components/work/work-detail-header';
 import { DynamicWorkForm } from '@/components/work/dynamic-work-form';
@@ -162,7 +163,690 @@ function RecordFormDataView({
   );
 }
 
+/** Create-records mode: employee creates N new records in the datasheet */
+function CreateRecordsView({
+  work,
+  onWorkUpdated,
+}: {
+  work: Work;
+  onWorkUpdated: (w: Work) => void;
+}) {
+  const user = useAuthStore((s) => s.user as { id?: number } | null);
+  const canAct = work.assigned_to_id === user?.id || useAuthStore.getState().hasPermission('manage_work');
+
+  const progress = work.datasheet_progress!;
+  const modelId = progress.dynamic_model_id;
+
+  const [fields, setFields] = useState<DynamicField[]>([]);
+  const [records, setRecords] = useState<AssignedRecordOut[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fieldsLoading, setFieldsLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const targetCount = progress.target_count ?? 0;
+  const createdCount = progress.created_count ?? 0;
+  const isComplete = progress.completed || createdCount >= targetCount;
+  const progressPct = targetCount > 0 ? Math.round((createdCount / targetCount) * 100) : 0;
+
+  // Load datasheet fields
+  useEffect(() => {
+    if (modelId == null) { setFieldsLoading(false); return; }
+    listFields(modelId)
+      .then(setFields)
+      .catch(() => setFields([]))
+      .finally(() => setFieldsLoading(false));
+  }, [modelId]);
+
+  // Load created records
+  const loadRecords = useCallback(async () => {
+    try {
+      const list = await getWorkAssignedRecords(work.id);
+      setRecords(list);
+    } catch {
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [work.id]);
+
+  useEffect(() => { void loadRecords(); }, [loadRecords]);
+
+  const handleStart = async () => {
+    if (!canAct || work.status !== 'pending') return;
+    setActionLoading('start');
+    try {
+      const updated = await startWork(work.id);
+      onWorkUpdated(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCreateRecord = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      // Separate file fields from regular data
+      const dataFields: Record<string, unknown> = {};
+      const fileFields: Array<{ field: DynamicField; files: FileList }> = [];
+
+      for (const [key, val] of Object.entries(formValues)) {
+        const field = editableFields.find((f) => f.name === key);
+        if (field && (field.field_type === 'image' || field.field_type === 'file') && val instanceof FileList) {
+          fileFields.push({ field, files: val });
+        } else {
+          dataFields[key] = val;
+        }
+      }
+
+      // Step 1: Create record with non-file data
+      const result = await createWorkRecord(work.id, dataFields) as { dynamic_record_id: number };
+      const newRecordId = result.dynamic_record_id;
+
+      // Step 2: Upload and bind files
+      if (fileFields.length > 0 && modelId) {
+        for (const { field, files } of fileFields) {
+          for (const file of Array.from(files)) {
+            try {
+              const uploaded = await uploadFileForAttachment(modelId, file);
+              await bindAttachment(modelId, {
+                dynamic_record_id: newRecordId,
+                field_id: field.id,
+                storage_key: uploaded.storage_key,
+                original_file_name: uploaded.original_file_name,
+                mime_type: uploaded.mime_type ?? undefined,
+                size_bytes: uploaded.size_bytes ?? undefined,
+              });
+            } catch (uploadErr) {
+              console.warn('File upload failed for field', field.name, uploadErr);
+            }
+          }
+        }
+      }
+
+      setFormValues({});
+      setShowForm(false);
+      await loadRecords();
+      const updated = await getWork(work.id);
+      onWorkUpdated(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create record');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const editableFields = fields.filter((f) => f.is_editable !== false);
+  const [relationOptions, setRelationOptions] = useState<Record<number, Array<{ id: number; label: string }>>>({});
+  const [editingCell, setEditingCell] = useState<{ recId: number; fieldName: string } | null>(null);
+  const [editDraft, setEditDraft] = useState<unknown>('');
+
+  // Load relation options for relation fields
+  useEffect(() => {
+    const relationFields = editableFields.filter((f) => f.field_type === 'relation' && f.relation_model_id);
+    if (relationFields.length === 0) return;
+    relationFields.forEach((rf) => {
+      queryRecords(rf.relation_model_id!, { page: 1, per_page: 200 })
+        .then((res) => {
+          const opts = (res.items || []).map((item: any) => ({
+            id: Number(item.id),
+            label: item.data?.name || item.data?.title || item.record_key || `#${item.id}`,
+          }));
+          setRelationOptions((prev) => ({ ...prev, [rf.relation_model_id!]: opts }));
+        })
+        .catch(() => {});
+    });
+  }, [fields]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Render a form input for a DynamicField */
+  function renderFieldInput(field: DynamicField, value: unknown, onChange: (v: unknown) => void) {
+    const inputCls = 'w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none';
+
+    switch (field.field_type) {
+      case 'long_text':
+        return (
+          <textarea
+            rows={3}
+            value={String(value ?? '')}
+            onChange={(e) => onChange(e.target.value)}
+            required={field.is_required}
+            placeholder={field.display_name || field.name}
+            className={`${inputCls} resize-none`}
+          />
+        );
+
+      case 'number':
+      case 'currency':
+        return (
+          <div className="relative">
+            {field.field_type === 'currency' && (
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-text-secondary">
+                {(field.config?.currency_code as string) ?? '₹'}
+              </span>
+            )}
+            <input
+              type="number"
+              step={field.field_type === 'currency' ? '0.01' : '1'}
+              value={String(value ?? '')}
+              onChange={(e) => onChange(e.target.value)}
+              required={field.is_required}
+              placeholder={field.display_name || field.name}
+              className={`${inputCls} ${field.field_type === 'currency' ? 'pl-7' : ''}`}
+            />
+          </div>
+        );
+
+      case 'enum':
+        return (
+          <select
+            value={String(value ?? '')}
+            onChange={(e) => onChange(e.target.value)}
+            required={field.is_required}
+            className={inputCls}
+          >
+            <option value="">Select {field.display_name || field.name}...</option>
+            {(Array.isArray(field.config?.options) ? (field.config.options as string[]) : []).map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        );
+
+      case 'boolean':
+        return (
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={value === true || value === 'true'}
+              onChange={(e) => onChange(e.target.checked)}
+              className="rounded border-border-color text-accent focus:ring-accent h-4 w-4"
+            />
+            <span className="text-sm text-text-secondary">{value === true || value === 'true' ? 'Yes' : 'No'}</span>
+          </label>
+        );
+
+      case 'date':
+        return (
+          <input
+            type="date"
+            value={String(value ?? '')}
+            onChange={(e) => onChange(e.target.value)}
+            required={field.is_required}
+            className={inputCls}
+          />
+        );
+
+      case 'relation': {
+        const opts = field.relation_model_id ? (relationOptions[field.relation_model_id] ?? []) : [];
+        return (
+          <select
+            value={String(value ?? '')}
+            onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+            required={field.is_required}
+            className={inputCls}
+          >
+            <option value="">Select {field.display_name || field.name}...</option>
+            {opts.map((opt) => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
+          </select>
+        );
+      }
+
+      case 'image':
+      case 'file': {
+        const currentFiles = (value instanceof FileList || Array.isArray(value)) ? value : null;
+        const isImage = field.field_type === 'image';
+        return (
+          <div className="space-y-2">
+            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border-color bg-bg-secondary/30 px-4 py-4 transition hover:border-accent hover:bg-accent/5">
+              <span className="text-2xl">{isImage ? '📷' : '📎'}</span>
+              <span className="text-xs text-text-secondary">
+                {currentFiles ? `${Array.from(currentFiles as any).length} file(s) selected` : `Click to select ${isImage ? 'image' : 'file'}`}
+              </span>
+              <input
+                type="file"
+                accept={isImage ? 'image/*' : undefined}
+                multiple={!!field.config?.multiple}
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    onChange(e.target.files);
+                  }
+                }}
+              />
+            </label>
+            {currentFiles && Array.from(currentFiles as FileList).map((f, i) => (
+              <div key={i} className="flex items-center gap-2 rounded border border-border-color bg-bg-primary px-3 py-1.5 text-xs text-text-primary">
+                <span className="truncate flex-1">{f.name}</span>
+                <span className="text-text-secondary">{(f.size / 1024).toFixed(0)}KB</span>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      default: // text and any unknown
+        return (
+          <input
+            type="text"
+            value={String(value ?? '')}
+            onChange={(e) => onChange(e.target.value)}
+            required={field.is_required}
+            placeholder={field.display_name || field.name}
+            className={inputCls}
+          />
+        );
+    }
+  }
+
+  /** Save an inline edit on a record */
+  const handleInlineEdit = async (recId: number, fieldName: string, value: unknown) => {
+    if (!modelId) return;
+    setActionLoading(`edit-${recId}-${fieldName}`);
+    try {
+      await updateRecord(modelId, recId, { data: { [fieldName]: value }, mode: 'merge' });
+      await loadRecords();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update');
+    } finally {
+      setActionLoading(null);
+      setEditingCell(null);
+    }
+  };
+
+  /** Format a cell value for display */
+  function formatCellValue(field: DynamicField, value: unknown): React.ReactNode {
+    if (value == null || value === '') return <span className="text-text-secondary">—</span>;
+    if (field.field_type === 'boolean') {
+      return value === true || value === 'true'
+        ? <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">Yes</span>
+        : <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">No</span>;
+    }
+    if (field.field_type === 'enum') {
+      return <span className="inline-flex rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-accent">{String(value)}</span>;
+    }
+    if (field.field_type === 'currency') {
+      const code = (field.config?.currency_code as string) ?? '₹';
+      return `${code} ${Number(value).toLocaleString()}`;
+    }
+    if (field.field_type === 'date' && value) {
+      return new Date(String(value)).toLocaleDateString();
+    }
+    if (field.field_type === 'relation') {
+      const opts = field.relation_model_id ? (relationOptions[field.relation_model_id] ?? []) : [];
+      const match = opts.find((o) => o.id === Number(value));
+      return match
+        ? <span className="inline-flex rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">{match.label}</span>
+        : String(value);
+    }
+    if (field.field_type === 'image' || field.field_type === 'file') {
+      // Rendered separately by AttachmentCellView
+      return null;
+    }
+    return String(value);
+  }
+
+  /** Inline attachment viewer for image/file cells in records table */
+  function AttachmentCellView({ recordId, field }: { recordId: number; field: DynamicField }) {
+    const [attachments, setAttachments] = useState<any[]>([]);
+    const [uploading, setUploading] = useState(false);
+
+    useEffect(() => {
+      listAttachments(recordId)
+        .then((all: any[]) => setAttachments(all.filter((a: any) => a.field_id === field.id)))
+        .catch(() => {});
+    }, [recordId, field.id]);
+
+    const handleUpload = async (file: File) => {
+      if (!modelId) return;
+      setUploading(true);
+      try {
+        const uploaded = await uploadFileForAttachment(modelId, file);
+        await bindAttachment(modelId, {
+          dynamic_record_id: recordId,
+          field_id: field.id,
+          storage_key: uploaded.storage_key,
+          original_file_name: uploaded.original_file_name,
+          mime_type: uploaded.mime_type ?? undefined,
+          size_bytes: uploaded.size_bytes ?? undefined,
+        });
+        const all = await listAttachments(recordId);
+        setAttachments((all as any[]).filter((a: any) => a.field_id === field.id));
+      } catch {
+        // silent
+      } finally {
+        setUploading(false);
+      }
+    };
+
+    const handleDelete = async (attId: number) => {
+      try {
+        await deleteAttachment(attId);
+        setAttachments((prev) => prev.filter((a) => a.id !== attId));
+      } catch {}
+    };
+
+    const isImage = field.field_type === 'image';
+
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {attachments.map((att: any) => (
+          <div key={att.id} className="group relative">
+            {isImage && att.signed_url ? (
+              <a href={att.signed_url} target="_blank" rel="noopener noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={att.signed_url} alt="" className="h-8 w-8 rounded border border-border-color object-cover" />
+              </a>
+            ) : (
+              <a href={att.signed_url} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-accent hover:underline truncate max-w-[80px] block">
+                {att.original_file_name || 'file'}
+              </a>
+            )}
+            {canAct && (
+              <button
+                type="button"
+                onClick={() => void handleDelete(att.id)}
+                className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] text-white group-hover:flex"
+              >×</button>
+            )}
+          </div>
+        ))}
+        {canAct && (!attachments.length || !!(field.config?.multiple)) && (
+          <label className={`cursor-pointer rounded border border-dashed border-border-color px-2 py-1 text-xs text-text-secondary hover:border-accent hover:text-accent ${uploading ? 'opacity-50' : ''}`}>
+            {uploading ? '...' : isImage ? '+ img' : '+ file'}
+            <input type="file" accept={isImage ? 'image/*' : undefined} className="hidden"
+              onChange={(e) => e.target.files?.[0] && void handleUpload(e.target.files[0])} />
+          </label>
+        )}
+      </div>
+    );
+  }
+
+  const startAction =
+    work.status === 'pending' && canAct ? (
+      <button
+        type="button"
+        onClick={() => void handleStart()}
+        disabled={!!actionLoading}
+        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
+      >
+        {actionLoading === 'start' ? 'Starting...' : 'Start work'}
+      </button>
+    ) : null;
+
+  return (
+    <div className="space-y-5">
+      <WorkDetailHeader work={work} action={startAction} showBack={false} />
+
+      {/* Notes */}
+      {work.notes && (
+        <div className="rounded-lg border border-border-color bg-bg-secondary/60 px-4 py-3">
+          <p className="text-sm text-text-secondary whitespace-pre-wrap">{work.notes}</p>
+        </div>
+      )}
+
+      {/* Start work callout */}
+      {work.status === 'pending' && canAct && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/10">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg" aria-hidden>&#9203;</span>
+            <div>
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Work hasn&apos;t started yet</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">Start this work to begin creating records</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleStart()}
+            disabled={!!actionLoading}
+            className="shrink-0 rounded-lg bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
+          >
+            {actionLoading === 'start' ? 'Starting...' : 'Start'}
+          </button>
+        </div>
+      )}
+
+      {/* Progress bar */}
+      <div className="rounded-xl border border-border-color bg-bg-secondary/60 p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <span className="text-sm font-semibold text-text-primary">
+              {createdCount} of {targetCount} records created
+            </span>
+            {isComplete && (
+              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Target reached</p>
+            )}
+          </div>
+          <span className="text-xl font-bold text-accent">{progressPct}%</span>
+        </div>
+        <div className="h-2.5 w-full overflow-hidden rounded-full bg-bg-primary border border-border-color">
+          <div
+            className="h-full rounded-full bg-accent transition-all duration-500"
+            style={{ width: `${Math.min(progressPct, 100)}%` }}
+          />
+        </div>
+        {(work.started_at || work.completed_at) && (
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-text-secondary">
+            {work.started_at && <span>Started {formatDate(work.started_at)}</span>}
+            {work.completed_at && <span>Completed {formatDate(work.completed_at)}</span>}
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
+      {/* Create New Record button */}
+      {canAct && work.status !== 'pending' && !isComplete && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => { setShowForm(true); setFormValues({}); }}
+            disabled={fieldsLoading}
+            className="rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
+          >
+            + Create New Record
+          </button>
+        </div>
+      )}
+
+      {isComplete && work.status !== 'completed' && canAct && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center dark:border-emerald-800/40 dark:bg-emerald-900/10">
+          <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+            All {targetCount} records have been created!
+          </p>
+          <p className="mt-0.5 text-xs text-emerald-600 dark:text-emerald-400">
+            The work will be automatically marked as completed.
+          </p>
+        </div>
+      )}
+
+      {/* Create record form modal */}
+      {showForm && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center"
+          role="dialog"
+          aria-modal
+          onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-border-color bg-card-bg shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border-color px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-text-primary">Create New Record</h3>
+                <p className="mt-0.5 text-xs text-text-secondary">
+                  Record {createdCount + 1} of {targetCount}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="rounded-full p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+              {fieldsLoading ? (
+                <div className="py-8 text-center text-sm text-text-secondary">Loading fields...</div>
+              ) : editableFields.length === 0 ? (
+                <div className="py-8 text-center text-sm text-text-secondary">
+                  No editable fields found for this datasheet.
+                </div>
+              ) : (
+                <form
+                  onSubmit={(e) => { e.preventDefault(); void handleCreateRecord(); }}
+                  className="space-y-4"
+                >
+                  {editableFields.map((field) => (
+                    <div key={field.id}>
+                      <label className="mb-1.5 block text-sm font-medium text-text-primary">
+                        {field.display_name || field.name}
+                        {field.is_required && <span className="text-red-500"> *</span>}
+                      </label>
+                      {renderFieldInput(field, formValues[field.name], (v) => setFormValues((prev) => ({ ...prev, [field.name]: v })))}
+                    </div>
+                  ))}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowForm(false)}
+                      className="flex-1 rounded-lg border border-border-color py-2.5 text-sm font-medium text-text-secondary hover:bg-bg-secondary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+                    >
+                      {submitting ? 'Creating...' : 'Create Record'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* List of created records */}
+      {loading ? (
+        <div className="overflow-hidden rounded-xl border border-border-color">
+          <div className="h-12 animate-pulse bg-bg-secondary" />
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-14 animate-pulse border-t border-border-color bg-card-bg" />
+          ))}
+        </div>
+      ) : records.length === 0 ? (
+        <div className="rounded-xl border border-border-color bg-bg-secondary px-4 py-10 text-center">
+          <p className="text-sm font-medium text-text-secondary">No records created yet</p>
+          <p className="mt-1 text-xs text-text-secondary">
+            Use the button above to start creating records for this work
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-xl border border-border-color shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border-color bg-bg-secondary">
+                    <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary w-10">#</th>
+                    {editableFields.slice(0, 6).map((f) => (
+                      <th key={f.id} className="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                        {f.display_name || f.name}
+                      </th>
+                    ))}
+                    <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary w-20">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map((rec, idx) => (
+                    <tr
+                      key={rec.dynamic_record_id}
+                      className="border-b border-border-color last:border-0 bg-card-bg hover:bg-bg-secondary/20 transition-colors"
+                    >
+                      <td className="px-3 py-2.5 text-text-secondary text-xs font-mono">{idx + 1}</td>
+                      {editableFields.slice(0, 6).map((f) => {
+                        const cellValue = rec.data[f.name];
+                        const isFileField = f.field_type === 'image' || f.field_type === 'file';
+                        const isEditing = editingCell?.recId === rec.dynamic_record_id && editingCell?.fieldName === f.name;
+                        const isSaving = actionLoading === `edit-${rec.dynamic_record_id}-${f.name}`;
+
+                        return (
+                          <td key={f.id} className="px-3 py-2.5">
+                            {isFileField ? (
+                              <AttachmentCellView recordId={rec.dynamic_record_id} field={f} />
+                            ) : isEditing ? (
+                              <div className="flex items-center gap-1">
+                                <div className="flex-1 min-w-[120px]">
+                                  {renderFieldInput(f, editDraft, setEditDraft)}
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={isSaving}
+                                  onClick={() => void handleInlineEdit(rec.dynamic_record_id, f.name, editDraft)}
+                                  className="shrink-0 rounded bg-accent px-2 py-1 text-xs text-white hover:opacity-90 disabled:opacity-60"
+                                >
+                                  {isSaving ? '...' : '✓'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingCell(null)}
+                                  className="shrink-0 rounded bg-bg-secondary px-2 py-1 text-xs text-text-secondary hover:bg-bg-primary"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
+                              <div
+                                className={`text-sm text-text-primary ${canAct && f.is_editable ? 'cursor-pointer hover:bg-accent/5 rounded px-1 py-0.5 -mx-1' : ''}`}
+                                onClick={() => {
+                                  if (!canAct || !f.is_editable) return;
+                                  setEditingCell({ recId: rec.dynamic_record_id, fieldName: f.name });
+                                  setEditDraft(cellValue ?? '');
+                                }}
+                                title={canAct && f.is_editable ? 'Click to edit' : undefined}
+                              >
+                                {formatCellValue(f, cellValue)}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="px-3 py-2.5">
+                        <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                          {rec.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, formSchema }: WorkDetailDatasheetProps) {
+  const isCreateRecordsMode = work.datasheet_progress?.assignment_mode === 'create_records';
+
   const user = useAuthStore((s) => s.user as { id?: number } | null);
   const canAct = work.assigned_to_id === user?.id || useAuthStore.getState().hasPermission('manage_work');
   const isManager = useAuthStore.getState().hasPermission('manage_work');
@@ -296,6 +980,11 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, for
         {actionLoading === 'start' ? 'Starting…' : 'Start work'}
       </button>
     ) : null;
+
+  // Route to create-records view when in create_records mode
+  if (isCreateRecordsMode) {
+    return <CreateRecordsView work={work} onWorkUpdated={onWorkUpdated} />;
+  }
 
   return (
     <div className="space-y-5">

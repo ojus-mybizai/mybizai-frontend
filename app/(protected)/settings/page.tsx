@@ -4,6 +4,17 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/lib/auth-store';
 import { SettingsKnowledgeBaseTab } from '@/components/settings/knowledge-base-tab';
 import {
+  User, Building2, Users, BookOpen, Bell, Settings2,
+  Lock, Mail, Phone, Globe, Clock, DollarSign, Shield,
+  Save, AlertCircle, CheckCircle2, Eye, EyeOff,
+  Briefcase, MapPin, Target, Hash, Smartphone, Monitor,
+} from 'lucide-react';
+import {
+  getNotificationPreferences,
+  updateNotificationPreferences,
+  type NotificationPreferences,
+} from '@/services/notifications';
+import {
   changePassword,
   getCustomRoles,
   getPermissionsCatalog,
@@ -61,10 +72,12 @@ export default function SettingsPage() {
     name: string;
     timezone: string;
     default_currency: string;
+    lead_assignment_lock_days: number;
   }>({
     name: '',
     timezone: '',
     default_currency: '',
+    lead_assignment_lock_days: 30,
   });
 
   const [selectedRoleId, setSelectedRoleId] = useState<number | 'new' | null>(null);
@@ -127,6 +140,7 @@ export default function SettingsPage() {
             name: w.name,
             timezone: (w.timezone as string) ?? '',
             default_currency: (w.default_currency as string) ?? '',
+            lead_assignment_lock_days: w.lead_assignment_lock_days ?? 30,
           });
         }
       })
@@ -264,6 +278,7 @@ export default function SettingsPage() {
         name: workspaceForm.name,
         timezone: workspaceForm.timezone || undefined,
         default_currency: workspaceForm.default_currency || undefined,
+        lead_assignment_lock_days: workspaceForm.lead_assignment_lock_days,
       });
       setWorkspace(updated);
       setSuccess('Workspace settings saved');
@@ -438,164 +453,201 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5">
+    <div className="mx-auto max-w-7xl space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold text-text-primary sm:text-3xl">Settings</h2>
-              <p className="text-base text-text-secondary">
-                Manage your profile, workspace, team roles, and notification preferences.
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
+                <Settings2 className="h-5 w-5 text-accent" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-semibold text-text-primary">Settings</h2>
+                <p className="text-sm text-text-secondary">
+                  Manage your profile, workspace, and team preferences
+                </p>
+              </div>
             </div>
           </div>
 
           <div className="border-b border-border-color">
-            <nav className="-mb-px flex flex-wrap gap-4 text-sm">
-              {[
-                { key: 'profile', label: 'Profile' },
-                { key: 'workspace', label: 'Workspace' },
-                { key: 'business', label: 'Business' },
-                { key: 'roles', label: 'Team & roles' },
-                { key: 'knowledge_base', label: 'Knowledge Base' },
-                { key: 'notifications', label: 'Notifications' },
-              ].map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => {
-                    setTab(t.key as TabKey);
-                    setError(null);
-                    setSuccess(null);
-                  }}
-                  className={`border-b-2 px-1 pb-2 text-sm font-medium ${
-                    tab === t.key
-                      ? 'border-accent text-text-primary'
-                      : 'border-transparent text-text-secondary hover:text-text-primary'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+            <nav className="-mb-px flex flex-wrap gap-1 text-sm">
+              {([
+                { key: 'profile', label: 'Profile', icon: User },
+                { key: 'workspace', label: 'Workspace', icon: Settings2 },
+                { key: 'business', label: 'Business', icon: Building2 },
+                { key: 'roles', label: 'Team & Roles', icon: Users },
+                { key: 'knowledge_base', label: 'Knowledge Base', icon: BookOpen },
+                { key: 'notifications', label: 'Notifications', icon: Bell },
+              ] as const).map((t) => {
+                const Icon = t.icon;
+                const isActive = tab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => {
+                      setTab(t.key as TabKey);
+                      setError(null);
+                      setSuccess(null);
+                    }}
+                    className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'border-accent text-accent'
+                        : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border-color'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="hidden sm:inline">{t.label}</span>
+                  </button>
+                );
+              })}
             </nav>
           </div>
 
           {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+              <AlertCircle className="h-4 w-4 shrink-0" />
               {error}
             </div>
           )}
           {success && (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
               {success}
             </div>
           )}
 
           {tab === 'profile' && (
-            <div className="grid gap-5 md:grid-cols-2">
-              <div className="space-y-4 rounded-2xl border border-border-color bg-card-bg p-5">
-                <h3 className="text-base font-semibold text-text-primary">Account info</h3>
-                <div className="space-y-3 text-base">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">
-                      Name
-                    </label>
-                    <input
-                      type="text"
-                      value={profileForm.name}
-                      onChange={(e) =>
-                        setProfileForm((f) => ({ ...f, name: e.target.value }))
-                      }
-                      className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary"
-                    />
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Account Info Card */}
+              <div className="space-y-5 rounded-2xl border border-border-color bg-card-bg p-6">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+                    <User className="h-4 w-4 text-accent" />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={profile?.email ?? ''}
-                      disabled
-                      className="w-full rounded-md border border-border-color bg-bg-secondary px-3 py-2 text-base text-text-secondary"
-                    />
+                    <h3 className="text-base font-semibold text-text-primary">Account Info</h3>
+                    <p className="text-xs text-text-secondary">Your personal details</p>
                   </div>
+                </div>
+
+                <div className="space-y-4">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      value={profileForm.phone}
-                      onChange={(e) =>
-                        setProfileForm((f) => ({ ...f, phone: e.target.value }))
-                      }
-                      className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary"
-                    />
-                  </div>
-                  <div className="text-xs text-text-secondary">
-                    <div>
-                      Role:{' '}
-                      <span className="font-semibold">
-                        {profile?.current_role ?? '—'}
-                      </span>
+                    <label className="mb-1.5 block text-xs font-medium text-text-secondary">Full Name</label>
+                    <div className="relative">
+                      <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="text"
+                        value={profileForm.name}
+                        onChange={(e) => setProfileForm((f) => ({ ...f, name: e.target.value }))}
+                        placeholder="Your name"
+                        className="w-full rounded-lg border border-border-color bg-bg-primary py-2.5 pl-10 pr-3 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+                      />
                     </div>
-                    <div>
-                      Workspace:{' '}
-                      <span className="font-semibold">
-                        {profile?.current_business_name ?? '—'}
-                      </span>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-text-secondary">Email Address</label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="email"
+                        value={profile?.email ?? ''}
+                        disabled
+                        className="w-full rounded-lg border border-border-color bg-bg-secondary py-2.5 pl-10 pr-3 text-sm text-text-secondary cursor-not-allowed"
+                      />
+                    </div>
+                    <p className="mt-1 text-[10px] text-text-muted">Email cannot be changed</p>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-text-secondary">Phone Number</label>
+                    <div className="relative">
+                      <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="tel"
+                        value={profileForm.phone}
+                        onChange={(e) => setProfileForm((f) => ({ ...f, phone: e.target.value }))}
+                        placeholder="+91 XXXXX XXXXX"
+                        className="w-full rounded-lg border border-border-color bg-bg-primary py-2.5 pl-10 pr-3 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Role & Workspace info badges */}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <div className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-1">
+                      <Shield className="h-3 w-3 text-accent" />
+                      <span className="text-xs font-medium text-accent">{profile?.current_role ?? 'No role'}</span>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 rounded-full bg-bg-secondary px-3 py-1">
+                      <Building2 className="h-3 w-3 text-text-secondary" />
+                      <span className="text-xs font-medium text-text-secondary">{profile?.current_business_name ?? '—'}</span>
                     </div>
                   </div>
                 </div>
-                <div>
+
+                <div className="border-t border-border-color pt-4">
                   <button
                     type="button"
                     onClick={() => void handleSaveProfile()}
                     disabled={loading}
-                    className="inline-flex items-center rounded-md bg-accent px-4 py-2 text-base font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
                   >
-                    {loading ? 'Saving…' : 'Save profile'}
+                    <Save className="h-4 w-4" />
+                    {loading ? 'Saving…' : 'Save Profile'}
                   </button>
                 </div>
               </div>
 
-              <div className="space-y-4 rounded-2xl border border-border-color bg-card-bg p-5">
-                <h3 className="text-base font-semibold text-text-primary">Security</h3>
-                <div className="space-y-3 text-base">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">
-                      Current password
-                    </label>
-                    <input
-                      type="password"
-                      value={passwordForm.old}
-                      onChange={(e) =>
-                        setPasswordForm((f) => ({ ...f, old: e.target.value }))
-                      }
-                      className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary"
-                    />
+              {/* Security Card */}
+              <div className="space-y-5 rounded-2xl border border-border-color bg-card-bg p-6">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
+                    <Lock className="h-4 w-4 text-amber-500" />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-text-secondary">
-                      New password
-                    </label>
-                    <input
-                      type="password"
-                      value={passwordForm.next}
-                      onChange={(e) =>
-                        setPasswordForm((f) => ({ ...f, next: e.target.value }))
-                      }
-                      className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary"
-                    />
+                    <h3 className="text-base font-semibold text-text-primary">Security</h3>
+                    <p className="text-xs text-text-secondary">Update your password</p>
                   </div>
                 </div>
-                <div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-text-secondary">Current Password</label>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="password"
+                        value={passwordForm.old}
+                        onChange={(e) => setPasswordForm((f) => ({ ...f, old: e.target.value }))}
+                        placeholder="Enter current password"
+                        className="w-full rounded-lg border border-border-color bg-bg-primary py-2.5 pl-10 pr-3 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-text-secondary">New Password</label>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="password"
+                        value={passwordForm.next}
+                        onChange={(e) => setPasswordForm((f) => ({ ...f, next: e.target.value }))}
+                        placeholder="Enter new password"
+                        className="w-full rounded-lg border border-border-color bg-bg-primary py-2.5 pl-10 pr-3 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+                      />
+                    </div>
+                    <p className="mt-1 text-[10px] text-text-muted">Minimum 8 characters recommended</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-border-color pt-4">
                   <button
                     type="button"
                     onClick={() => void handleChangePassword()}
                     disabled={loading}
-                    className="inline-flex items-center rounded-md border border-border-color bg-bg-primary px-4 py-2 text-base font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-lg border border-border-color bg-bg-primary px-5 py-2.5 text-sm font-semibold text-text-primary transition hover:border-accent hover:text-accent disabled:opacity-60"
                   >
-                    {loading ? 'Working…' : 'Change password'}
+                    <Lock className="h-4 w-4" />
+                    {loading ? 'Working…' : 'Change Password'}
                   </button>
                 </div>
               </div>
@@ -603,8 +655,16 @@ export default function SettingsPage() {
           )}
 
           {tab === 'workspace' && (
-            <div className="space-y-4 rounded-2xl border border-border-color bg-card-bg p-5">
-              <h3 className="text-base font-semibold text-text-primary">Workspace settings</h3>
+            <div className="space-y-5 rounded-2xl border border-border-color bg-card-bg p-6">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10">
+                  <Settings2 className="h-4 w-4 text-blue-500" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-text-primary">Workspace Settings</h3>
+                  <p className="text-xs text-text-secondary">Configure your workspace preferences</p>
+                </div>
+              </div>
               {!workspace ? (
                 <p className="text-base text-text-secondary">
                   Workspace settings are not available yet.
@@ -665,6 +725,28 @@ export default function SettingsPage() {
                         className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary disabled:bg-bg-secondary disabled:text-text-secondary"
                       />
                     </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-text-secondary">
+                        Lead Assignment Lock (days)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={365}
+                        value={workspaceForm.lead_assignment_lock_days}
+                        onChange={(e) =>
+                          setWorkspaceForm((f) => ({
+                            ...f,
+                            lead_assignment_lock_days: Number(e.target.value) || 0,
+                          }))
+                        }
+                        disabled={!isOwnerOrManager}
+                        className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary disabled:bg-bg-secondary disabled:text-text-secondary"
+                      />
+                      <p className="mt-1 text-xs text-text-muted">
+                        Once assigned, a lead cannot be reassigned for this many days. Set to 0 to disable.
+                      </p>
+                    </div>
                     <div className="text-xs text-text-secondary">
                       <div>
                         LMS module:{' '}
@@ -698,8 +780,16 @@ export default function SettingsPage() {
           )}
 
           {tab === 'business' && (
-            <div className="space-y-4 rounded-2xl border border-border-color bg-card-bg p-5">
-              <h3 className="text-base font-semibold text-text-primary">Business information</h3>
+            <div className="space-y-5 rounded-2xl border border-border-color bg-card-bg p-6">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10">
+                  <Building2 className="h-4 w-4 text-green-500" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-text-primary">Business Information</h3>
+                  <p className="text-xs text-text-secondary">Your company details and profile</p>
+                </div>
+              </div>
               {!business ? (
                 <p className="text-base text-text-secondary">
                   {loading ? 'Loading business…' : 'Business information is not available.'}
@@ -884,7 +974,19 @@ export default function SettingsPage() {
           )}
 
           {tab === 'roles' && (
-            <div className="space-y-4">
+            <div className="space-y-5">
+              {/* Section header */}
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10">
+                  <Users className="h-4 w-4 text-indigo-500" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-text-primary">Team & Roles</h3>
+                  <p className="text-xs text-text-secondary">Manage team members, roles, and permissions</p>
+                </div>
+              </div>
+
+              {/* Base roles */}
               <div className="grid gap-4 md:grid-cols-3">
                 {roles?.roles.map((role) => (
                   <div
@@ -1263,34 +1365,147 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {tab === 'notifications' && (
-            <div className="space-y-4 rounded-2xl border border-border-color bg-card-bg p-5">
-              <h3 className="text-base font-semibold text-text-primary">
-                Notification preferences
-              </h3>
-              <p className="text-xs text-text-secondary">
-                These preferences are currently stored on this device only. In a future update they
-                will sync with your account.
-              </p>
-              <div className="mt-3 space-y-3 text-base">
-                <label className="flex items-center justify-between gap-4">
-                  <span className="text-text-primary">Daily summary email</span>
-                  <input type="checkbox" className="h-4 w-4 rounded border-border-color" />
-                </label>
-                <label className="flex items-center justify-between gap-4">
-                  <span className="text-text-primary">Alert me when a new lead is created</span>
-                  <input type="checkbox" className="h-4 w-4 rounded border-border-color" />
-                </label>
-                <label className="flex items-center justify-between gap-4">
-                  <span className="text-text-primary">Alert me when work is assigned to me</span>
-                  <input type="checkbox" className="h-4 w-4 rounded border-border-color" />
-                </label>
-              </div>
-            </div>
-          )}
+          {tab === 'notifications' && <NotificationPreferencesTab />}
 
           {tab === 'knowledge_base' && <SettingsKnowledgeBaseTab />}
         </div>
   );
 }
 
+
+const EVENT_TYPE_CONFIG: Record<string, { label: string; desc: string }> = {
+  lead_assigned: { label: 'Lead Assigned', desc: 'When a lead is assigned to you' },
+  lead_status_changed: { label: 'Lead Status Changed', desc: 'When your assigned lead status changes' },
+  work_assigned: { label: 'Work Assigned', desc: 'When new work is assigned to you' },
+  work_completed: { label: 'Work Completed', desc: 'When work you created is completed' },
+  work_overdue: { label: 'Work Overdue', desc: 'Reminder when work passes its due date' },
+  new_conversation_message: { label: 'New Message', desc: 'When a lead sends a new message' },
+};
+
+function NotificationPreferencesTab() {
+  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  useEffect(() => {
+    getNotificationPreferences()
+      .then((data) => setPrefs(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleToggle = async (eventType: string, channel: 'in_app' | 'email' | 'push') => {
+    if (!prefs) return;
+    const updated = { ...prefs };
+    if (!updated[eventType]) updated[eventType] = { in_app: true, email: false, push: true };
+    updated[eventType] = { ...updated[eventType], [channel]: !updated[eventType][channel] };
+    setPrefs(updated);
+    setSaving(true);
+    setSaveMsg('');
+    try {
+      const result = await updateNotificationPreferences(updated);
+      setPrefs(result);
+      setSaveMsg('Saved');
+      setTimeout(() => setSaveMsg(''), 2000);
+    } catch {
+      setSaveMsg('Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-border-color bg-card-bg p-6">
+        <p className="text-sm text-text-secondary">Loading preferences...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5 rounded-2xl border border-border-color bg-card-bg p-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10">
+            <Bell className="h-4 w-4 text-purple-500" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-text-primary">Notification Preferences</h3>
+            <p className="text-xs text-text-secondary">Choose how you want to be notified for each event</p>
+          </div>
+        </div>
+        {saveMsg && (
+          <span className={`text-xs font-medium ${saveMsg === 'Saved' ? 'text-emerald-500' : 'text-red-500'}`}>
+            {saveMsg}
+          </span>
+        )}
+      </div>
+
+      {/* Channel headers */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border-color">
+              <th className="pb-3 pr-4 text-left text-xs font-medium text-text-secondary">Event</th>
+              <th className="pb-3 px-4 text-center text-xs font-medium text-text-secondary">
+                <div className="flex flex-col items-center gap-0.5">
+                  <Monitor className="h-3.5 w-3.5" />
+                  <span>In-App</span>
+                </div>
+              </th>
+              <th className="pb-3 px-4 text-center text-xs font-medium text-text-secondary">
+                <div className="flex flex-col items-center gap-0.5">
+                  <Mail className="h-3.5 w-3.5" />
+                  <span>Email</span>
+                </div>
+              </th>
+              <th className="pb-3 pl-4 text-center text-xs font-medium text-text-secondary">
+                <div className="flex flex-col items-center gap-0.5">
+                  <Smartphone className="h-3.5 w-3.5" />
+                  <span>Push</span>
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-color">
+            {Object.entries(EVENT_TYPE_CONFIG).map(([key, { label, desc }]) => {
+              const ep = prefs?.[key] ?? { in_app: true, email: false, push: true };
+              return (
+                <tr key={key}>
+                  <td className="py-3.5 pr-4">
+                    <span className="font-medium text-text-primary">{label}</span>
+                    <p className="text-xs text-text-muted">{desc}</p>
+                  </td>
+                  {(['in_app', 'email', 'push'] as const).map((ch) => {
+                    const isOn = ep[ch];
+                    return (
+                      <td key={ch} className="py-3.5 px-4 text-center">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isOn}
+                          disabled={saving}
+                          onClick={() => void handleToggle(key, ch)}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-2 focus:ring-offset-card-bg disabled:opacity-50 ${
+                            isOn ? 'bg-accent' : 'bg-bg-secondary'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform duration-200 ${
+                              isOn ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

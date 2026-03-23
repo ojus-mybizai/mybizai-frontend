@@ -315,7 +315,9 @@ export function NewModelPage() {
                     config={f.config ?? {}}
                     onConfigChange={(config) => setField(index, { config })}
                     relationModelId={f.relation_model_id ?? null}
-                    onRelationModelIdChange={(id) => setField(index, { relation_model_id: id })}
+                    onRelationModelIdChange={(id) => setField(index, { relation_model_id: id, relation_builtin_model: null })}
+                    relationBuiltinModel={f.relation_builtin_model ?? null}
+                    onRelationBuiltinModelChange={(model) => setField(index, { relation_builtin_model: model, relation_model_id: null })}
                     relationKind={f.relation_kind ?? null}
                     onRelationKindChange={(kind) => setField(index, { relation_kind: kind })}
                     defaultValue={f.default_value}

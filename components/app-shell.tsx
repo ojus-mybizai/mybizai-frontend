@@ -23,6 +23,7 @@ import { performLogout } from '@/lib/auth-actions';
 import { useThemeStore } from '@/lib/theme-store';
 import { useAgentStore } from '@/lib/agent-store';
 import { DataSheetNav } from '@/components/data-sheet-nav';
+import NotificationBell from '@/components/notifications/notification-bell';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -425,6 +426,8 @@ export default function AppShell({ children }: AppShellProps) {
               <span aria-hidden>{theme === 'dark' ? '🌙' : '☀️'}</span>
               <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
             </button>
+            {/* Notification bell */}
+            <NotificationBell />
             {user && (
               <span className="hidden sm:block text-xs text-text-secondary max-w-[160px] truncate">
                 {user.email || user.username || ''}

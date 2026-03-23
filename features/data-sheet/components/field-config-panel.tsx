@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { listModels } from '@/features/data-sheet/api';
+import { listModels, listFields } from '@/features/data-sheet/api';
 import type { DynamicModel } from '@/services/dynamic-data';
 const RELATION_KINDS = [
   { value: 'many_to_one', label: 'Many to one' },
@@ -14,12 +14,8 @@ const CURRENCY_CODES = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD', 'CHF', 
 const BUILTIN_RELATION_OPTIONS = [
   { value: '__builtin_leads', label: 'Leads' },
   { value: '__builtin_contacts', label: 'Contacts' },
-  { value: '__builtin_orders', label: 'Orders' },
-  { value: '__builtin_appointments', label: 'Appointments' },
-  { value: '__builtin_catalog', label: 'Catalog Items' },
+  { value: '__builtin_users', label: 'Employees' },
   { value: '__builtin_work', label: 'Work Items' },
-  { value: '__builtin_followups', label: 'Follow-ups' },
-  { value: '__builtin_conversations', label: 'Conversations' },
 ] as const;
 
 export interface FieldConfigPanelProps {
@@ -30,6 +26,8 @@ export interface FieldConfigPanelProps {
   onRelationModelIdChange: (id: number | null) => void;
   relationKind: 'many_to_one' | 'one_to_many' | 'many_to_many' | null;
   onRelationKindChange: (kind: 'many_to_one' | 'one_to_many' | 'many_to_many' | null) => void;
+  relationBuiltinModel?: string | null;
+  onRelationBuiltinModelChange?: (model: string | null) => void;
   relationReadOnly?: boolean;
   defaultValue?: unknown;
   onDefaultValueChange?: (value: unknown) => void;
@@ -45,6 +43,8 @@ export function FieldConfigPanel({
   onRelationModelIdChange,
   relationKind,
   onRelationKindChange,
+  relationBuiltinModel,
+  onRelationBuiltinModelChange,
   relationReadOnly = false,
   defaultValue,
   onDefaultValueChange,
@@ -123,20 +123,29 @@ export function FieldConfigPanel({
           <label className="block text-sm font-medium text-text-secondary">Related model (data sheet)</label>
           {relationReadOnly ? (
             <p className="mt-1 text-sm text-text-primary">
-              {relationModelId != null
-                ? (filteredModels.find((m) => m.id === relationModelId)?.display_name ?? `Model #${relationModelId}`)
-                : '—'}
+              {relationBuiltinModel
+                ? (BUILTIN_RELATION_OPTIONS.find((o) => o.value === `__builtin_${relationBuiltinModel}`)?.label ?? relationBuiltinModel)
+                : relationModelId != null
+                  ? (filteredModels.find((m) => m.id === relationModelId)?.display_name ?? `Model #${relationModelId}`)
+                  : '—'}
             </p>
           ) : (
             <select
-              value={relationModelId ?? ''}
+              value={relationBuiltinModel ? `__builtin_${relationBuiltinModel}` : (relationModelId ?? '')}
               onChange={(e) => {
                 const v = e.target.value;
                 if (!v) {
                   onRelationModelIdChange(null);
+                  onRelationBuiltinModelChange?.(null);
                   return;
                 }
-                if (v.startsWith('__builtin_')) return;
+                if (v.startsWith('__builtin_')) {
+                  const modelKey = v.replace('__builtin_', '');
+                  onRelationModelIdChange(null);
+                  onRelationBuiltinModelChange?.(modelKey);
+                  return;
+                }
+                onRelationBuiltinModelChange?.(null);
                 onRelationModelIdChange(Number(v));
               }}
               className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
@@ -147,8 +156,6 @@ export function FieldConfigPanel({
                   <option
                     key={opt.value}
                     value={opt.value}
-                    disabled
-                    title="Support for built-in model relations coming soon"
                   >
                     {opt.label}
                   </option>
@@ -188,6 +195,15 @@ export function FieldConfigPanel({
             </select>
           )}
         </div>
+
+        {/* Display field selector for DynamicModel relations */}
+        {relationModelId && (
+          <DisplayFieldPicker
+            modelId={relationModelId}
+            selectedField={(config.relation_display_field as string) ?? ''}
+            onChange={(fieldName) => onConfigChange({ ...config, relation_display_field: fieldName || undefined })}
+          />
+        )}
       </div>
     );
   }
@@ -253,4 +269,34 @@ export function FieldConfigPanel({
   }
 
   return null;
+}
+
+/** Lets user pick which field of the target model to display in the relation dropdown */
+function DisplayFieldPicker({ modelId, selectedField, onChange }: { modelId: number; selectedField: string; onChange: (f: string) => void }) {
+  const [fields, setFields] = useState<Array<{ name: string; display_name: string; field_type: string }>>([]);
+
+  useEffect(() => {
+    listFields(modelId)
+      .then((f) => setFields(f.filter((ff) => ['text', 'long_text', 'number', 'email', 'phone', 'enum', 'currency'].includes(ff.field_type))))
+      .catch(() => {});
+  }, [modelId]);
+
+  if (!fields.length) return null;
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-text-secondary">Display field in dropdown</label>
+      <p className="mb-1 text-xs text-text-secondary/70">Which field to show as the label when selecting a related record</p>
+      <select
+        value={selectedField}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
+      >
+        <option value="">Auto (name, title, or record key)</option>
+        {fields.map((f) => (
+          <option key={f.name} value={f.name}>{f.display_name}</option>
+        ))}
+      </select>
+    </div>
+  );
 }

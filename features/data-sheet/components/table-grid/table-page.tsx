@@ -17,6 +17,7 @@ import {
   bindAttachment,
   type QueryResponse,
 } from '@/features/data-sheet/api';
+import { searchBuiltinModel } from '@/services/dynamic-data';
 import type { QueryFilter } from '@/components/data-sheet/data-sheet-filter-builder';
 import { normalizeApiError } from '@/features/data-sheet/api/normalize-error';
 import { queryParamsFromSearchParams } from '@/features/data-sheet/state/query-params';
@@ -817,6 +818,186 @@ export function TablePage() {
   );
 }
 
+/** Searchable relation picker for Add Row dialog */
+function AddRowRelationField({
+  field,
+  value,
+  onChange,
+  allOptions,
+}: {
+  field: DynamicField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  allOptions: Array<{ id: number; label: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [liveOpts, setLiveOpts] = useState(allOptions);
+  const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isMany = field.relation_kind === 'many_to_many';
+  const currentIds: number[] = Array.isArray(value) ? value.map(Number) : value != null ? [Number(value)] : [];
+  const builtinModel = field.relation_builtin_model;
+
+  // Sync initial options
+  useEffect(() => { if (allOptions.length) setLiveOpts(allOptions); }, [allOptions]);
+
+  // Search with debounce
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(async () => {
+      if (!search && allOptions.length) { setLiveOpts(allOptions); return; }
+      setLoading(true);
+      try {
+        if (builtinModel) {
+          const res = await searchBuiltinModel(builtinModel, search, 1, 30);
+          setLiveOpts(res.items);
+        } else if (field.relation_model_id) {
+          const res = await queryRecords(field.relation_model_id, { page: 1, per_page: 30, keyword: search || undefined });
+          setLiveOpts(res.items.map((r) => {
+            const d = (r.data ?? r.normalized_data ?? r) as Record<string, unknown>;
+            const df = field.config?.relation_display_field as string | undefined;
+            return { id: Number(r.id), label: String((df && d[df]) || d['name'] || d['title'] || d['display_name'] || d['full_name'] || r.record_key || r.id) };
+          }));
+        }
+      } catch { setLiveOpts([]); }
+      setLoading(false);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [search, open, builtinModel, field.relation_model_id, allOptions]);
+
+  // Click outside
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const toggle = (id: number) => {
+    if (isMany) {
+      const next = currentIds.includes(id) ? currentIds.filter((x) => x !== id) : [...currentIds, id];
+      onChange(next);
+    } else {
+      onChange(id);
+      setOpen(false);
+    }
+  };
+
+  const selectedLabels = currentIds.map((id) => {
+    const o = liveOpts.find((x) => x.id === id) || allOptions.find((x) => x.id === id);
+    return o ? o.label : `#${id}`;
+  });
+
+  const modelLabel = builtinModel
+    ? { leads: 'lead', users: 'employee', contacts: 'contact', work: 'work item' }[builtinModel] || 'record'
+    : 'record';
+
+  return (
+    <div key={field.id} ref={containerRef} className="relative">
+      <label className="block text-xs font-medium text-text-secondary">{field.display_name}</label>
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => { setOpen(!open); setSearch(''); }}
+        className="mt-1 flex w-full items-center gap-2 rounded border border-border-color bg-bg-primary px-2 py-1.5 text-left text-sm text-text-primary hover:border-accent/50"
+      >
+        {selectedLabels.length ? (
+          <div className="flex flex-1 flex-wrap gap-1">
+            {selectedLabels.map((l, i) => (
+              <span key={i} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20">
+                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-accent text-[8px] font-bold text-white">{l.charAt(0).toUpperCase()}</span>
+                {l}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="flex-1 text-text-secondary">Select {modelLabel}...</span>
+        )}
+        <svg className="h-4 w-4 shrink-0 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-full overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-2xl">
+          {/* Search */}
+          <div className="relative px-2.5 py-2">
+            <svg className="pointer-events-none absolute left-4.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Search ${modelLabel}s...`}
+              className="w-full rounded-lg border border-border-color bg-bg-primary py-2 pl-8 pr-3 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+              autoFocus
+            />
+          </div>
+
+          {/* Options */}
+          <div className="max-h-[200px] overflow-y-auto px-1.5 pb-1.5">
+            {loading ? (
+              <div className="space-y-1 px-1.5 py-1">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex animate-pulse items-center gap-2 rounded-lg px-2 py-2">
+                    <div className="h-6 w-6 rounded-full bg-bg-secondary" />
+                    <div className="h-3 flex-1 rounded bg-bg-secondary" style={{ width: `${40 + i * 12}%` }} />
+                  </div>
+                ))}
+              </div>
+            ) : liveOpts.length === 0 ? (
+              <div className="py-4 text-center text-xs text-text-secondary">
+                {search ? 'No results found' : 'No records available'}
+              </div>
+            ) : (
+              liveOpts.map((o) => {
+                const sel = currentIds.includes(o.id);
+                return (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => toggle(o.id)}
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                      sel ? 'bg-accent/10 ring-1 ring-inset ring-accent/20' : 'hover:bg-bg-secondary/80'
+                    }`}
+                  >
+                    <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                      sel ? 'bg-accent text-white' : 'bg-bg-secondary text-text-secondary'
+                    }`}>
+                      {sel ? (
+                        <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                      ) : o.label.charAt(0).toUpperCase()}
+                    </div>
+                    <span className={`truncate text-sm ${sel ? 'font-semibold text-accent' : 'text-text-primary'}`}>{o.label}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer for clear */}
+          {currentIds.length > 0 && (
+            <div className="border-t border-border-color px-3 py-1.5">
+              <button
+                type="button"
+                onClick={() => { onChange(isMany ? [] : null); setOpen(false); }}
+                className="text-xs text-text-secondary hover:text-error"
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AddRowModal({
   fields,
   addRowData,
@@ -835,23 +1016,31 @@ function AddRowModal({
   const [relationOptions, setRelationOptions] = useState<Record<string, Array<{ id: number; label: string }>>>({});
 
   useEffect(() => {
-    const relationFields = fields.filter((f) => f.field_type === 'relation' && f.relation_model_id);
+    const relationFields = fields.filter((f) => f.field_type === 'relation' && (f.relation_model_id || f.relation_builtin_model));
     relationFields.forEach((f) => {
       const key = f.name;
-      queryRecords(f.relation_model_id!, { page: 1, per_page: 100 })
-        .then((res) => {
-          setRelationOptions((prev) => ({
-            ...prev,
-            [key]: res.items.map((r) => {
-              const data = (r.data ?? r.normalized_data ?? r) as Record<string, unknown>;
-              return {
-                id: Number(r.id),
-                label: String(data['name'] ?? data['title'] ?? r.record_key ?? r.id),
-              };
-            }),
-          }));
-        })
-        .catch(() => {});
+      if (f.relation_builtin_model) {
+        searchBuiltinModel(f.relation_builtin_model, '', 1, 100)
+          .then((res) => {
+            setRelationOptions((prev) => ({ ...prev, [key]: res.items }));
+          })
+          .catch(() => {});
+      } else if (f.relation_model_id) {
+        queryRecords(f.relation_model_id, { page: 1, per_page: 100 })
+          .then((res) => {
+            setRelationOptions((prev) => ({
+              ...prev,
+              [key]: res.items.map((r) => {
+                const data = (r.data ?? r.normalized_data ?? r) as Record<string, unknown>;
+                return {
+                  id: Number(r.id),
+                  label: String((f.config?.relation_display_field && data[f.config.relation_display_field as string]) || (data['name'] ?? data['title'] ?? data['display_name'] ?? data['full_name'] ?? r.record_key ?? r.id)),
+                };
+              }),
+            }));
+          })
+          .catch(() => {});
+      }
     });
   }, [fields]);
 
@@ -936,30 +1125,15 @@ function AddRowModal({
                 </div>
               );
             }
-            if (f.field_type === 'relation' && f.relation_model_id) {
-              const opts = relationOptions[f.name] ?? [];
-              const isMany = f.relation_kind === 'many_to_many';
-              const current = Array.isArray(value) ? value : value != null ? [value] : [];
-              const currentId = isMany ? (current as number[])[0] : (value as number | null);
+            if (f.field_type === 'relation' && (f.relation_model_id || f.relation_builtin_model)) {
               return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <select
-                    value={isMany ? '' : (currentId ?? '')}
-                    onChange={(e) => {
-                      const v = e.target.value ? Number(e.target.value) : null;
-                      setValue(isMany ? (v ? [v] : []) : v);
-                    }}
-                    className={inputClass}
-                  >
-                    <option value="">—</option>
-                    {opts.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <AddRowRelationField
+                  key={f.id}
+                  field={f}
+                  value={value}
+                  onChange={setValue}
+                  allOptions={relationOptions[f.name] ?? []}
+                />
               );
             }
             if (f.field_type === 'long_text') {

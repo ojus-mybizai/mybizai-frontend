@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { DynamicField } from '@/services/dynamic-data';
-import { queryRecords } from '@/services/dynamic-data';
+import { queryRecords, searchBuiltinModel } from '@/services/dynamic-data';
 
 const DEBOUNCE_MS = 300;
 
@@ -20,95 +20,131 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
   const [searchInput, setSearchInput] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [pendingIds, setPendingIds] = useState<number[]>(() =>
     Array.isArray(value) ? value : value != null ? [Number(value)] : []
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const prevEditingRef = useRef(false);
 
   const targetModelId = field.relation_model_id;
+  const builtinModel = field.relation_builtin_model;
   const isMany = field.relation_kind === 'many_to_many';
+  const hasTarget = !!targetModelId || !!builtinModel;
 
   const loadOptions = useCallback(async (searchTerm: string) => {
-    if (!targetModelId) return;
+    if (!hasTarget) return;
     setLoading(true);
     try {
-      const res = await queryRecords(targetModelId, {
-        page: 1,
-        per_page: 20,
-        keyword: searchTerm || undefined,
-      });
-      setOptions(
-        res.items.map((r) => {
-          const data = (r.data ?? r.normalized_data ?? r) as Record<string, unknown>;
-          return {
-            id: Number(r.id),
-            record_key: String(r.record_key ?? r.id),
-            label: String(data['name'] ?? data['title'] ?? r.record_key ?? r.id),
-          };
-        })
-      );
+      if (builtinModel) {
+        const res = await searchBuiltinModel(builtinModel, searchTerm, 1, 30);
+        setOptions(
+          res.items.map((item) => ({
+            id: item.id,
+            record_key: String(item.id),
+            label: item.label,
+          }))
+        );
+      } else if (targetModelId) {
+        const res = await queryRecords(targetModelId, {
+          page: 1,
+          per_page: 30,
+          keyword: searchTerm || undefined,
+        });
+        setOptions(
+          res.items.map((r) => {
+            const data = (r.data ?? r.normalized_data ?? r) as Record<string, unknown>;
+            const displayField = field.config?.relation_display_field as string | undefined;
+            const label = (displayField && data[displayField])
+              || data['name'] || data['title'] || data['display_name']
+              || data['full_name'] || data['label'] || data['email'] || data['phone']
+              || r.record_key || `#${r.id}`;
+            return {
+              id: Number(r.id),
+              record_key: String(r.record_key ?? r.id),
+              label: String(label),
+            };
+          })
+        );
+      }
     } catch {
       setOptions([]);
     } finally {
       setLoading(false);
     }
-  }, [targetModelId]);
+  }, [hasTarget, builtinModel, targetModelId]);
 
+  // Debounce search
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(searchInput), DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  // Load options on search change or edit open
   useEffect(() => {
-    if (editing && targetModelId) void loadOptions(searchDebounced);
-  }, [editing, targetModelId, searchDebounced, loadOptions]);
+    if (editing && hasTarget) void loadOptions(searchDebounced);
+  }, [editing, hasTarget, searchDebounced, loadOptions]);
 
-  const currentIds = Array.isArray(value) ? value : value != null ? [Number(value)] : [];
+  // Resolve labels for current IDs
+  const currentIds = Array.isArray(value) ? value.map(Number) : value != null ? [Number(value)] : [];
   const missingLabels = currentIds.filter((id) => !options.some((x) => x.id === id));
   useEffect(() => {
-    if (!editing && targetModelId && missingLabels.length > 0 && options.length === 0) {
+    if (hasTarget && missingLabels.length > 0) {
       void loadOptions('');
     }
-  }, [editing, targetModelId, missingLabels.length, options.length, loadOptions]);
+  }, [hasTarget, missingLabels.length, loadOptions]);
 
   const currentLabels = currentIds.map((id) => {
     const o = options.find((x) => x.id === id);
     return o ? { id, label: o.label } : { id, label: `#${id}` };
   });
 
-  const handleSelect = useCallback((id: number) => {
+  const handleSelect = useCallback(async (id: number) => {
     if (isMany) {
       setPendingIds((prev) =>
         prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
       );
     } else {
-      void onSave(id);
+      setSaving(true);
+      await onSave(id);
+      setSaving(false);
       setEditing(false);
     }
   }, [isMany, onSave]);
 
-  const handleClear = useCallback(() => {
+  const handleClear = useCallback(async () => {
     if (isMany) {
       setPendingIds([]);
     } else {
-      void onSave(null);
+      setSaving(true);
+      await onSave(null);
+      setSaving(false);
       setEditing(false);
     }
   }, [isMany, onSave]);
 
   const handleDone = useCallback(async () => {
     if (isMany) {
+      setSaving(true);
       await onSave(pendingIds);
+      setSaving(false);
       setEditing(false);
     }
   }, [isMany, onSave, pendingIds]);
 
+  // Sync pendingIds when opening multi-select
   useEffect(() => {
     if (editing && !prevEditingRef.current && isMany) setPendingIds(currentIds);
     prevEditingRef.current = editing;
   }, [editing, isMany, currentIds]);
 
+  // Focus input on open
+  useEffect(() => {
+    if (editing) setTimeout(() => inputRef.current?.focus(), 50);
+  }, [editing]);
+
+  // Click outside to close
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -121,73 +157,160 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
     }
   }, [editing]);
 
-  if (!targetModelId) {
+  if (!hasTarget) {
     return <div className="px-4 py-3 text-text-secondary">—</div>;
   }
 
+  // ── Editing dropdown ──
   if (editing) {
-    const selectedInMany = isMany ? pendingIds : [];
+    const selectedSet = new Set(isMany ? pendingIds : currentIds);
+    const modelLabel = builtinModel
+      ? { leads: 'Lead', users: 'Employee', contacts: 'Contact', work: 'Work Item' }[builtinModel] || 'Record'
+      : 'Record';
+
     return (
       <div className="relative px-4 py-3 align-top" ref={containerRef}>
         <div className="relative">
-          <div className="absolute left-0 top-0 z-50 min-w-[220px] rounded-lg border border-border-color bg-card-bg p-2 shadow-lg">
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search…"
-              className="mb-2 w-full rounded border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:border-accent focus:outline-none"
-              autoFocus
-            />
-            {!isMany && (
+          <div className="absolute left-0 top-0 z-50 w-[300px] overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border-color bg-bg-secondary/50 px-3 py-2">
+              <span className="text-xs font-semibold text-text-secondary">
+                {isMany ? 'Select' : 'Choose'} {modelLabel}
+              </span>
               <button
                 type="button"
-                onClick={handleClear}
-                className="mb-2 w-full rounded border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-secondary"
+                onClick={() => setEditing(false)}
+                className="rounded p-0.5 text-text-secondary hover:bg-bg-primary hover:text-text-primary"
               >
-                Clear
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
-            )}
-            {loading ? (
-              <div className="py-4 text-center text-xs text-text-secondary">Loading…</div>
-            ) : (
-              <div className="max-h-48 space-y-0.5 overflow-y-auto">
-                {options.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => handleSelect(o.id)}
-                    className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm ${
-                      (isMany ? selectedInMany : currentIds).includes(o.id)
-                        ? 'bg-accent-soft font-medium'
-                        : 'hover:bg-bg-secondary'
-                    }`}
-                  >
-                    {isMany && (
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border-color bg-bg-primary">
-                        {(selectedInMany.includes(o.id)) ? (
-                          <svg className="h-3 w-3 text-accent" fill="currentColor" viewBox="0 0 20 20">
+            </div>
+
+            {/* Search */}
+            <div className="relative px-3 py-2">
+              <svg className="pointer-events-none absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                ref={inputRef}
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder={`Search ${modelLabel.toLowerCase()}s...`}
+                className="w-full rounded-lg border border-border-color bg-bg-primary py-2 pl-8 pr-3 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+              />
+            </div>
+
+            {/* Options list */}
+            <div className="max-h-[240px] overflow-y-auto px-1.5 pb-1.5">
+              {loading ? (
+                <div className="space-y-1 px-1.5 py-1">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="flex animate-pulse items-center gap-2 rounded-lg px-2 py-2">
+                      <div className="h-7 w-7 rounded-full bg-bg-secondary" />
+                      <div className="h-3.5 flex-1 rounded bg-bg-secondary" style={{ width: `${50 + i * 10}%` }} />
+                    </div>
+                  ))}
+                </div>
+              ) : options.length === 0 ? (
+                <div className="py-6 text-center">
+                  <svg className="mx-auto mb-2 h-8 w-8 text-text-secondary/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <p className="text-xs text-text-secondary">
+                    {searchInput ? 'No results found' : 'No records available'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-0.5">
+                  {options.map((o) => {
+                    const isSelected = selectedSet.has(o.id);
+                    return (
+                      <button
+                        key={o.id}
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void handleSelect(o.id)}
+                        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                          isSelected
+                            ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                            : 'hover:bg-bg-secondary/80'
+                        } ${saving ? 'opacity-50' : ''}`}
+                      >
+                        {/* Avatar circle */}
+                        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                          isSelected ? 'bg-accent text-white' : 'bg-bg-secondary text-text-secondary'
+                        }`}>
+                          {isMany ? (
+                            isSelected ? (
+                              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            ) : null
+                          ) : (
+                            o.label.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        {/* Label */}
+                        <div className="min-w-0 flex-1">
+                          <span className={`block truncate text-sm ${isSelected ? 'font-semibold text-accent' : 'text-text-primary'}`}>
+                            {o.label}
+                          </span>
+                          {o.record_key !== String(o.id) && (
+                            <span className="block truncate text-[10px] text-text-secondary">
+                              {o.record_key}
+                            </span>
+                          )}
+                        </div>
+                        {/* Selected indicator for single-select */}
+                        {!isMany && isSelected && (
+                          <svg className="h-4 w-4 shrink-0 text-accent" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                           </svg>
-                        ) : null}
-                      </span>
-                    )}
-                    <span className="truncate">{o.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {isMany && (
-              <div className="mt-2 flex justify-end border-t border-border-color pt-2">
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center gap-2 border-t border-border-color bg-bg-secondary/30 px-3 py-2">
+              {!isMany ? (
                 <button
                   type="button"
-                  onClick={() => void handleDone()}
-                  className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
+                  onClick={() => void handleClear()}
+                  disabled={saving || currentIds.length === 0}
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-primary hover:text-error disabled:opacity-40"
                 >
-                  Done
+                  Clear
                 </button>
-              </div>
-            )}
+              ) : (
+                <>
+                  <span className="flex-1 text-xs text-text-secondary">
+                    {pendingIds.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingIds([])}
+                    className="rounded-lg px-2.5 py-1.5 text-xs text-text-secondary hover:bg-bg-primary"
+                  >
+                    Clear all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDone()}
+                    disabled={saving}
+                    className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                  >
+                    {saving ? 'Saving...' : 'Done'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           <span className="text-sm text-text-secondary">Select…</span>
         </div>
@@ -196,6 +319,7 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
     );
   }
 
+  // ── Display mode ──
   return (
     <div
       role="button"
@@ -209,8 +333,11 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
           currentLabels.map(({ id, label }) => (
             <span
               key={id}
-              className="inline-flex items-center rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-accent"
+              className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20"
             >
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-white">
+                {label.charAt(0).toUpperCase()}
+              </span>
               {label}
             </span>
           ))

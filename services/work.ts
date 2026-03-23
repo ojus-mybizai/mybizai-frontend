@@ -27,10 +27,17 @@ export interface Work {
   created_at?: string;
   updated_at?: string;
   work_template_id?: number | null;
-  template_type?: 'simple' | 'checklist' | 'datasheet' | null;
+  template_type?: 'simple' | 'checklist' | 'datasheet' | 'calling' | null;
   started_at?: string | null;
   completed_at?: string | null;
   form_data?: Record<string, unknown> | null;
+  datasheet_progress?: {
+    assignment_mode: string;
+    target_count: number | null;
+    created_count: number;
+    dynamic_model_id: number | null;
+    completed: boolean;
+  } | null;
 }
 
 export interface WorkStepOut {
@@ -153,7 +160,7 @@ export interface WorkTemplate {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
-  template_type?: 'simple' | 'checklist' | 'datasheet';
+  template_type?: 'simple' | 'checklist' | 'datasheet' | 'calling';
   steps_schema?: Array<{ order: number; label: string; form_schema?: FormField[] }> | null;
   linked_dynamic_model_id?: number | null;
   datasheet_ui_schema?: DatasheetUiSchema | null;
@@ -178,7 +185,7 @@ export interface WorkTemplateCreate {
   default_notes?: string | null;
   default_due_days?: number | null;
   is_active?: boolean;
-  template_type?: 'simple' | 'checklist' | 'datasheet';
+  template_type?: 'simple' | 'checklist' | 'datasheet' | 'calling';
   steps_schema?: Array<{ order: number; label: string; form_schema?: FormField[] }> | null;
   linked_dynamic_model_id?: number | null;
   datasheet_ui_schema?: DatasheetUiSchema | null;
@@ -206,6 +213,10 @@ export interface WorkCreateFromTemplate {
   record_limit?: number | null;
   /** For datasheet: filter which records to assign e.g. [{ field: "payment", op: "eq", value: "pending" }] */
   record_filters?: RecordFilterRow[] | null;
+  /** For calling: specific lead IDs to assign */
+  lead_ids?: number[] | null;
+  /** For datasheet: create N new records instead of assigning existing ones */
+  create_record_count?: number;
 }
 
 export async function listWorkTypes(): Promise<WorkType[]> {
@@ -410,6 +421,17 @@ export async function submitStepFormData(
   });
 }
 
+// ---------- Create-records datasheet mode ----------
+
+export async function createWorkRecord(workId: number, data: Record<string, unknown>): Promise<unknown> {
+  return apiFetch<unknown>(`/work/${workId}/create-record`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ data }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 // ---------- Employee activity feed ----------
 
 export interface WorkActivityItem {
@@ -451,6 +473,40 @@ export async function logMyWork(templateId: number, payload: LogMyWorkPayload): 
     method: 'POST',
     auth: true,
     body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+
+// ---------- Calling work: lead assignments ----------
+
+export interface WorkLeadAssignment {
+  id: number;
+  work_id: number;
+  lead_id: number;
+  lead_name: string | null;
+  lead_phone: string | null;
+  lead_status: string | null;
+  sort_order: number;
+  status: 'pending' | 'called' | 'skipped' | 'callback';
+  call_log_id: number | null;
+  last_disposition: string | null;
+  updated_at: string | null;
+}
+
+export async function getAssignedLeads(workId: number): Promise<WorkLeadAssignment[]> {
+  return apiFetch<WorkLeadAssignment[]>(`/work/${workId}/assigned-leads`, { method: 'GET', auth: true });
+}
+
+export async function updateLeadAssignmentStatus(
+  workId: number,
+  leadId: number,
+  status: string,
+): Promise<WorkLeadAssignment> {
+  return apiFetch<WorkLeadAssignment>(`/work/${workId}/assigned-leads/${leadId}/status`, {
+    method: 'PATCH',
+    auth: true,
+    body: JSON.stringify({ status }),
     headers: { 'Content-Type': 'application/json' },
   });
 }

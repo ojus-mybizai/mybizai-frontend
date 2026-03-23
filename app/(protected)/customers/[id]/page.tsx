@@ -18,8 +18,6 @@ import type { LeadTemplate } from '@/services/lead-templates';
 import type { Employee } from '@/services/employees';
 import { useAgentList, useEmployeeList, useLeadTemplate } from '@/lib/hooks/use-reference-data';
 import { listWork, updateWork, type Work } from '@/services/work';
-import { listOrders, type Order } from '@/services/orders';
-import { listAppointments, type Appointment } from '@/services/appointments';
 import { listConversationAnalytics, type ConversationAnalyticsResponse } from '@/services/analytics';
 import { DynamicLeadFieldsInput } from '@/components/customers/dynamic-lead-fields-input';
 import {
@@ -33,8 +31,6 @@ type TabId =
   | 'conversations'
   | 'followups'
   | 'work'
-  | 'orders'
-  | 'appointments'
   | 'analytics'
   | 'notes';
 
@@ -44,8 +40,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'conversations', label: 'Conversations' },
   { id: 'followups', label: 'Follow-ups' },
   { id: 'work', label: 'Work' },
-  { id: 'orders', label: 'Orders' },
-  { id: 'appointments', label: 'Appointments' },
   { id: 'analytics', label: 'Analytics' },
   { id: 'notes', label: 'Notes' },
 ];
@@ -276,12 +270,6 @@ export default function CustomerProfilePage() {
   const [workItems, setWorkItems] = useState<Work[]>([]);
   const [workLoading, setWorkLoading] = useState(false);
   const [workError, setWorkError] = useState<string | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState<string | null>(null);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
-  const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
   const [conversationAnalytics, setConversationAnalytics] = useState<ConversationAnalyticsResponse[]>([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
@@ -407,65 +395,6 @@ export default function CustomerProfilePage() {
     };
   }, [activeTab, id]);
 
-  useEffect(() => {
-    if (!id || activeTab !== 'orders') return;
-    // Skip if already loaded for this lead
-    if (loadedTabsRef.current.has('orders')) return;
-    const leadId = Number(id);
-    if (!Number.isFinite(leadId)) return;
-    let cancelled = false;
-    setOrdersLoading(true);
-    setOrdersError(null);
-    listOrders({ lead_id: leadId })
-      .then((rows) => {
-        if (!cancelled) {
-          setOrders(rows ?? []);
-          loadedTabsRef.current.add('orders');
-        }
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) {
-          setOrders([]);
-          setOrdersError(e instanceof Error ? e.message : 'Failed to load orders');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setOrdersLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, id]);
-
-  useEffect(() => {
-    if (!id || activeTab !== 'appointments') return;
-    // Skip if already loaded for this lead
-    if (loadedTabsRef.current.has('appointments')) return;
-    const leadId = Number(id);
-    if (!Number.isFinite(leadId)) return;
-    let cancelled = false;
-    setAppointmentsLoading(true);
-    setAppointmentsError(null);
-    listAppointments({ lead_id: leadId })
-      .then((rows) => {
-        if (!cancelled) {
-          setAppointments(rows ?? []);
-          loadedTabsRef.current.add('appointments');
-        }
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) {
-          setAppointments([]);
-          setAppointmentsError(e instanceof Error ? e.message : 'Failed to load appointments');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setAppointmentsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, id]);
 
   useEffect(() => {
     if (!id || activeTab !== 'analytics') return;
@@ -546,18 +475,25 @@ export default function CustomerProfilePage() {
     }
   };
 
-  const handleAssignChange = async (assignedToId: number | null) => {
+  const handleAssignChange = async (assignedToId: number | null, forceReassign = false) => {
     if (!id) return;
     setAssigning(true);
     setActionError(null);
     setActionNotice(null);
     try {
-      await updateLead(id, { assigned_to_id: assignedToId });
+      const { assignLead } = await import('@/services/customers');
+      await assignLead(id, assignedToId, forceReassign);
       void fetchCustomerWithConversations(id);
       setActionNotice('Assignee updated.');
-    } catch (error) {
-      console.error('Failed to update assignment:', error);
-      setActionError('Failed to update assignment. Please try again.');
+    } catch (error: any) {
+      const msg = error?.message || '';
+      // If locked, show the lock error
+      if (msg.includes('locked') || msg.includes('409')) {
+        setActionError(msg);
+      } else {
+        console.error('Failed to update assignment:', error);
+        setActionError('Failed to update assignment. Please try again.');
+      }
     } finally {
       setAssigning(false);
     }
@@ -713,20 +649,6 @@ export default function CustomerProfilePage() {
                   className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent"
                 >
                   Create task
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('orders')}
-                  className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent"
-                >
-                  Create order
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('appointments')}
-                  className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent"
-                >
-                  Book
                 </button>
                 <button
                   type="button"
@@ -892,28 +814,73 @@ export default function CustomerProfilePage() {
                             </span>
                           </div>
                         )}
-                        <div className="flex items-center justify-between px-4 py-2.5 text-sm">
-                          <span className="text-text-secondary">Assigned to</span>
-                          {canAssignLeads ? (
-                            <select
-                              value={currentCustomer.assignedToId ?? ''}
-                              onChange={(e) => handleAssignChange(e.target.value === '' ? null : Number(e.target.value))}
-                              disabled={assigning}
-                              className="rounded border border-border-color bg-bg-primary px-2 py-1 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
-                            >
-                              <option value="">Unassigned</option>
-                              {employees.filter((emp) => emp.id === 0 || emp.is_active).map((emp) => (
-                                <option key={emp.user_id} value={String(emp.user_id)}>
-                                  {emp.name || emp.email}{emp.id === 0 ? ' (Owner)' : ''}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="font-medium text-text-primary">
-                              {currentCustomer.assignedToId == null ? 'Unassigned'
-                                : currentCustomer.assignedToId === currentUserId ? 'You'
-                                : employees.find((e) => e.user_id === currentCustomer.assignedToId)?.name ?? '—'}
-                            </span>
+                        <div className="px-4 py-2.5 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-text-secondary">Assigned to</span>
+                            {(() => {
+                              const isLocked = currentCustomer.assignmentLockedUntil && new Date(currentCustomer.assignmentLockedUntil) > new Date();
+                              if (canAssignLeads) {
+                                if (isLocked) {
+                                  const lockedUntil = new Date(currentCustomer.assignmentLockedUntil!).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                                  const assigneeName = employees.find((e) => e.user_id === currentCustomer.assignedToId)?.name || 'Employee';
+                                  return (
+                                    <div className="flex flex-col items-end gap-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-text-primary">{assigneeName}</span>
+                                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-500" title={`Locked until ${lockedUntil}`}>
+                                          🔒 Locked
+                                        </span>
+                                      </div>
+                                      <span className="text-xs text-text-muted">Until {lockedUntil}</span>
+                                      <button
+                                        onClick={() => {
+                                          if (confirm(`This lead is locked to ${assigneeName} until ${lockedUntil}. Force reassign?`)) {
+                                            const newId = prompt('Enter new employee user ID (or leave empty to unassign):');
+                                            handleAssignChange(newId ? Number(newId) : null, true);
+                                          }
+                                        }}
+                                        disabled={assigning}
+                                        className="text-xs text-accent hover:underline disabled:opacity-50"
+                                      >
+                                        Force Reassign
+                                      </button>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <select
+                                    value={currentCustomer.assignedToId ?? ''}
+                                    onChange={(e) => handleAssignChange(e.target.value === '' ? null : Number(e.target.value))}
+                                    disabled={assigning}
+                                    className="rounded border border-border-color bg-bg-primary px-2 py-1 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+                                  >
+                                    <option value="">Unassigned</option>
+                                    {employees.filter((emp) => emp.id === 0 || emp.is_active).map((emp) => (
+                                      <option key={emp.user_id} value={String(emp.user_id)}>
+                                        {emp.name || emp.email}{emp.id === 0 ? ' (Owner)' : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                );
+                              }
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-text-primary">
+                                    {currentCustomer.assignedToId == null ? 'Unassigned'
+                                      : currentCustomer.assignedToId === currentUserId ? 'You'
+                                      : employees.find((e) => e.user_id === currentCustomer.assignedToId)?.name ?? '—'}
+                                  </span>
+                                  {isLocked && (
+                                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-500">🔒</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                          {currentCustomer.assignedAt && (
+                            <div className="mt-1 text-right text-xs text-text-muted">
+                              Assigned on {new Date(currentCustomer.assignedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </div>
                           )}
                         </div>
                         <div className="flex items-center justify-between px-4 py-2.5 text-sm">
@@ -1598,124 +1565,6 @@ export default function CustomerProfilePage() {
                       </>
                     )}
                     {workError && <p className="text-xs text-red-500">{workError}</p>}
-                  </div>
-                )}
-
-                {activeTab === 'orders' && (
-                  <div className="space-y-3">
-                    <div>
-                      <h2 className="text-sm font-semibold text-text-secondary">Orders linked to this customer</h2>
-                    </div>
-                    {ordersLoading ? (
-                      <p className="text-base text-text-secondary">Loading orders…</p>
-                    ) : orders.length === 0 ? (
-                      <p className="text-base text-text-secondary">No orders for this customer yet.</p>
-                    ) : (
-                      <>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Orders</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">{orders.length}</div>
-                          </div>
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Total value</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">
-                              {orders[0]?.currency ?? 'INR'} {orders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0).toFixed(2)}
-                            </div>
-                          </div>
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Unpaid</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">
-                              {orders.filter((o) => o.payment_status === 'unpaid').length}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full divide-y divide-border-color text-sm">
-                            <thead className="bg-bg-secondary text-xs uppercase text-text-secondary">
-                              <tr>
-                                <th className="px-3 py-2 text-left">Order</th>
-                                <th className="px-3 py-2 text-left">Amount</th>
-                                <th className="px-3 py-2 text-left">Status</th>
-                                <th className="px-3 py-2 text-left">Payment</th>
-                                <th className="px-3 py-2 text-left">Created</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border-color">
-                              {orders.map((o) => (
-                                <tr key={o.id}>
-                                  <td className="px-3 py-2 text-text-primary">#{o.id}</td>
-                                  <td className="px-3 py-2 text-text-secondary">{o.currency} {Number(o.total_amount || 0).toFixed(2)}</td>
-                                  <td className="px-3 py-2 text-text-secondary capitalize">{o.status}</td>
-                                  <td className="px-3 py-2 text-text-secondary capitalize">{o.payment_status}</td>
-                                  <td className="px-3 py-2 text-text-secondary">{new Date(o.created_at).toLocaleString()}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    )}
-                    {ordersError && <p className="text-xs text-red-500">{ordersError}</p>}
-                  </div>
-                )}
-
-                {activeTab === 'appointments' && (
-                  <div className="space-y-3">
-                    <div>
-                      <h2 className="text-sm font-semibold text-text-secondary">Appointments for this customer</h2>
-                    </div>
-                    {appointmentsLoading ? (
-                      <p className="text-base text-text-secondary">Loading appointments…</p>
-                    ) : appointments.length === 0 ? (
-                      <p className="text-base text-text-secondary">No appointments for this customer yet.</p>
-                    ) : (
-                      <>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Upcoming</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">
-                              {appointments.filter((a) => new Date(a.date_time).getTime() >= Date.now() && a.status !== 'cancelled').length}
-                            </div>
-                          </div>
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Completed</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">
-                              {appointments.filter((a) => a.status === 'completed').length}
-                            </div>
-                          </div>
-                          <div className="rounded-lg border border-border-color bg-bg-secondary p-3">
-                            <div className="text-xs uppercase tracking-wide text-text-secondary">Cancelled</div>
-                            <div className="mt-1 text-lg font-semibold text-text-primary">
-                              {appointments.filter((a) => a.status === 'cancelled').length}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full divide-y divide-border-color text-sm">
-                            <thead className="bg-bg-secondary text-xs uppercase text-text-secondary">
-                              <tr>
-                                <th className="px-3 py-2 text-left">When</th>
-                                <th className="px-3 py-2 text-left">Service ID</th>
-                                <th className="px-3 py-2 text-left">Status</th>
-                                <th className="px-3 py-2 text-left">Notes</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border-color">
-                              {appointments.map((a) => (
-                                <tr key={a.id}>
-                                  <td className="px-3 py-2 text-text-primary">{new Date(a.date_time).toLocaleString()}</td>
-                                  <td className="px-3 py-2 text-text-secondary">{a.service_id}</td>
-                                  <td className="px-3 py-2 text-text-secondary capitalize">{a.status}</td>
-                                  <td className="px-3 py-2 text-text-secondary">{a.notes || '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    )}
-                    {appointmentsError && <p className="text-xs text-red-500">{appointmentsError}</p>}
                   </div>
                 )}
 

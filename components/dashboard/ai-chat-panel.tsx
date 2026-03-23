@@ -245,7 +245,6 @@ const QUICK_PROMPTS = [
   { icon: '📋', text: 'Create a task',           prompt: 'create a new work task' },
   { icon: '📊', text: "Today's overview",        prompt: 'give me a business overview for today' },
   { icon: '👥', text: 'Show team',               prompt: 'show all team members' },
-  { icon: '📦', text: 'Recent orders',           prompt: 'show recent orders' },
   { icon: '🔔', text: 'Pending follow-ups',      prompt: 'show pending follow-ups' },
 ];
 

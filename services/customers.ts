@@ -18,6 +18,8 @@ export interface Customer {
   linkedChannels?: LinkedChannel[];
   assignedAgent: string;
   assignedToId?: number | null;
+  assignedAt?: string | null;
+  assignmentLockedUntil?: string | null;
   lastActivity: string;
   lastMessagePreview: string;
   aiActive: boolean;
@@ -101,6 +103,8 @@ type Lead = {
   created_at: string;
   updated_at?: string | null;
   linked_channels?: LinkedChannel[];
+  assigned_at?: string | null;
+  assignment_locked_until?: string | null;
 };
 
 function primaryChannel(lead: Lead): Channel {
@@ -292,6 +296,8 @@ export async function listCustomers(filters: CustomerFilters = {}) {
       linkedChannels: l.linked_channels ?? [],
       assignedAgent: convo?.agent_name ?? '—',
       assignedToId: l.assigned_to_id ?? null,
+      assignedAt: l.assigned_at ?? null,
+      assignmentLockedUntil: l.assignment_locked_until ?? null,
       lastActivity: last,
       lastMessagePreview: convo?.summary ?? '—',
       aiActive: (convo?.mode ?? 'ai') === 'ai',
@@ -345,6 +351,8 @@ export async function getCustomer(id: string): Promise<Customer | null> {
     linkedChannels: lead.linked_channels ?? [],
     assignedAgent: latestConvo?.agent_name ?? '—',
     assignedToId: lead.assigned_to_id ?? null,
+    assignedAt: lead.assigned_at ?? null,
+    assignmentLockedUntil: lead.assignment_locked_until ?? null,
     lastActivity: last,
     lastMessagePreview: latestConvo?.summary ?? '—',
     aiActive: (latestConvo?.mode ?? 'ai') === 'ai',
@@ -453,6 +461,8 @@ export async function fetchCustomerDetail(id: string): Promise<CustomerDetailRes
     phone: lead.phone ?? '',
     email: lead.email ?? null,
     assignedToId: lead.assigned_to_id ?? null,
+    assignedAt: lead.assigned_at ?? null,
+    assignmentLockedUntil: lead.assignment_locked_until ?? null,
     channel: primaryChannel(lead),
     linkedChannels: lead.linked_channels ?? [],
     assignedAgent: latestConvo?.agent_name ?? '—',
@@ -591,6 +601,19 @@ export async function updateLead(id: string, data: LeadUpdate): Promise<Customer
   });
   
   // Fetch updated lead with full data
+  return getCustomer(id) as Promise<Customer>;
+}
+
+export async function assignLead(
+  id: string,
+  assignedToId: number | null,
+  forceReassign = false,
+): Promise<Customer> {
+  const leadId = Number(id);
+  await apiFetch<Lead>(`/leads/${leadId}/assign`, {
+    method: 'PUT',
+    body: JSON.stringify({ assigned_to_id: assignedToId, force_reassign: forceReassign }),
+  });
   return getCustomer(id) as Promise<Customer>;
 }
 

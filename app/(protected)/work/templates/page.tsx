@@ -23,7 +23,7 @@ import { AssignWorkModal } from '@/components/work/assign-work-modal';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-type TemplateTypeValue = 'simple' | 'checklist' | 'datasheet';
+type TemplateTypeValue = 'simple' | 'checklist' | 'datasheet' | 'calling';
 
 interface StepRow {
   order: number;
@@ -46,12 +46,14 @@ const FORM_FIELD_TYPES: Array<{ value: FormFieldType; label: string; icon: strin
 function templateTypeIcon(t?: string | null) {
   if (t === 'checklist') return '☑';
   if (t === 'datasheet') return '📊';
+  if (t === 'calling') return '📞';
   return '📋';
 }
 
 function templateTypeBadgeClass(t?: string | null) {
   if (t === 'checklist') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
   if (t === 'datasheet') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300';
+  if (t === 'calling') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
   return 'bg-bg-secondary text-text-secondary';
 }
 
@@ -664,7 +666,7 @@ function TemplateEditor({
             <div>
               <label className="mb-1.5 block text-sm font-medium text-text-primary">Work type</label>
               <div className="flex rounded-lg border border-border-color overflow-hidden">
-                {(['simple', 'checklist', 'datasheet'] as TemplateTypeValue[]).map((t) => (
+                {(['simple', 'checklist', 'datasheet', 'calling'] as TemplateTypeValue[]).map((t) => (
                   <button
                     key={t}
                     type="button"
@@ -687,6 +689,7 @@ function TemplateEditor({
                 {templateType === 'simple' && 'Form fields only — employee fills and submits.'}
                 {templateType === 'checklist' && 'Step-by-step tasks the employee marks done.'}
                 {templateType === 'datasheet' && 'Assigns rows from a data sheet to act on.'}
+                {templateType === 'calling' && 'Assign leads to call — employee calls from mobile app.'}
               </p>
             </div>
           </div>

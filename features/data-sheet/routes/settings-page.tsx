@@ -456,6 +456,7 @@ function InlineAddField({
   const [isRequired, setIsRequired] = useState(false);
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [relationModelId, setRelationModelId] = useState<number | null>(null);
+  const [relationBuiltinModel, setRelationBuiltinModel] = useState<string | null>(null);
   const [relationKind, setRelationKind] = useState<'many_to_one' | 'one_to_many' | 'many_to_many' | null>(null);
   const [defaultValue, setDefaultValue] = useState<unknown>(undefined);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -484,6 +485,7 @@ function InlineAddField({
     setIsRequired(false);
     setConfig({});
     setRelationModelId(null);
+    setRelationBuiltinModel(null);
     setRelationKind(null);
     setDefaultValue(undefined);
     setShowAdvanced(false);
@@ -512,6 +514,7 @@ function InlineAddField({
         is_searchable: true,
         config: normalizedConfig,
         relation_model_id: fieldType === 'relation' ? relationModelId : undefined,
+        relation_builtin_model: fieldType === 'relation' ? relationBuiltinModel : undefined,
         relation_kind: fieldType === 'relation' ? relationKind : undefined,
         default_value: defaultValue,
       });
@@ -601,6 +604,7 @@ function InlineAddField({
                       setFieldType(t);
                       setConfig({});
                       setRelationModelId(null);
+                      setRelationBuiltinModel(null);
                       setRelationKind(null);
                     }}
                     className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-2.5 text-center transition-all ${
@@ -639,6 +643,8 @@ function InlineAddField({
               onConfigChange={setConfig}
               relationModelId={relationModelId}
               onRelationModelIdChange={setRelationModelId}
+              relationBuiltinModel={relationBuiltinModel}
+              onRelationBuiltinModelChange={setRelationBuiltinModel}
               relationKind={relationKind}
               onRelationKindChange={setRelationKind}
               excludeModelId={typeof modelId === 'number' ? modelId : null}
@@ -767,6 +773,8 @@ function EditFieldModal({
               onConfigChange={setConfig}
               relationModelId={field.relation_model_id ?? null}
               onRelationModelIdChange={() => {}}
+              relationBuiltinModel={field.relation_builtin_model ?? null}
+              onRelationBuiltinModelChange={() => {}}
               relationKind={field.relation_kind as 'many_to_one' | 'one_to_many' | 'many_to_many' | null}
               onRelationKindChange={() => {}}
               relationReadOnly

@@ -157,7 +157,9 @@ function SortableFieldCard({
           config={field.config ?? {}}
           onConfigChange={(config) => setField(index, { config })}
           relationModelId={field.relation_model_id ?? null}
-          onRelationModelIdChange={(id) => setField(index, { relation_model_id: id })}
+          onRelationModelIdChange={(id) => setField(index, { relation_model_id: id, relation_builtin_model: null })}
+          relationBuiltinModel={field.relation_builtin_model ?? null}
+          onRelationBuiltinModelChange={(model) => setField(index, { relation_builtin_model: model, relation_model_id: null })}
           relationKind={field.relation_kind ?? null}
           onRelationKindChange={(kind) => setField(index, { relation_kind: kind })}
           defaultValue={field.default_value}
