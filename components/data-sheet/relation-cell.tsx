@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { DynamicField } from '@/services/dynamic-data';
-import { queryRecords, searchBuiltinModel } from '@/services/dynamic-data';
+import { queryRecords, searchBuiltinModel, listFields, createRecord } from '@/services/dynamic-data';
 
 const DEBOUNCE_MS = 300;
 
@@ -27,6 +27,10 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const prevEditingRef = useRef(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createFields, setCreateFields] = useState<DynamicField[]>([]);
+  const [createData, setCreateData] = useState<Record<string, unknown>>({});
+  const [createSaving, setCreateSaving] = useState(false);
 
   const targetModelId = field.relation_model_id;
   const builtinModel = field.relation_builtin_model;
@@ -87,18 +91,21 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
   }, [editing, hasTarget, searchDebounced, loadOptions]);
 
   // Resolve labels for current IDs
-  const currentIds = Array.isArray(value) ? value.map(Number) : value != null ? [Number(value)] : [];
+  const currentIds = Array.isArray(value) ? value.map(Number) : value != null && value !== '' ? [Number(value)] : [];
   const missingLabels = currentIds.filter((id) => !options.some((x) => x.id === id));
+  const [labelsLoading, setLabelsLoading] = useState(false);
   useEffect(() => {
-    if (hasTarget && missingLabels.length > 0) {
-      void loadOptions('');
+    if (hasTarget && missingLabels.length > 0 && !loading) {
+      setLabelsLoading(true);
+      void loadOptions('').finally(() => setLabelsLoading(false));
     }
-  }, [hasTarget, missingLabels.length, loadOptions]);
+  }, [hasTarget, missingLabels.length, loadOptions, loading]);
 
   const currentLabels = currentIds.map((id) => {
     const o = options.find((x) => x.id === id);
     return o ? { id, label: o.label } : { id, label: `#${id}` };
   });
+  const hasResolvedLabels = currentLabels.every((l) => !l.label.startsWith('#'));
 
   const handleSelect = useCallback(async (id: number) => {
     if (isMany) {
@@ -277,6 +284,20 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
               )}
             </div>
 
+            {/* Create new button for custom models */}
+            {field.relation_model_id && !field.relation_builtin_model && (
+              <div className="border-t border-border-color px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-color py-1.5 text-xs font-medium text-accent hover:border-accent hover:bg-accent/5 transition"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  Create new record
+                </button>
+              </div>
+            )}
+
             {/* Footer */}
             <div className="flex items-center gap-2 border-t border-border-color bg-bg-secondary/30 px-3 py-2">
               {!isMany ? (
@@ -328,19 +349,33 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
       onKeyDown={(e) => e.key === 'Enter' && setEditing(true)}
       className="group min-h-[2.5rem] cursor-pointer px-4 py-3 hover:bg-bg-secondary/60"
     >
-      <div className="flex flex-wrap items-center gap-1.5">
-        {currentLabels.length ? (
-          currentLabels.map(({ id, label }) => (
-            <span
-              key={id}
-              className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20"
-            >
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-white">
-                {label.charAt(0).toUpperCase()}
+      <div className="flex flex-wrap items-center gap-1.5 max-h-[3rem] overflow-hidden relative">
+        {labelsLoading && !hasResolvedLabels ? (
+          /* Loading skeleton */
+          <div className="flex items-center gap-1.5">
+            <div className="h-5 w-20 animate-pulse rounded-full bg-bg-secondary" />
+            {currentIds.length > 1 && <div className="h-5 w-16 animate-pulse rounded-full bg-bg-secondary" />}
+            {currentIds.length > 2 && <div className="h-5 w-8 animate-pulse rounded-full bg-bg-secondary" />}
+          </div>
+        ) : currentLabels.length ? (
+          <>
+            {currentLabels.slice(0, 2).map(({ id, label }) => (
+              <span
+                key={id}
+                className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20"
+              >
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-white">
+                  {label.startsWith('#') ? '?' : label.charAt(0).toUpperCase()}
+                </span>
+                <span className="truncate max-w-[80px]">{label}</span>
               </span>
-              {label}
-            </span>
-          ))
+            ))}
+            {currentLabels.length > 2 && (
+              <span className="inline-flex items-center rounded-full bg-bg-secondary px-2 py-0.5 text-[10px] font-semibold text-text-secondary ring-1 ring-inset ring-border-color">
+                +{currentLabels.length - 2}
+              </span>
+            )}
+          </>
         ) : (
           <span className="text-text-secondary">—</span>
         )}
@@ -351,6 +386,102 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
         </span>
       </div>
       {error && <div className="mt-1 text-xs text-red-600">{error}</div>}
+
+      {/* Create related record modal */}
+      {showCreateModal && field.relation_model_id && (() => {
+        // Load fields on mount
+        if (!createFields.length) {
+          void listFields(field.relation_model_id!).then(setCreateFields).catch(() => {});
+        }
+        return (
+          <>
+            <div className="fixed inset-0 z-[60] bg-black/40" onClick={() => { setShowCreateModal(false); setCreateData({}); }} aria-hidden />
+            <div
+              className="fixed left-1/2 top-1/2 z-[70] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 max-h-[80vh] overflow-y-auto rounded-xl border border-border-color bg-card-bg p-5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-base font-semibold text-text-primary mb-4">Create new record</h3>
+              <div className="space-y-3">
+                {createFields
+                  .filter((f) => f.field_type !== 'relation' && f.is_editable)
+                  .map((f) => (
+                    <div key={f.id}>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">
+                        {f.display_name}{f.is_required && <span className="text-red-400 ml-0.5">*</span>}
+                      </label>
+                      {f.field_type === 'enum' ? (
+                        <select
+                          className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+                          value={String(createData[f.name] ?? '')}
+                          onChange={(e) => setCreateData((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                        >
+                          <option value="">—</option>
+                          {((f.config?.options as string[]) || []).map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : f.field_type === 'boolean' ? (
+                        <select
+                          className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+                          value={String(createData[f.name] ?? '')}
+                          onChange={(e) => setCreateData((prev) => ({ ...prev, [f.name]: e.target.value === 'true' }))}
+                        >
+                          <option value="">—</option>
+                          <option value="true">Yes</option>
+                          <option value="false">No</option>
+                        </select>
+                      ) : (
+                        <input
+                          type={f.field_type === 'integer' || f.field_type === 'float' || f.field_type === 'currency' ? 'number' : f.field_type === 'date' ? 'date' : 'text'}
+                          className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+                          value={String(createData[f.name] ?? '')}
+                          onChange={(e) => setCreateData((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                        />
+                      )}
+                    </div>
+                  ))}
+              </div>
+              <div className="mt-4 flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateModal(false); setCreateData({}); setCreateFields([]); }}
+                  className="rounded-lg border border-border-color px-4 py-2 text-sm text-text-secondary hover:bg-bg-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={createSaving}
+                  onClick={async () => {
+                    if (!field.relation_model_id) return;
+                    setCreateSaving(true);
+                    try {
+                      const newRec = await createRecord(field.relation_model_id, createData);
+                      const newId = Number((newRec as any).id);
+                      // Auto-select the new record
+                      if (isMany) {
+                        const updated = [...pendingIds, newId];
+                        setPendingIds(updated);
+                      } else {
+                        await onSave(newId);
+                      }
+                      setShowCreateModal(false);
+                      setCreateData({});
+                      setCreateFields([]);
+                      // Refresh options
+                      setSearchDebounced('');
+                    } catch {}
+                    setCreateSaving(false);
+                  }}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {createSaving ? 'Creating...' : 'Create & Select'}
+                </button>
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

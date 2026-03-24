@@ -17,6 +17,7 @@ import {
   bindAttachment,
   type QueryResponse,
 } from '@/features/data-sheet/api';
+import { listAttachments, deleteAttachment } from '@/services/dynamic-data';
 import { searchBuiltinModel } from '@/services/dynamic-data';
 import type { QueryFilter } from '@/components/data-sheet/data-sheet-filter-builder';
 import { normalizeApiError } from '@/features/data-sheet/api/normalize-error';
@@ -86,6 +87,7 @@ export function TablePage() {
   const [confirmDeleteRowId, setConfirmDeleteRowId] = useState<number | null>(null);
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
   const [deletingRowId, setDeletingRowId] = useState<number | null>(null);
+  const [detailRow, setDetailRow] = useState<{ id: number; data: Record<string, unknown>; recordKey: string } | null>(null);
   const [scrollHintDismissed, setScrollHintDismissed] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const hasLoadedOnceRef = useRef(false);
@@ -737,13 +739,22 @@ export function TablePage() {
                       )
                     )}
                     <td className="bg-inherit px-4 py-2.5">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRowClick(recordId)}
-                        className="min-h-[44px] min-w-[44px] rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-400"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setDetailRow({ id: recordId, data, recordKey: String(row.record_key ?? row.id) })}
+                          className="min-h-[44px] min-w-[44px] rounded-lg px-3 py-2 text-sm font-medium text-accent hover:bg-accent/10"
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRowClick(recordId)}
+                          className="min-h-[44px] min-w-[44px] rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -812,6 +823,30 @@ export function TablePage() {
           onClose={() => setAddRowOpen(false)}
           onSave={() => void handleAddRow()}
           saving={addRowSaving}
+        />
+      )}
+
+      {detailRow && (
+        <RowDetailModal
+          recordId={detailRow.id}
+          recordKey={detailRow.recordKey}
+          data={detailRow.data}
+          fields={fields}
+          modelId={modelId}
+          onClose={() => setDetailRow(null)}
+          onSave={async (fieldName, value) => {
+            await handleSaveCell(detailRow.id, fieldName, value);
+            // Refresh data in detail modal
+            const freshItems = items.find((r) => Number(r.id) === detailRow.id);
+            if (freshItems) {
+              setDetailRow((prev) => prev ? { ...prev, data: { ...prev.data, [fieldName]: value } } : null);
+            }
+          }}
+          onDelete={() => {
+            handleDeleteRowClick(detailRow.id);
+            setDetailRow(null);
+          }}
+          onAttachmentAdded={() => void refetch({ background: true, preserveOrder: true })}
         />
       )}
     </div>
@@ -1221,6 +1256,691 @@ function AddRowModal({
           </button>
         </div>
       </div>
+    </>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────── */
+/*  Row Detail Modal — card-style view of a single record           */
+/* ────────────────────────────────────────────────────────────────── */
+
+function RowDetailModal({
+  recordId,
+  recordKey,
+  data,
+  fields,
+  modelId,
+  onClose,
+  onSave,
+  onDelete,
+  onAttachmentAdded,
+}: {
+  recordId: number;
+  recordKey: string;
+  data: Record<string, unknown>;
+  fields: DynamicField[];
+  modelId: number | string;
+  onClose: () => void;
+  onSave: (fieldName: string, value: unknown) => Promise<void>;
+  onDelete: () => void;
+  onAttachmentAdded?: () => void;
+}) {
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<unknown>('');
+  const [saving, setSaving] = useState(false);
+  const [attachmentsByField, setAttachmentsByField] = useState<Record<number, any[]>>({});
+  const [loadingAttachments, setLoadingAttachments] = useState(true);
+  const [relationLabels, setRelationLabels] = useState<Record<string, Array<{ id: number; label: string }>>>({});
+  const [relationDetails, setRelationDetails] = useState<Record<string, Array<{ id: number; data: Record<string, unknown> }>>>({});
+  const [createRelModal, setCreateRelModal] = useState<{ field: DynamicField; relModelId: number } | null>(null);
+  const [createRelFields, setCreateRelFields] = useState<DynamicField[]>([]);
+  const [createRelData, setCreateRelData] = useState<Record<string, unknown>>({});
+  const [createRelSaving, setCreateRelSaving] = useState(false);
+
+  // Load attachments for image/file fields
+  useEffect(() => {
+    setLoadingAttachments(true);
+    listAttachments(recordId)
+      .then((all: unknown) => {
+        const arr = all as any[];
+        const grouped: Record<number, any[]> = {};
+        for (const att of arr) {
+          const fid = att.field_id as number;
+          if (!grouped[fid]) grouped[fid] = [];
+          grouped[fid].push(att);
+        }
+        setAttachmentsByField(grouped);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingAttachments(false));
+  }, [recordId]);
+
+  // Load relation labels + full record data for nested view (handles single + multi IDs)
+  useEffect(() => {
+    const relationFields = fields.filter((f) => f.field_type === 'relation' && data[f.name] != null && data[f.name] !== '');
+    if (!relationFields.length) return;
+    const labels: Record<string, Array<{ id: number; label: string }>> = {};
+    const details: Record<string, Array<{ id: number; data: Record<string, unknown> }>> = {};
+    const promises = relationFields.map(async (f) => {
+      const raw = data[f.name];
+      // Normalize to array of IDs
+      const ids: number[] = Array.isArray(raw)
+        ? raw.map(Number)
+        : String(raw).includes(',')
+          ? String(raw).split(',').map((s) => Number(s.trim())).filter(Boolean)
+          : [Number(raw)];
+      if (!ids.length || ids.every((id) => isNaN(id))) return;
+      try {
+        const builtinModel = f.relation_builtin_model;
+        const relModelId = f.relation_model_id;
+        if (builtinModel) {
+          const results = await searchBuiltinModel(builtinModel, '', 1, 200);
+          labels[f.name] = ids.map((id) => {
+            const match = results.items.find((r) => Number(r.id) === id);
+            return { id, label: match ? String(match.label || id) : String(id) };
+          });
+          details[f.name] = [];
+        } else if (relModelId) {
+          const resp = await queryRecords(relModelId, { page: 1, per_page: 200 });
+          const allItems = (resp.items || []) as Array<Record<string, unknown>>;
+          const displayField = f.config?.relation_display_field as string | undefined;
+          labels[f.name] = [];
+          details[f.name] = [];
+          for (const id of ids) {
+            const match = allItems.find((r) => Number(r.id) === id);
+            if (match) {
+              const d = ((match.data ?? match.normalized_data ?? {}) as Record<string, unknown>);
+              const lbl = String(displayField && d[displayField] ? d[displayField] : (d['name'] ?? d['title'] ?? d['display_name'] ?? (match.record_key as string) ?? id));
+              labels[f.name].push({ id, label: lbl });
+              details[f.name].push({ id, data: d });
+            } else {
+              labels[f.name].push({ id, label: String(id) });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[RowDetailModal] Failed to load relation data for field', f.name, err);
+      }
+    });
+    void Promise.all(promises).then(() => {
+      setRelationLabels(labels);
+      setRelationDetails(details);
+    });
+  }, [fields, data]);
+
+  const handleSave = async (fieldName: string) => {
+    setSaving(true);
+    try {
+      await onSave(fieldName, editDraft);
+      setEditingField(null);
+    } catch {}
+    setSaving(false);
+  };
+
+  const handleFileUpload = async (field: DynamicField, file: File) => {
+    try {
+      const uploaded = await uploadFileForAttachment(modelId, file);
+      await bindAttachment(modelId, {
+        dynamic_record_id: recordId,
+        field_id: field.id,
+        storage_key: uploaded.storage_key,
+        original_file_name: uploaded.original_file_name,
+        mime_type: uploaded.mime_type ?? undefined,
+        size_bytes: uploaded.size_bytes ?? undefined,
+      });
+      // Refresh attachments
+      const all = await listAttachments(recordId) as any[];
+      const grouped: Record<number, any[]> = {};
+      for (const att of all) {
+        const fid = att.field_id as number;
+        if (!grouped[fid]) grouped[fid] = [];
+        grouped[fid].push(att);
+      }
+      setAttachmentsByField(grouped);
+      onAttachmentAdded?.();
+    } catch {}
+  };
+
+  const handleDeleteAttachment = async (attId: number) => {
+    try {
+      await deleteAttachment(attId);
+      setAttachmentsByField((prev) => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          next[Number(key)] = next[Number(key)].filter((a: any) => a.id !== attId);
+        }
+        return next;
+      });
+    } catch {}
+  };
+
+  const renderFieldValue = (field: DynamicField) => {
+    const value = data[field.name];
+    const isImage = field.field_type === 'image';
+    const isFile = field.field_type === 'file';
+
+    // Image/File fields — show attachments
+    if (isImage || isFile) {
+      const atts = attachmentsByField[field.id] || [];
+      if (loadingAttachments) return <span className="text-xs text-text-muted">Loading...</span>;
+      return (
+        <div className="space-y-2">
+          {isImage && atts.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {atts.map((att: any) => (
+                <div key={att.id} className="group relative">
+                  <a href={att.signed_url} target="_blank" rel="noopener noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={att.signed_url}
+                      alt={att.original_file_name || ''}
+                      className="h-24 w-24 rounded-lg border border-border-color object-cover transition hover:opacity-80"
+                    />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteAttachment(att.id)}
+                    className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white group-hover:flex"
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {isFile && atts.length > 0 && (
+            <div className="space-y-1">
+              {atts.map((att: any) => (
+                <div key={att.id} className="group flex items-center gap-2 rounded-lg border border-border-color bg-bg-secondary/30 px-3 py-2">
+                  <span className="text-sm">📎</span>
+                  <a href={att.signed_url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate text-sm text-accent hover:underline">
+                    {att.original_file_name || 'file'}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteAttachment(att.id)}
+                    className="hidden text-xs text-red-500 hover:text-red-600 group-hover:block"
+                  >Remove</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {(!atts.length || !!(field.config?.multiple)) && (
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border-color px-3 py-2 text-sm text-text-secondary transition hover:border-accent hover:text-accent">
+              <span>{isImage ? '📷 Add image' : '📎 Add file'}</span>
+              <input type="file" accept={isImage ? 'image/*' : undefined} className="hidden"
+                onChange={(e) => e.target.files?.[0] && void handleFileUpload(field, e.target.files[0])} />
+            </label>
+          )}
+        </div>
+      );
+    }
+
+    // Relation fields — show labels + nested detail cards
+    if (field.field_type === 'relation') {
+      const labelItems = relationLabels[field.name] || [];
+      const detailItems = relationDetails[field.name] || [];
+      const nestedFields = (field.config?.nested_display_fields as string[]) || [];
+      const hasLabels = labelItems.length > 0;
+
+      return (
+        <div className="space-y-3">
+          {/* Label pills */}
+          {hasLabels ? (
+            <div className="flex flex-wrap gap-1.5">
+              {labelItems.map((item) => (
+                <span key={item.id} className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-1 text-sm font-medium text-accent ring-1 ring-inset ring-accent/20">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
+                    {item.label.charAt(0).toUpperCase()}
+                  </span>
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          ) : value ? (
+            <span className="text-sm text-text-secondary">ID: {String(value)}</span>
+          ) : (
+            <span className="text-sm text-text-muted">—</span>
+          )}
+
+          {/* Nested detail cards */}
+          {detailItems.length > 0 && (
+            <div className="space-y-2">
+              {detailItems.map((item) => {
+                const fieldKeys = nestedFields.length > 0 ? nestedFields : Object.keys(item.data).slice(0, 6);
+                const nonEmptyKeys = fieldKeys.filter((k) => item.data[k] != null && item.data[k] !== '');
+                if (!nonEmptyKeys.length) return null;
+                return (
+                  <div key={item.id} className="rounded-lg border border-border-color bg-bg-secondary/20 px-4 py-3">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                      {nonEmptyKeys.map((key) => (
+                        <div key={key} className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{key.replace(/_/g, ' ')}</p>
+                          <p className="text-sm text-text-primary truncate" title={String(item.data[key])}>{String(item.data[key])}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Create new related record button */}
+          {field.relation_model_id && !field.relation_builtin_model && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setCreateRelModal({ field, relModelId: field.relation_model_id! });
+                void import('@/features/data-sheet/api').then(({ listFields: lf }) => {
+                  lf(field.relation_model_id!).then(setCreateRelFields).catch(() => {});
+                });
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border-color px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent hover:text-accent transition"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              Create & link new record
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    // Boolean
+    if (field.field_type === 'boolean') {
+      const boolVal = value === true || value === 'true' || value === 'yes' || value === 1;
+      return (
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${boolVal ? 'bg-emerald-500/15 text-emerald-600' : 'bg-red-500/10 text-red-500'}`}>
+          <span className={`h-2 w-2 rounded-full ${boolVal ? 'bg-emerald-500' : 'bg-red-400'}`} />
+          {boolVal ? 'Yes' : 'No'}
+        </span>
+      );
+    }
+
+    // Enum
+    if (field.field_type === 'enum') {
+      return value
+        ? <span className="inline-flex rounded-full bg-bg-secondary px-3 py-1 text-sm font-medium text-text-primary">{String(value)}</span>
+        : <span className="text-sm text-text-muted">—</span>;
+    }
+
+    // Long text
+    if (field.field_type === 'long_text') {
+      return value
+        ? <p className="whitespace-pre-wrap text-sm text-text-primary leading-relaxed">{String(value)}</p>
+        : <span className="text-sm text-text-muted">—</span>;
+    }
+
+    // Date
+    if (field.field_type === 'date' && value) {
+      try {
+        return <span className="text-sm text-text-primary">{new Date(String(value)).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>;
+      } catch { return <span className="text-sm text-text-primary">{String(value)}</span>; }
+    }
+
+    // Currency/number
+    if ((field.field_type === 'currency' || field.field_type === 'float' || field.field_type === 'integer') && value != null && value !== '') {
+      const num = Number(value);
+      if (field.field_type === 'currency') {
+        const currency = (field.config?.currency as string) || 'INR';
+        try {
+          return <span className="text-sm font-medium text-text-primary">{new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(num)}</span>;
+        } catch { return <span className="text-sm font-medium text-text-primary">{String(value)}</span>; }
+      }
+      return <span className="text-sm text-text-primary">{num.toLocaleString()}</span>;
+    }
+
+    // Default text
+    return value != null && value !== ''
+      ? <span className="text-sm text-text-primary">{String(value)}</span>
+      : <span className="text-sm text-text-muted">—</span>;
+  };
+
+  // Group fields by category for better layout
+  const imageFields = fields.filter((f) => f.field_type === 'image');
+  const fileFields = fields.filter((f) => f.field_type === 'file');
+  const regularFields = fields.filter((f) => f.field_type !== 'image' && f.field_type !== 'file');
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col bg-bg-primary shadow-2xl animate-in slide-in-from-right duration-200">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 bg-card-bg border-b border-border-color">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/15 text-accent">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-text-primary">Record Details</h3>
+              <p className="text-xs text-text-muted font-mono">{recordKey}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onDelete}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-500/10 transition"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-2 text-text-muted hover:text-text-primary hover:bg-bg-secondary transition"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Image gallery section (if any image fields have attachments) */}
+          {imageFields.length > 0 && (
+            <div className="border-b border-border-color bg-bg-secondary/30 px-6 py-5">
+              {imageFields.map((field) => (
+                <div key={field.id}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">{field.display_name || field.name}</p>
+                  {renderFieldValue(field)}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Main fields — 2-column form grid */}
+          <div className="px-6 py-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+              {regularFields.map((field) => {
+                const isEditing = editingField === field.name;
+                const canEdit = field.is_editable;
+                const value = data[field.name];
+                const hasValue = value != null && value !== '';
+                // Long text and relation fields span full width
+                const isFullWidth = field.field_type === 'long_text' || field.field_type === 'relation';
+
+                return (
+                  <div
+                    key={field.id}
+                    className={`group rounded-lg px-3 py-3 transition ${isFullWidth ? 'md:col-span-2' : ''} ${isEditing ? 'bg-bg-secondary/60 ring-1 ring-accent/30' : canEdit ? 'hover:bg-bg-secondary/40 cursor-pointer' : ''}`}
+                    onClick={() => {
+                      if (!canEdit || isEditing) return;
+                      setEditingField(field.name);
+                      setEditDraft(data[field.name] ?? '');
+                    }}
+                  >
+                    {field.field_type === 'relation' ? (
+                      /* ── Relation fields: always show value + inline RelationCell for editing ── */
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                            {field.display_name || field.name}
+                            {field.is_required && <span className="ml-0.5 text-red-400">*</span>}
+                          </label>
+                        </div>
+                        <div className="rounded-lg border border-border-color overflow-hidden">
+                          <RelationCell
+                            value={data[field.name]}
+                            field={field}
+                            recordId={recordId}
+                            onSave={async (newVal) => {
+                              await onSave(field.name, newVal);
+                            }}
+                          />
+                        </div>
+                        {/* Nested detail cards below the picker */}
+                        {(() => {
+                          const detailItems = relationDetails[field.name] || [];
+                          const nestedFields = (field.config?.nested_display_fields as string[]) || [];
+                          if (!detailItems.length) return null;
+                          return (
+                            <div className="mt-2 space-y-2">
+                              {detailItems.map((item) => {
+                                const fieldKeys = nestedFields.length > 0 ? nestedFields : Object.keys(item.data).slice(0, 6);
+                                const nonEmptyKeys = fieldKeys.filter((k) => item.data[k] != null && item.data[k] !== '');
+                                if (!nonEmptyKeys.length) return null;
+                                return (
+                                  <div key={item.id} className="rounded-lg border border-border-color bg-bg-secondary/20 px-4 py-3">
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                                      {nonEmptyKeys.map((key) => (
+                                        <div key={key} className="min-w-0">
+                                          <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{key.replace(/_/g, ' ')}</p>
+                                          <p className="text-sm text-text-primary truncate" title={String(item.data[key])}>{String(item.data[key])}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                        {/* Create new button */}
+                        {field.relation_model_id && !field.relation_builtin_model && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCreateRelModal({ field, relModelId: field.relation_model_id! });
+                              void import('@/features/data-sheet/api').then(({ listFields: lf }) => {
+                                lf(field.relation_model_id!).then(setCreateRelFields).catch(() => {});
+                              });
+                            }}
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border-color px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-accent hover:text-accent transition"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                            Create & link new record
+                          </button>
+                        )}
+                      </div>
+                    ) : isEditing ? (
+                      /* ── Edit mode: stacked label + input ── */
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-text-secondary">
+                          {field.display_name || field.name}
+                          {field.is_required && <span className="ml-0.5 text-red-400">*</span>}
+                        </label>
+                        <div>
+                          {field.field_type === 'long_text' ? (
+                            <textarea
+                              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none transition"
+                              rows={4}
+                              value={String(editDraft ?? '')}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              autoFocus
+                            />
+                          ) : field.field_type === 'boolean' ? (
+                            <select
+                              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent outline-none"
+                              value={String(editDraft ?? '')}
+                              onChange={(e) => setEditDraft(e.target.value === 'true')}
+                              autoFocus
+                            >
+                              <option value="">—</option>
+                              <option value="true">Yes</option>
+                              <option value="false">No</option>
+                            </select>
+                          ) : field.field_type === 'enum' ? (
+                            <select
+                              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent outline-none"
+                              value={String(editDraft ?? '')}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              autoFocus
+                            >
+                              <option value="">—</option>
+                              {(field.config?.options as string[] || []).map((opt: string) => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type={field.field_type === 'integer' || field.field_type === 'float' || field.field_type === 'currency' ? 'number' : field.field_type === 'date' ? 'date' : 'text'}
+                              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none transition"
+                              value={String(editDraft ?? '')}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              autoFocus
+                            />
+                          )}
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setEditingField(null); }}
+                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-primary transition"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={(e) => { e.stopPropagation(); void handleSave(field.name); }}
+                            className="rounded-lg bg-accent px-4 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50 transition"
+                          >
+                            {saving ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* ── View mode: label on top, value below ── */
+                      <>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                            {field.display_name || field.name}
+                            {field.is_required && <span className="ml-0.5 text-red-400">*</span>}
+                          </label>
+                          {canEdit && (
+                            <svg className="h-3 w-3 text-text-muted/40 opacity-0 group-hover:opacity-100 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                          )}
+                        </div>
+                        <div className={`min-h-[24px] ${!hasValue ? 'py-0.5' : ''}`}>
+                          {renderFieldValue(field)}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* File attachments section */}
+          {fileFields.length > 0 && (
+            <div className="border-t border-border-color px-6 py-5">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-muted">Attachments</p>
+              <div className="space-y-3">
+                {fileFields.map((field) => (
+                  <div key={field.id}>
+                    <p className="mb-1.5 text-xs text-text-secondary">{field.display_name || field.name}</p>
+                    {renderFieldValue(field)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-border-color bg-card-bg px-6 py-3 flex items-center justify-between">
+          <p className="text-[10px] text-text-muted">
+            ID: {recordId}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border-color bg-bg-primary px-4 py-1.5 text-sm font-medium text-text-secondary hover:bg-bg-secondary transition"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+
+      {/* Create related record modal */}
+      {createRelModal && (
+        <>
+          <div className="fixed inset-0 z-[60] bg-black/40" onClick={() => setCreateRelModal(null)} aria-hidden />
+          <div
+            className="fixed left-1/2 top-1/2 z-[70] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 max-h-[80vh] overflow-y-auto rounded-xl border border-border-color bg-card-bg p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-text-primary mb-4">Create new linked record</h3>
+            <div className="space-y-3">
+              {createRelFields
+                .filter((f) => f.field_type !== 'relation' && f.is_editable)
+                .map((f) => (
+                  <div key={f.id}>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">
+                      {f.display_name}{f.is_required && <span className="text-red-400 ml-0.5">*</span>}
+                    </label>
+                    {f.field_type === 'long_text' ? (
+                      <textarea
+                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+                        rows={3}
+                        value={String(createRelData[f.name] ?? '')}
+                        onChange={(e) => setCreateRelData((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                      />
+                    ) : f.field_type === 'boolean' ? (
+                      <select
+                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+                        value={String(createRelData[f.name] ?? '')}
+                        onChange={(e) => setCreateRelData((prev) => ({ ...prev, [f.name]: e.target.value === 'true' }))}
+                      >
+                        <option value="">—</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    ) : f.field_type === 'enum' ? (
+                      <select
+                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+                        value={String(createRelData[f.name] ?? '')}
+                        onChange={(e) => setCreateRelData((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                      >
+                        <option value="">—</option>
+                        {((f.config?.options as string[]) || []).map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={f.field_type === 'integer' || f.field_type === 'float' || f.field_type === 'currency' ? 'number' : f.field_type === 'date' ? 'date' : 'text'}
+                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+                        value={String(createRelData[f.name] ?? '')}
+                        onChange={(e) => setCreateRelData((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                      />
+                    )}
+                  </div>
+                ))}
+            </div>
+            <div className="mt-4 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => { setCreateRelModal(null); setCreateRelData({}); setCreateRelFields([]); }}
+                className="rounded-lg border border-border-color px-4 py-2 text-sm text-text-secondary hover:bg-bg-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={createRelSaving}
+                onClick={async () => {
+                  if (!createRelModal) return;
+                  setCreateRelSaving(true);
+                  try {
+                    const newRec = await createRecord(createRelModal.relModelId, createRelData);
+                    const newId = (newRec as any).id;
+                    await onSave(createRelModal.field.name, newId);
+                    setCreateRelModal(null);
+                    setCreateRelData({});
+                    setCreateRelFields([]);
+                  } catch {}
+                  setCreateRelSaving(false);
+                }}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {createRelSaving ? 'Creating...' : 'Create & Link'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
