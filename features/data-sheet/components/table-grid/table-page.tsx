@@ -1,9 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDebounce } from '@/lib/use-debounce';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { DataSheetCell } from '@/components/data-sheet/data-sheet-cell';
 import { RelationCell } from '@/components/data-sheet/relation-cell';
+import { ReverseRelationSubTable } from '@/components/data-sheet/reverse-relation-subtable';
+import { ChevronDown, ChevronRight, Layers, Plus } from 'lucide-react';
+import { CreateChildDatasheetModal } from '@/components/data-sheet/create-child-datasheet-modal';
 import { DataSheetFilterBuilder } from '@/components/data-sheet/data-sheet-filter-builder';
 import { useDataSheetContext } from '@/features/data-sheet/context/data-sheet-context';
 import { ConfirmModal } from '@/features/data-sheet/components/confirm-modal';
@@ -18,10 +23,24 @@ import {
   type QueryResponse,
 } from '@/features/data-sheet/api';
 import { listAttachments, deleteAttachment } from '@/services/dynamic-data';
-import { searchBuiltinModel } from '@/services/dynamic-data';
+import { searchBuiltinModel, getReverseRelations } from '@/services/dynamic-data';
+import type { ReverseRelationMeta } from '@/services/dynamic-data';
 import type { QueryFilter } from '@/components/data-sheet/data-sheet-filter-builder';
 import { normalizeApiError } from '@/features/data-sheet/api/normalize-error';
 import { queryParamsFromSearchParams } from '@/features/data-sheet/state/query-params';
+import {
+  getStoredViewState,
+  setStoredViewState,
+  type ViewMode,
+  type CardViewConfig,
+  type ListViewConfig,
+  type CalendarViewConfig,
+  type KanbanViewConfig,
+} from '@/features/data-sheet/state/view-state';
+import { CardView } from '@/features/data-sheet/components/card-view';
+import { ListView } from '@/features/data-sheet/components/list-view';
+import CalendarView from '@/features/data-sheet/components/calendar-view';
+import KanbanView from '@/features/data-sheet/components/kanban-view';
 import type { DynamicField } from '@/services/dynamic-data';
 
 type SortRule = { field: string; direction: string };
@@ -67,7 +86,7 @@ export function TablePage() {
   const [page, setPage] = useState(DEFAULT_PAGE);
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
   const [keyword, setKeyword] = useState('');
-  const [keywordDebounced, setKeywordDebounced] = useState('');
+  const debouncedSearch = useDebounce(keyword, 300);
   const [sort, setSort] = useState<SortRule[]>([]);
   const [filters, setFilters] = useState<QueryFilter[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,10 +97,7 @@ export function TablePage() {
   const [cellErrors, setCellErrors] = useState<Record<string, Record<string, string>>>({});
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<Set<string> | null>(null);
-  const [columnPopoverOpen, setColumnPopoverOpen] = useState(false);
   const [views, setViews] = useState<Array<{ id: number; name: string; config: Record<string, unknown> }>>([]);
-  const [viewsDropdownOpen, setViewsDropdownOpen] = useState(false);
-  const [optionsOpen, setOptionsOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmDeleteRowId, setConfirmDeleteRowId] = useState<number | null>(null);
@@ -91,6 +107,63 @@ export function TablePage() {
   const [scrollHintDismissed, setScrollHintDismissed] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const hasLoadedOnceRef = useRef(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // ── Expandable sub-table rows ──
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [tableReverseRelations, setTableReverseRelations] = useState<ReverseRelationMeta[]>([]);
+
+  // View mode state
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [cardConfig, setCardConfig] = useState<CardViewConfig>({ cardFields: null, gridCols: 3 });
+  const [listConfig, setListConfig] = useState<ListViewConfig>({ titleField: null, detailFields: null });
+  const [calendarConfig, setCalendarConfig] = useState<CalendarViewConfig>({ dateField: null, pillFields: null });
+  const [kanbanConfig, setKanbanConfig] = useState<KanbanViewConfig>({ groupByField: null, cardFields: null });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'columns' | 'views' | 'display'>('columns');
+
+  // Load view mode from localStorage on mount
+  useEffect(() => {
+    if (!ctx?.modelId) return;
+    const stored = getStoredViewState(ctx.modelId);
+    if (stored) {
+      if (stored.viewMode) setViewMode(stored.viewMode);
+      if (stored.cardConfig) setCardConfig(stored.cardConfig);
+      if (stored.listConfig) setListConfig(stored.listConfig);
+      if (stored.calendarConfig) setCalendarConfig(stored.calendarConfig);
+      if (stored.kanbanConfig) setKanbanConfig(stored.kanbanConfig);
+    }
+  }, [ctx?.modelId]);
+
+  // Load reverse relation metadata (which child models point to this one)
+  useEffect(() => {
+    if (!ctx?.modelId) return;
+    let cancelled = false;
+    getReverseRelations(ctx.modelId)
+      .then((metas) => { if (!cancelled) setTableReverseRelations(metas); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [ctx?.modelId]);
+
+  // Persist view mode changes
+  const persistViewState = useCallback(() => {
+    if (!ctx?.modelId) return;
+    setStoredViewState(ctx.modelId, {
+      visibleColumns,
+      sort,
+      filters,
+      keyword,
+      viewMode,
+      cardConfig,
+      listConfig,
+      calendarConfig,
+      kanbanConfig,
+    });
+  }, [ctx?.modelId, visibleColumns, sort, filters, keyword, viewMode, cardConfig, listConfig, calendarConfig, kanbanConfig]);
+
+  useEffect(() => {
+    persistViewState();
+  }, [persistViewState]);
 
   // Sync URL -> state once on mount / URL change
   useEffect(() => {
@@ -100,23 +173,18 @@ export function TablePage() {
     setSort(q.sort);
     setFilters(q.filters);
     setKeyword(q.keyword);
-    setKeywordDebounced(q.keyword);
   }, [searchParams]);
 
-  // Debounce keyword
-  useEffect(() => {
-    const t = setTimeout(() => setKeywordDebounced(keyword), 400);
-    return () => clearTimeout(t);
-  }, [keyword]);
-
   const refetch = useCallback(
-    async (options?: { background?: boolean; preserveOrder?: boolean }) => {
+    async (options?: { background?: boolean; preserveOrder?: boolean; append?: boolean }) => {
       if (!ctx?.modelId) return;
       const background = options?.background === true;
       const preserveOrder = options?.preserveOrder === true;
-      if (!background) {
+      const append = options?.append === true;
+      if (!background && !append) {
         setLoading(true);
       }
+      if (append) setLoadingMore(true);
       setError(null);
       try {
         const res = await queryRecords(ctx.modelId, {
@@ -124,9 +192,15 @@ export function TablePage() {
           per_page: perPage,
           sort: sort.map((s) => ({ field: s.field, direction: s.direction || 'asc' })),
           filters,
-          keyword: keywordDebounced || undefined,
+          keyword: debouncedSearch || undefined,
         });
-        if (preserveOrder) {
+        if (append) {
+          setItems((prev) => {
+            const existingIds = new Set(prev.map((r) => Number(r.id)));
+            const newItems = res.items.filter((r) => !existingIds.has(Number(r.id)));
+            return [...prev, ...newItems];
+          });
+        } else if (preserveOrder) {
           setItems((prev) => {
             if (prev.length === 0) return res.items;
             const byId = new Map(res.items.map((r) => [Number(r.id), r]));
@@ -142,22 +216,44 @@ export function TablePage() {
         setTotalPages(res.total_pages ?? (Math.ceil(res.total / perPage) || 1));
       } catch (e) {
         setError(normalizeApiError(e).message);
-        setItems([]);
-        setTotal(0);
-        setTotalPages(0);
+        if (!append) {
+          setItems([]);
+          setTotal(0);
+          setTotalPages(0);
+        }
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
     },
-    [ctx?.modelId, page, perPage, sort, filters, keywordDebounced]
+    [ctx?.modelId, page, perPage, sort, filters, debouncedSearch]
   );
 
+  const handleLoadMore = useCallback(() => {
+    if (page < totalPages && !loadingMore) {
+      setPage((p) => p + 1);
+    }
+  }, [page, totalPages, loadingMore]);
+
+  // When page changes beyond 1, append instead of replace
+  const prevPageRef = useRef(1);
   useEffect(() => {
-    const background = hasLoadedOnceRef.current;
-    refetch({ background }).then(() => {
-      hasLoadedOnceRef.current = true;
-    });
-  }, [refetch]);
+    if (page > 1 && page > prevPageRef.current) {
+      void refetch({ append: true });
+    }
+    prevPageRef.current = page;
+  }, [page]);
+
+  useEffect(() => {
+    // Only auto-fetch on page 1 or when filters/sort/keyword change (not on page increment for load-more)
+    if (page === 1 || !hasLoadedOnceRef.current) {
+      const background = hasLoadedOnceRef.current;
+      refetch({ background }).then(() => {
+        hasLoadedOnceRef.current = true;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx?.modelId, sort, filters, debouncedSearch]);
 
   const toggleSort = useCallback((fieldName: string) => {
     setSort((prev) => {
@@ -376,7 +472,9 @@ export function TablePage() {
         </div>
       )}
 
+      {/* ── Clean Toolbar ── */}
       <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {/* Search */}
         <div className="relative flex min-w-0 flex-1 items-center sm:flex-initial">
           <span className="pointer-events-none absolute left-3 text-text-secondary" aria-hidden>
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -387,13 +485,13 @@ export function TablePage() {
             type="search"
             placeholder="Search…"
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            className="w-full min-w-0 rounded-lg border border-border-color bg-bg-primary py-2 pl-9 pr-9 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent sm:w-64"
+            onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
+            className="w-full min-w-0 rounded-lg border border-border-color bg-bg-primary py-2 pl-9 pr-9 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent sm:w-56"
           />
           {keyword && (
             <button
               type="button"
-              onClick={() => setKeyword('')}
+              onClick={() => { setKeyword(''); setPage(1); }}
               className="absolute right-2 rounded p-1 text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
               aria-label="Clear search"
             >
@@ -403,169 +501,113 @@ export function TablePage() {
             </button>
           )}
         </div>
-        {/* Mobile: single Options dropdown */}
-        <div className="relative md:hidden">
-          <button
-            type="button"
-            onClick={() => {
-              setOptionsOpen(!optionsOpen);
-              if (!optionsOpen) void loadViews();
-            }}
-            className="min-h-[44px] rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-bg-secondary"
-          >
-            Options
-          </button>
-          {optionsOpen && (
-            <>
-              <div className="fixed inset-0 z-20" onClick={() => setOptionsOpen(false)} aria-hidden />
-              <div className="absolute right-0 top-full z-30 mt-1 w-[min(280px,100vw-2rem)] rounded-lg border border-border-color bg-card-bg p-3 shadow-lg">
-                <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFilterBuilderOpen(true);
-                      setOptionsOpen(false);
-                    }}
-                    className={`flex min-h-[44px] w-full items-center rounded-lg border px-3 py-2 text-sm font-medium ${
-                      filters.length > 0
-                        ? 'border-accent/60 bg-accent-soft text-accent'
-                        : 'border-border-color bg-bg-primary text-text-secondary hover:bg-bg-secondary'
-                    }`}
-                  >
-                    Filters {filters.length ? `(${filters.length})` : ''}
-                  </button>
-                  <div>
-                    <p className="mb-1 px-1 text-xs font-medium text-text-secondary">Views</p>
-                    {views.length === 0 ? (
-                      <p className="px-3 py-2 text-sm text-text-secondary">No saved views</p>
-                    ) : (
-                      <div className="space-y-0.5">
-                        {views.map((v) => (
-                          <button
-                            key={v.id}
-                            type="button"
-                            onClick={() => {
-                              applyView(v.config);
-                              setOptionsOpen(false);
-                            }}
-                            className="flex min-h-[44px] w-full items-center rounded-lg px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary"
-                          >
-                            {v.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <p className="mb-1 px-1 text-xs font-medium text-text-secondary">Columns</p>
-                    <div className="space-y-0.5">
-                      {searchableFields.map((f) => (
-                        <label key={f.id} className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-3 py-2 hover:bg-bg-secondary">
-                          <input
-                            type="checkbox"
-                            checked={visibleColumns === null ? true : visibleColumns.has(f.name)}
-                            onChange={(e) => {
-                              const next =
-                                visibleColumns === null ? new Set(searchableFields.map((x) => x.name)) : new Set(visibleColumns);
-                              if (e.target.checked) next.add(f.name);
-                              else next.delete(f.name);
-                              setVisibleColumns(next.size === searchableFields.length ? null : next);
-                            }}
-                          />
-                          <span className="text-sm text-text-primary">{f.display_name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-        {/* Desktop: Filters, Views, Columns */}
+
+        {/* Total records badge */}
+        {total > 0 && (
+          <span className="hidden sm:inline-flex items-center rounded-full bg-bg-secondary px-2 py-0.5 text-[11px] font-medium text-text-secondary">
+            {total} record{total !== 1 ? 's' : ''}
+          </span>
+        )}
+
+        {/* Filter */}
         <button
           type="button"
           onClick={() => setFilterBuilderOpen(true)}
-          className={`hidden rounded-lg border px-4 py-2 text-sm font-medium hover:bg-bg-secondary md:inline-flex ${
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
             filters.length > 0
               ? 'border-accent/60 bg-accent-soft text-accent'
-              : 'border-border-color bg-card-bg text-text-secondary'
+              : 'border-border-color bg-card-bg text-text-secondary hover:bg-bg-secondary'
           }`}
         >
-          Filters {filters.length ? `(${filters.length})` : ''}
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg>
+          <span className="hidden sm:inline">Filter</span>
+          {filters.length > 0 && (
+            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">{filters.length}</span>
+          )}
         </button>
-        <div className="relative hidden md:block">
-          <button
-            type="button"
-            onClick={() => {
-              setViewsDropdownOpen(!viewsDropdownOpen);
-              if (!viewsDropdownOpen) void loadViews();
-            }}
-            className="rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-bg-secondary"
-          >
-            Views
-          </button>
-          {viewsDropdownOpen && (
-            <>
-              <div className="fixed inset-0 z-20" onClick={() => setViewsDropdownOpen(false)} aria-hidden />
-              <div className="absolute left-0 top-full z-30 mt-1 min-w-[160px] rounded-lg border border-border-color bg-card-bg py-1 shadow-lg">
-                {views.length === 0 ? (
-                  <div className="px-4 py-2 text-sm text-text-secondary">No saved views</div>
-                ) : (
-                  views.map((v) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => applyView(v.config)}
-                      className="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary"
-                    >
-                      {v.name}
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
-        <div className="relative hidden md:block">
-          <button
-            type="button"
-            onClick={() => setColumnPopoverOpen(!columnPopoverOpen)}
-            className="rounded-lg border border-border-color bg-card-bg px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-bg-secondary"
-          >
-            Columns
-          </button>
-          {columnPopoverOpen && (
-            <>
-              <div className="fixed inset-0 z-20" onClick={() => setColumnPopoverOpen(false)} aria-hidden />
-              <div className="absolute left-0 top-full z-30 mt-1 min-w-[180px] rounded-lg border border-border-color bg-card-bg p-2 shadow-lg">
-                {searchableFields.map((f) => (
-                  <label key={f.id} className="flex items-center gap-2 py-1">
-                    <input
-                      type="checkbox"
-                      checked={visibleColumns === null ? true : visibleColumns.has(f.name)}
-                      onChange={(e) => {
-                        const next =
-                          visibleColumns === null ? new Set(searchableFields.map((x) => x.name)) : new Set(visibleColumns);
-                        if (e.target.checked) next.add(f.name);
-                        else next.delete(f.name);
-                        setVisibleColumns(next.size === searchableFields.length ? null : next);
-                      }}
-                    />
-                    <span className="text-sm text-text-primary">{f.display_name}</span>
-                  </label>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+
+        {/* Reports */}
+        <Link
+          href={`/data-sheet/${ctx.modelId}/reports`}
+          className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0 2.77-.693a9 9 0 0 1 6.208.682l.108.054a9 9 0 0 0 6.086.71l3.114-.732a48.524 48.524 0 0 1-.005-10.499l-3.11.732a9 9 0 0 1-6.085-.711l-.108-.054a9 9 0 0 0-6.208-.682L3 4.5M3 15V4.5" /></svg>
+          <span className="hidden sm:inline">Reports</span>
+        </Link>
+
+        {/* Import */}
+        <Link
+          href={`/data-sheet/${ctx.modelId}/import`}
+          className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+          <span className="hidden sm:inline">Import</span>
+        </Link>
+
+        {/* Settings — navigates to /data-sheet/{id}/settings */}
+        <Link
+          href={`/data-sheet/${ctx.modelId}/settings`}
+          className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span className="hidden sm:inline">Settings</span>
+        </Link>
+
+        {/* Add Record */}
         <button
           type="button"
           onClick={() => setAddRowOpen(true)}
-          className="min-h-[44px] shrink-0 rounded-lg border border-border-color bg-bg-secondary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-accent-soft"
+          className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 transition-opacity flex items-center gap-1.5"
         >
-          Add row
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+          <span className="hidden sm:inline">Add {(() => {
+            const name = ctx?.model?.display_name || 'Row';
+            if (name.endsWith('ies')) return name.slice(0, -3) + 'y';
+            if (name.endsWith('ses') || name.endsWith('xes') || name.endsWith('zes')) return name.slice(0, -2);
+            if (name.endsWith('s') && !name.endsWith('ss')) return name.slice(0, -1);
+            return name;
+          })()}</span>
         </button>
+
+        {/* View Mode Switcher + View Settings gear */}
+        <div className="ml-auto flex items-center gap-1">
+          <div className="flex items-center rounded-lg border border-border-color bg-card-bg p-0.5">
+            {(['table', 'card', 'list', 'calendar', 'kanban'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  viewMode === mode
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+                }`}
+                title={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
+              >
+                {mode === 'table' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M10.875 12h-7.5m8.625 0h7.5m-8.625 0c.621 0 1.125.504 1.125 1.125" /></svg>}
+                {mode === 'card' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>}
+                {mode === 'list' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>}
+                {mode === 'calendar' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" /></svg>}
+                {mode === 'kanban' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" /></svg>}
+                <span className="hidden sm:inline">{mode.charAt(0).toUpperCase() + mode.slice(1)}</span>
+              </button>
+            ))}
+          </div>
+          {/* View settings gear (columns, saved views, display) */}
+          <button
+            type="button"
+            onClick={() => { setSettingsOpen(true); void loadViews(); }}
+            className={`rounded-lg p-2 transition-colors ${settingsOpen ? 'bg-accent/10 text-accent' : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'}`}
+            title="View settings"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <DataSheetFilterBuilder
@@ -575,6 +617,7 @@ export function TablePage() {
         onApply={refetch}
         open={filterBuilderOpen}
         onClose={() => setFilterBuilderOpen(false)}
+        reverseRelations={tableReverseRelations}
       />
 
       {confirmDeleteRowId !== null && (
@@ -627,6 +670,8 @@ export function TablePage() {
             </div>
           )}
 
+          {/* ── View Mode Content ── */}
+          {viewMode === 'table' && (
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-sm">
           <div
             ref={tableScrollRef}
@@ -693,22 +738,48 @@ export function TablePage() {
               {items.length === 0 && !loading ? (
                 <tr>
                   <td colSpan={visibleFields.length + 3} className="px-4 py-10 text-center text-sm text-text-secondary">
-                    No records yet. Click &quot;Add row&quot; to create your first record.
+                    No records yet. Click the button above to add your first entry.
                   </td>
                 </tr>
               ) : items.map((row) => {
                 const recordId = Number(row.id);
                 const data = (row.data ?? row.normalized_data ?? {}) as Record<string, unknown>;
                 const rowErrors = cellErrors[String(recordId)] ?? {};
+                const isExpanded = expandedRows.has(recordId);
+                const hasChildren = tableReverseRelations.length > 0;
                 return (
-                  <tr key={recordId} className="border-b border-border-color last:border-b-0 even:bg-bg-primary/50 hover:bg-bg-secondary/60">
+                  <React.Fragment key={recordId}>
+                  <tr className="border-b border-border-color last:border-b-0 even:bg-bg-primary/50 hover:bg-bg-secondary/60">
                     <td className="w-11 min-w-[44px] border-r border-border-color bg-inherit px-2 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(recordId)}
-                        onChange={() => toggleSelectOne(recordId)}
-                        aria-label={`Select row ${recordId}`}
-                      />
+                      <div className="flex items-center gap-1">
+                        {hasChildren && (
+                          <button
+                            type="button"
+                            className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-bg-secondary transition-colors"
+                            onClick={() =>
+                              setExpandedRows((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(recordId)) next.delete(recordId);
+                                else next.add(recordId);
+                                return next;
+                              })
+                            }
+                            aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            ) : (
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        )}
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(recordId)}
+                          onChange={() => toggleSelectOne(recordId)}
+                          aria-label={`Select row ${recordId}`}
+                        />
+                      </div>
                     </td>
                     <td className="border-r border-border-color bg-inherit px-4 py-2.5 text-sm text-text-secondary">
                       {String(row.record_key ?? row.id)}
@@ -757,6 +828,28 @@ export function TablePage() {
                       </div>
                     </td>
                   </tr>
+                  {/* ── Expandable sub-table row ── */}
+                  {isExpanded && hasChildren && (
+                    <tr className="bg-gradient-to-b from-bg-secondary/40 to-bg-secondary/10">
+                      <td colSpan={visibleFields.length + 3} className="px-4 py-3 sm:px-6">
+                        <div className="space-y-1">
+                          {tableReverseRelations.map((rel) => (
+                            <ReverseRelationSubTable
+                              key={`${rel.source_model_id}-${rel.field_id}`}
+                              parentModelId={modelId}
+                              parentRecordId={recordId}
+                              reverseRelation={rel}
+                              onRecordCreated={() => void refetch({ background: true, preserveOrder: true })}
+                              onRecordDeleted={() => void refetch({ background: true, preserveOrder: true })}
+                              compact={true}
+                              maxVisibleRows={3}
+                            />
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -770,48 +863,75 @@ export function TablePage() {
               Scroll →
             </div>
           )}
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border-color bg-card-bg px-3 py-3 text-sm text-text-secondary sm:px-4">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
-              <span className="text-xs sm:text-sm">
-                <span className="sm:hidden">{page} / {totalPages || 1} · {total} total</span>
-                <span className="hidden sm:inline">Page {page} of {totalPages || 1} · {total} total</span>
-              </span>
-              <label className="flex min-h-[44px] items-center gap-2">
-                <span className="text-xs sm:text-sm">Per page</span>
-                <select
-                  value={perPage}
-                  onChange={(e) => {
-                    setPerPage(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="min-h-[44px] rounded-lg border border-border-color bg-bg-primary px-2 py-2 text-sm text-text-primary"
-                >
-                  {[10, 25, 50, 100].map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="min-h-[44px] min-w-[44px] rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm disabled:opacity-50 hover:bg-bg-secondary"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="min-h-[44px] min-w-[44px] rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm disabled:opacity-50 hover:bg-bg-secondary"
-              >
-                Next
-              </button>
-            </div>
           </div>
-        </div>
+          )}
+
+          {viewMode === 'card' && (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <CardView
+                items={items}
+                fields={fields}
+                config={cardConfig}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelectOne}
+                onViewDetail={(row) => setDetailRow(row)}
+                onDeleteRow={handleDeleteRowClick}
+              />
+            </div>
+          )}
+
+          {viewMode === 'list' && (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ListView
+                items={items}
+                fields={fields}
+                config={listConfig}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelectOne}
+                onViewDetail={(row) => setDetailRow(row)}
+                onDeleteRow={handleDeleteRowClick}
+              />
+            </div>
+          )}
+
+          {viewMode === 'calendar' && (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <CalendarView
+                items={items}
+                fields={fields}
+                config={calendarConfig}
+                onViewDetail={(row) => setDetailRow(row)}
+                onConfigChange={setCalendarConfig}
+              />
+            </div>
+          )}
+
+          {viewMode === 'kanban' && (
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto">
+              <KanbanView
+                items={items}
+                fields={fields}
+                config={kanbanConfig}
+                onViewDetail={(row) => setDetailRow(row)}
+                onFieldValueChange={handleSaveCell}
+                onConfigChange={setKanbanConfig}
+              />
+            </div>
+          )}
+
+          {/* Load More */}
+          {items.length > 0 && items.length < total && (
+            <div className="flex shrink-0 items-center justify-center py-3">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="rounded-lg border border-border-color bg-card-bg px-6 py-2 text-xs font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary disabled:opacity-50 transition-colors"
+              >
+                {loadingMore ? 'Loading…' : `Load more (${items.length}/${total})`}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -823,6 +943,7 @@ export function TablePage() {
           onClose={() => setAddRowOpen(false)}
           onSave={() => void handleAddRow()}
           saving={addRowSaving}
+          modelDisplayName={ctx?.model?.display_name}
         />
       )}
 
@@ -833,6 +954,8 @@ export function TablePage() {
           data={detailRow.data}
           fields={fields}
           modelId={modelId}
+          modelName={ctx?.model?.name}
+          modelDisplayName={ctx?.model?.display_name}
           onClose={() => setDetailRow(null)}
           onSave={async (fieldName, value) => {
             await handleSaveCell(detailRow.id, fieldName, value);
@@ -848,6 +971,176 @@ export function TablePage() {
           }}
           onAttachmentAdded={() => void refetch({ background: true, preserveOrder: true })}
         />
+      )}
+
+      {/* Unified Settings Modal */}
+      {settingsOpen && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setSettingsOpen(false)} aria-hidden />
+          <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 max-h-[85vh] flex flex-col rounded-xl border border-border-color bg-card-bg shadow-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border-color px-5 py-3">
+              <h3 className="text-sm font-semibold text-text-primary">View Settings</h3>
+              <button type="button" onClick={() => setSettingsOpen(false)} className="rounded p-1 text-text-secondary hover:bg-bg-secondary">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-0.5 border-b border-border-color px-5">
+              {([['columns', 'Columns'], ['views', 'Saved Views'], ['display', 'Display']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSettingsTab(key)}
+                  className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                    settingsTab === key
+                      ? 'border-accent text-accent'
+                      : 'border-transparent text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {/* Columns Tab */}
+              {settingsTab === 'columns' && (
+                <div className="space-y-1">
+                  <p className="mb-2 text-xs text-text-secondary">Toggle which columns are visible in table view</p>
+                  {searchableFields.map((f) => (
+                    <label key={f.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-bg-secondary cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns === null ? true : visibleColumns.has(f.name)}
+                        onChange={(e) => {
+                          const next =
+                            visibleColumns === null ? new Set(searchableFields.map((x) => x.name)) : new Set(visibleColumns);
+                          if (e.target.checked) next.add(f.name);
+                          else next.delete(f.name);
+                          setVisibleColumns(next.size === searchableFields.length ? null : next);
+                        }}
+                      />
+                      <span className="text-sm text-text-primary">{f.display_name}</span>
+                      <span className="ml-auto text-[10px] text-text-secondary">{f.field_type}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Saved Views Tab */}
+              {settingsTab === 'views' && (
+                <div className="space-y-2">
+                  <p className="mb-2 text-xs text-text-secondary">Apply a saved filter & sort configuration</p>
+                  {views.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-text-secondary">No saved views yet</p>
+                  ) : (
+                    views.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => { applyView(v.config); setSettingsOpen(false); }}
+                        className="flex w-full items-center gap-2 rounded-lg border border-border-color px-3 py-2.5 text-left text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+                      >
+                        <svg className="h-4 w-4 shrink-0 text-text-secondary" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        {v.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Display Tab — view-specific config */}
+              {settingsTab === 'display' && (
+                <div className="space-y-5">
+                  {/* Card config */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-text-primary uppercase tracking-wide">Card View</h4>
+                    <div className="mt-2">
+                      <label className="text-xs text-text-secondary">Grid columns</label>
+                      <div className="mt-1 flex gap-2">
+                        {([2, 3, 4] as const).map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setCardConfig((c) => ({ ...c, gridCols: n }))}
+                            className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                              cardConfig.gridCols === n
+                                ? 'border-accent bg-accent/10 text-accent'
+                                : 'border-border-color text-text-secondary hover:bg-bg-secondary'
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <label className="text-xs text-text-secondary">Card fields</label>
+                      <div className="mt-1 max-h-[140px] space-y-0.5 overflow-y-auto">
+                        {fields.filter((f) => !['image', 'file'].includes(f.field_type)).map((f) => (
+                          <label key={f.id} className="flex items-center gap-2 rounded px-2 py-1 hover:bg-bg-secondary cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={cardConfig.cardFields ? cardConfig.cardFields.includes(f.name) : fields.filter((x) => !['image', 'file', 'relation'].includes(x.field_type)).slice(0, 4).some((x) => x.name === f.name)}
+                              onChange={(e) => {
+                                const current = cardConfig.cardFields ?? fields.filter((x) => !['image', 'file', 'relation'].includes(x.field_type)).slice(0, 4).map((x) => x.name);
+                                const next = e.target.checked ? [...current, f.name] : current.filter((n) => n !== f.name);
+                                setCardConfig((c) => ({ ...c, cardFields: next }));
+                              }}
+                            />
+                            <span className="text-xs text-text-primary">{f.display_name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border-color" />
+
+                  {/* List config */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-text-primary uppercase tracking-wide">List View</h4>
+                    <div className="mt-2">
+                      <label className="text-xs text-text-secondary">Title field</label>
+                      <select
+                        value={listConfig.titleField ?? ''}
+                        onChange={(e) => setListConfig((c) => ({ ...c, titleField: e.target.value || null }))}
+                        className="mt-1 w-full rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-xs text-text-primary"
+                      >
+                        <option value="">Auto (first text field)</option>
+                        {fields.filter((f) => ['text', 'number', 'currency', 'enum', 'date'].includes(f.field_type)).map((f) => (
+                          <option key={f.id} value={f.name}>{f.display_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mt-3">
+                      <label className="text-xs text-text-secondary">Detail fields</label>
+                      <div className="mt-1 max-h-[140px] space-y-0.5 overflow-y-auto">
+                        {fields.filter((f) => !['image', 'file'].includes(f.field_type)).map((f) => (
+                          <label key={f.id} className="flex items-center gap-2 rounded px-2 py-1 hover:bg-bg-secondary cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={listConfig.detailFields ? listConfig.detailFields.includes(f.name) : fields.filter((x) => !['image', 'file'].includes(x.field_type)).slice(0, 3).some((x) => x.name === f.name)}
+                              onChange={(e) => {
+                                const current = listConfig.detailFields ?? fields.filter((x) => !['image', 'file'].includes(x.field_type)).slice(0, 3).map((x) => x.name);
+                                const next = e.target.checked ? [...current, f.name] : current.filter((n) => n !== f.name);
+                                setListConfig((c) => ({ ...c, detailFields: next }));
+                              }}
+                            />
+                            <span className="text-xs text-text-primary">{f.display_name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1040,6 +1333,7 @@ function AddRowModal({
   onClose,
   onSave,
   saving,
+  modelDisplayName,
 }: {
   fields: DynamicField[];
   addRowData: Record<string, unknown>;
@@ -1047,6 +1341,7 @@ function AddRowModal({
   onClose: () => void;
   onSave: () => void;
   saving: boolean;
+  modelDisplayName?: string;
 }) {
   const [relationOptions, setRelationOptions] = useState<Record<string, Array<{ id: number; label: string }>>>({});
 
@@ -1085,7 +1380,9 @@ function AddRowModal({
     <>
       <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-hidden />
       <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 max-h-[90vh] overflow-y-auto rounded-xl border border-border-color bg-card-bg p-4 shadow-xl sm:p-6">
-        <h3 className="text-lg font-semibold text-text-primary">Add row</h3>
+        <h3 className="text-lg font-semibold text-text-primary">
+          {modelDisplayName ? `Add ${modelDisplayName.endsWith('ies') ? modelDisplayName.slice(0, -3) + 'y' : modelDisplayName.endsWith('s') && !modelDisplayName.endsWith('ss') ? modelDisplayName.slice(0, -1) : modelDisplayName}` : 'Add row'}
+        </h3>
         <div className="mt-4 space-y-3">
           {fields.map((f) => {
             const value = addRowData[f.name];
@@ -1270,6 +1567,8 @@ function RowDetailModal({
   data,
   fields,
   modelId,
+  modelName,
+  modelDisplayName,
   onClose,
   onSave,
   onDelete,
@@ -1280,6 +1579,8 @@ function RowDetailModal({
   data: Record<string, unknown>;
   fields: DynamicField[];
   modelId: number | string;
+  modelName?: string;
+  modelDisplayName?: string;
   onClose: () => void;
   onSave: (fieldName: string, value: unknown) => Promise<void>;
   onDelete: () => void;
@@ -1296,6 +1597,20 @@ function RowDetailModal({
   const [createRelFields, setCreateRelFields] = useState<DynamicField[]>([]);
   const [createRelData, setCreateRelData] = useState<Record<string, unknown>>({});
   const [createRelSaving, setCreateRelSaving] = useState(false);
+
+  // ── Reverse relations (child records that link TO this record) ──
+  const [reverseRelations, setReverseRelations] = useState<ReverseRelationMeta[]>([]);
+  const [childSheetModal, setChildSheetModal] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getReverseRelations(modelId)
+      .then((metas) => {
+        if (!cancelled) setReverseRelations(metas);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [modelId]);
 
   // Load attachments for image/file fields
   useEffect(() => {
@@ -1835,6 +2150,74 @@ function RowDetailModal({
                 ))}
               </div>
             </div>
+          )}
+
+          {/* ── Reverse Relations: inline sub-tables for child records ── */}
+          {reverseRelations.length > 0 && (
+            <div className="border-t border-border-color pt-4 px-6 pb-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Layers className="h-3.5 w-3.5 text-accent" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                  Related Records
+                </h3>
+                <span className="text-[10px] text-text-muted/60">
+                  ({reverseRelations.length} linked {reverseRelations.length === 1 ? 'model' : 'models'})
+                </span>
+              </div>
+              {reverseRelations.map((rel) => (
+                <ReverseRelationSubTable
+                  key={`${rel.source_model_id}-${rel.field_id}`}
+                  parentModelId={modelId}
+                  parentRecordId={recordId}
+                  reverseRelation={rel}
+                  onRecordCreated={() => {}}
+                  onRecordDeleted={() => {}}
+                  compact={false}
+                />
+              ))}
+
+              {/* Create new child datasheet button */}
+              <button
+                type="button"
+                onClick={() => setChildSheetModal(true)}
+                className="mt-2 w-full rounded-lg border-2 border-dashed border-border-color py-2.5 text-xs font-medium text-text-muted hover:border-primary/30 hover:text-primary transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Create New Child Datasheet
+              </button>
+            </div>
+          )}
+
+          {/* No reverse relations yet — still offer to create child */}
+          {reverseRelations.length === 0 && (
+            <div className="border-t border-border-color pt-4 px-6 pb-4">
+              <button
+                type="button"
+                onClick={() => setChildSheetModal(true)}
+                className="w-full rounded-lg border-2 border-dashed border-border-color py-4 text-xs text-text-muted hover:border-primary/30 hover:text-primary transition-colors flex flex-col items-center gap-1"
+              >
+                <Layers className="h-5 w-5 mb-1" />
+                <span className="font-medium">+ Create Child Datasheet</span>
+                <span className="text-[10px]">Add sub-tables like visits, orders, notes</span>
+              </button>
+            </div>
+          )}
+
+          {/* Child datasheet creation modal */}
+          {childSheetModal && modelName && (
+            <CreateChildDatasheetModal
+              parentModelId={Number(modelId)}
+              parentModelName={modelName}
+              parentDisplayName={modelDisplayName || modelName}
+              onClose={() => setChildSheetModal(false)}
+              onSuccess={() => {
+                setChildSheetModal(false);
+                // Refresh reverse relations
+                getReverseRelations(modelId)
+                  .then(setReverseRelations)
+                  .catch(() => {});
+              }}
+            />
           )}
         </div>
 

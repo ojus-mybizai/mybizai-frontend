@@ -319,7 +319,7 @@ export function NewModelPage() {
                     relationBuiltinModel={f.relation_builtin_model ?? null}
                     onRelationBuiltinModelChange={(model) => setField(index, { relation_builtin_model: model, relation_model_id: null })}
                     relationKind={f.relation_kind ?? null}
-                    onRelationKindChange={(kind) => setField(index, { relation_kind: kind })}
+                    onRelationKindChange={(kind) => setField(index, { relation_kind: kind as 'many_to_one' | 'one_to_many' | 'many_to_many' | null })}
                     defaultValue={f.default_value}
                     onDefaultValueChange={(v) => setField(index, { default_value: v })}
                   />

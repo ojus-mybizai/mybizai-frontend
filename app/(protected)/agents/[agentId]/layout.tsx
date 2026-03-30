@@ -8,27 +8,27 @@ import { AgentStatusBadge } from '@/components/agents/agent-status-badge';
 import { DeployButton } from '@/components/agents/deploy-button';
 import { EmptyState } from '@/components/agents/empty-state';
 import { useAgentStore } from '@/lib/agent-store';
+import { useShallow } from 'zustand/react/shallow';
 
-const tabs = [
-  { slug: 'overview', label: 'Overview' },
-  { slug: 'channels', label: 'Channels' },
-  { slug: 'tools', label: 'Tools' },
-  { slug: 'follow-ups', label: 'Follow-ups' },
-  { slug: 'knowledge-base', label: 'Knowledge Base' },
-  { slug: 'analytics', label: 'Analytics' },
-  { slug: 'test', label: 'Test' },
+const allTabs = [
+  { slug: 'overview', label: 'Overview', mode: 'always' as const },
+  { slug: 'channels', label: 'Channels', mode: 'chat' as const },
+  { slug: 'tools', label: 'Tools', mode: 'chat' as const },
+  { slug: 'automation', label: 'Automation', mode: 'auto' as const },
+  { slug: 'analytics', label: 'Analytics', mode: 'always' as const },
+  { slug: 'test', label: 'Test', mode: 'chat' as const },
 ];
 
 export default function AgentLayout({ children }: { children: ReactNode }) {
   const params = useParams<{ agentId: string }>();
   const pathname = usePathname();
   const router = useRouter();
-  const { current, loading, select, setStatus } = useAgentStore((s) => ({
+  const { current, loading, select, setStatus } = useAgentStore(useShallow((s) => ({
     current: s.current,
     loading: s.loading,
     select: s.select,
     setStatus: s.setStatus,
-  }));
+  })));
 
   useEffect(() => {
     if (params?.agentId) {
@@ -63,8 +63,13 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
   }
 
   const base = `/agents/${current.id}`;
+  const chatOn = current.chatEnabled !== false;
+  const autoOn = current.automationEnabled === true;
+  const tabs = allTabs.filter(
+    (t) => t.mode === 'always' || (t.mode === 'chat' && chatOn) || (t.mode === 'auto' && autoOn),
+  );
   const activeTab = tabs.find((t) => pathname?.startsWith(`${base}/${t.slug}`));
-  const setupRecommended = (current.channelIds?.length ?? 0) === 0;
+  const setupRecommended = chatOn && (current.channelIds?.length ?? 0) === 0;
 
   return (
     <ModuleGuard module="agents">
@@ -89,7 +94,19 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
                 <h1 className="text-xl font-semibold text-text-primary sm:text-2xl">{current.name}</h1>
                 <AgentStatusBadge status={current.status} />
               </div>
-              <div className="text-sm text-text-secondary capitalize">{current.role} agent</div>
+              <div className="flex items-center gap-2 text-sm text-text-secondary">
+                <span className="capitalize">{current.role} agent</span>
+                {current.chatEnabled !== false && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                    Chat
+                  </span>
+                )}
+                {current.automationEnabled && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                    Auto
+                  </span>
+                )}
+              </div>
             </div>
             <DeployButton
               status={current.status}

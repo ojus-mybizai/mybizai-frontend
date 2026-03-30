@@ -6,7 +6,7 @@ export type FieldType =
   | 'text' | 'number' | 'date' | 'datetime' | 'select'
   | 'boolean' | 'email' | 'phone' | 'url' | 'textarea' | 'relation';
 
-export type RelationTarget = 'work' | 'order' | 'appointment' | 'contact' | 'datasheet' | 'user' | 'employee';
+export type RelationTarget = 'work' | 'datasheet' | 'user' | 'employee';
 
 export type DisplayMode = 'count' | 'badge' | 'list';
 
@@ -73,7 +73,7 @@ export interface FieldOrderItem {
 }
 
 // Entity link types
-export type EntityType = 'order' | 'appointment' | 'contact' | 'datasheet_record' | 'employee';
+export type EntityType = 'datasheet_record' | 'employee';
 
 export interface LeadEntityLink {
   id: number;
@@ -151,7 +151,7 @@ export async function listLeadEntityLinks(leadId: number, entityType?: EntityTyp
   return apiFetch(`/leads/fields/${leadId}/links${params}`);
 }
 
-/** Link a lead to an entity (order/appointment/contact/datasheet_record). */
+/** Link a lead to an entity (datasheet_record/employee). */
 export async function createLeadEntityLink(
   leadId: number,
   data: { entity_type: EntityType; entity_id: number; field_config_id?: number }
@@ -176,9 +176,6 @@ export function relationTargetLabel(target: RelationTarget, datasheetName?: stri
   if (target === 'datasheet') return datasheetName ? datasheetName : 'Datasheet';
   const labels: Record<RelationTarget, string> = {
     work: 'Work Items',
-    order: 'Orders',
-    appointment: 'Appointments',
-    contact: 'Contacts',
     datasheet: 'Datasheet',
     user: 'User',
     employee: 'Employees',

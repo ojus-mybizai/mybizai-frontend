@@ -365,7 +365,7 @@ function WorkRow({
               </button>
             )}
             <Link
-              href={`/work/${w.id}`}
+              href={`/workstation?work=${w.id}`}
               className="rounded border border-border-color px-2 py-1 text-xs font-medium text-text-secondary hover:border-accent hover:text-accent transition-colors"
             >
               View →
@@ -422,7 +422,7 @@ function WorkRow({
                   })}
                 </div>
                 <Link
-                  href={`/work/${w.id}`}
+                  href={`/workstation?work=${w.id}`}
                   className="mt-3 inline-block text-xs font-medium text-accent hover:underline"
                 >
                   View full work details →
@@ -438,7 +438,7 @@ function WorkRow({
                       : 'No form data submitted yet.'}
                 </p>
                 <Link
-                  href={`/work/${w.id}`}
+                  href={`/workstation?work=${w.id}`}
                   className="shrink-0 rounded-lg border border-accent px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent hover:text-white transition-colors"
                 >
                   View full details →
@@ -1108,7 +1108,7 @@ export default function EmployeeDetailPage() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <Link
-                                href={`/customers/${lead.id}`}
+                                href={`/leads/${lead.id}`}
                                 className="text-xs font-semibold text-accent hover:underline"
                               >
                                 Open →
@@ -1164,7 +1164,6 @@ export default function EmployeeDetailPage() {
                           catalog_item_created: '📦', catalog_item_updated: '✏️', catalog_item_deleted: '🗑️',
                           contact_created: '👥', contact_updated: '✏️', contact_deleted: '🗑️',
                           appointment_created: '📅', appointment_updated: '✏️', appointment_deleted: '🗑️',
-                          kb_created: '📚', kb_updated: '✏️', kb_deleted: '🗑️',
                           channel_created: '📡', channel_deleted: '🗑️',
                           conversation_mode_changed: '💬',
                           business_updated: '🏢', storefront_updated: '🏪',
@@ -1194,8 +1193,6 @@ export default function EmployeeDetailPage() {
                           contact_deleted: 'Deleted contact',
                           appointment_created: 'Created appointment', appointment_updated: 'Updated appointment',
                           appointment_deleted: 'Deleted appointment',
-                          kb_created: 'Added knowledge base entry', kb_updated: 'Updated knowledge base',
-                          kb_deleted: 'Deleted knowledge base entry',
                           channel_created: 'Configured channel', channel_deleted: 'Removed channel',
                           conversation_mode_changed: 'Changed conversation mode',
                           business_updated: 'Updated business settings', storefront_updated: 'Updated storefront',
@@ -1236,7 +1233,7 @@ export default function EmployeeDetailPage() {
                               )}
                               {item.work_id && (
                                 <Link
-                                  href={`/work/${item.work_id}`}
+                                  href={`/workstation?work=${item.work_id}`}
                                   className="mt-0.5 text-xs text-accent hover:underline"
                                 >
                                   View work →

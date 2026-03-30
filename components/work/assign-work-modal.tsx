@@ -288,7 +288,7 @@ export function AssignWorkModal({
       }
       onClose();
       onCreated?.(created.id);
-      router.push(`/work/${created.id}`);
+      router.push(`/workstation?work=${created.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to assign work');
     } finally {
@@ -503,18 +503,24 @@ export function AssignWorkModal({
               </div>
 
               {/* Title */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-text-primary">Title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={
-                    selectedTemplate?.default_title ?? 'Give this work a title (optional)'
-                  }
-                  className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
-                />
-              </div>
+              {noTemplateMode ? (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-text-primary">Title</label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder={
+                      selectedTemplate?.default_title ?? 'Give this work a title (optional)'
+                    }
+                    className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-text-secondary italic">
+                  Title auto-generated from template name
+                </p>
+              )}
 
               {/* Due date */}
               <div>

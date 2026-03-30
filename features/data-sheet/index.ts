@@ -14,6 +14,6 @@ export type { CellErrorAnnotation, MappedValidation } from './mappers/validation
 export { queryParamsFromSearchParams, queryParamsToSearchParams, buildQueryParamsUrl } from './state/query-params';
 export type { QueryParamsState } from './state/query-params';
 export { getStoredViewState, setStoredViewState } from './state/view-state';
-export type { ViewStateSnapshot } from './state/view-state';
+export type { ViewStateSnapshot, ViewMode, CardViewConfig, ListViewConfig } from './state/view-state';
 export { getFieldTypeLabel, FIELD_TYPES, FIELD_TYPE_LABELS, isEditableFieldType } from './utils/field-registry';
 export type { FieldType } from './utils/field-registry';

@@ -2,22 +2,13 @@
 
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams, usePathname } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import ModuleGuard from '@/components/module-guard';
 import { getModel, listFields, type DynamicModel, type DynamicField } from '@/features/data-sheet/api';
 import { DataSheetProvider, type DataSheetContextValue } from '@/features/data-sheet/context/data-sheet-context';
 
-const TABS = [
-  { slug: '', label: 'Table', href: (id: string) => `/data-sheet/${id}` },
-  { slug: 'reports/ai', label: 'AI Report', href: (id: string) => `/data-sheet/${id}/reports/ai` },
-  { slug: 'reports', label: 'Reports', href: (id: string) => `/data-sheet/${id}/reports` },
-  { slug: 'settings', label: 'Settings', href: (id: string) => `/data-sheet/${id}/settings` },
-  { slug: 'import', label: 'Import', href: (id: string) => `/data-sheet/${id}/import` },
-];
-
 export function ModelLayout({ children }: { children: ReactNode }) {
   const params = useParams<{ modelId: string }>();
-  const pathname = usePathname();
   const modelId = params?.modelId as string | undefined;
 
   const [model, setModel] = useState<DynamicModel | null>(null);
@@ -83,11 +74,6 @@ export function ModelLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const base = `/data-sheet/${model.id}`;
-  const activeTab = TABS.find((t) =>
-    t.slug === '' ? pathname === base || pathname === `${base}/` : pathname?.startsWith(`${base}/${t.slug}`)
-  );
-
   const contextValue: DataSheetContextValue = {
     modelId: String(model.id),
     model,
@@ -98,53 +84,31 @@ export function ModelLayout({ children }: { children: ReactNode }) {
   return (
     <ModuleGuard module="lms">
       <DataSheetProvider value={contextValue}>
-          <div className="flex w-full max-w-full flex-1 flex-col gap-4 min-h-0">
-            <nav className="shrink-0 text-xs text-text-secondary">
-              <Link href="/data-sheet" className="font-semibold text-accent hover:underline">
-                Data Sheet
-              </Link>
-              <span className="mx-2 text-text-secondary/70">/</span>
-              <span className="text-text-primary">{model.display_name}</span>
-              {activeTab?.label != null && (
-                <>
-                  <span className="mx-2 text-text-secondary/70">/</span>
-                  <span className="text-text-primary">{activeTab.label}</span>
-                </>
-              )}
-            </nav>
-
-            <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h1 className="text-xl font-semibold text-text-primary sm:text-2xl">
-                {model.display_name}
-              </h1>
-            </div>
-
-            <div className="flex shrink-0 gap-1 overflow-x-auto rounded-xl border border-border-color bg-bg-primary px-1 py-1 text-sm">
-              {TABS.map((tab) => {
-                const href = tab.href(String(model.id));
-                const active =
-                  tab.slug === ''
-                    ? pathname === base || pathname === `${base}/`
-                    : pathname?.startsWith(`${base}/${tab.slug}`);
-                return (
-                  <Link
-                    key={tab.slug || 'table'}
-                    href={href}
-                    className={`rounded-lg px-3 py-2 font-semibold transition ${
-                      active
-                        ? 'border border-border-color bg-card-bg text-text-primary'
-                        : 'text-text-secondary hover:text-text-primary'
-                    }`}
-                  >
-                    {tab.label}
-                  </Link>
-                );
-              })}
-            </div>
-
-            <div className="min-h-0 flex-1 flex flex-col overflow-hidden">{children}</div>
+        <div className="flex w-full max-w-full flex-1 flex-col gap-3 min-h-0">
+          {/* Compact header: back arrow + title */}
+          <div className="flex shrink-0 items-center gap-3">
+            <Link
+              href="/data-sheet"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-color bg-card-bg text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+              title="All data sheets"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
+            </Link>
+            <h1 className="text-lg font-semibold text-text-primary truncate">
+              {model.display_name}
+            </h1>
+            {model.description && (
+              <span className="hidden text-xs text-text-secondary truncate sm:block">
+                {model.description}
+              </span>
+            )}
           </div>
-        </DataSheetProvider>
+
+          <div className="min-h-0 flex-1 flex flex-col overflow-hidden">{children}</div>
+        </div>
+      </DataSheetProvider>
     </ModuleGuard>
   );
 }

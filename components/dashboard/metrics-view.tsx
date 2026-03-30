@@ -35,8 +35,8 @@ export default function MetricsView({
       <div className="grid gap-4 sm:grid-cols-2">
         <button
           type="button"
-          onClick={() => router.push('/customers')}
-          className="rounded-xl border border-border-color bg-card-bg px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent hover:shadow-md"
+          onClick={() => router.push('/leads')}
+          className="rounded-xl border border-border-color bg-card-bg px-4 py-3 text-left shadow-sm transition-transform hover:-translate-y-px hover:border-accent hover:shadow-md"
         >
           <div className="mb-1 text-sm font-medium text-text-secondary">Total leads</div>
           <div className="mb-1 text-2xl font-semibold text-text-primary">
@@ -48,8 +48,8 @@ export default function MetricsView({
         </button>
         <button
           type="button"
-          onClick={() => router.push('/customers')}
-          className="rounded-xl border border-border-color bg-card-bg px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent hover:shadow-md"
+          onClick={() => router.push('/leads')}
+          className="rounded-xl border border-border-color bg-card-bg px-4 py-3 text-left shadow-sm transition-transform hover:-translate-y-px hover:border-accent hover:shadow-md"
         >
           <div className="mb-1 text-sm font-medium text-text-secondary">Conversion rate</div>
           <div className="mb-1 text-2xl font-semibold text-text-primary">
@@ -106,7 +106,7 @@ export default function MetricsView({
             <button
               type="button"
               onClick={() => router.push('/work')}
-              className="rounded-xl border border-border-color bg-card-bg p-4 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent hover:shadow-md"
+              className="rounded-xl border border-border-color bg-card-bg p-4 text-left shadow-sm transition-transform hover:-translate-y-px hover:border-accent hover:shadow-md"
             >
               <div className="mb-1 text-sm font-medium text-text-secondary">Work items</div>
               <div className="mb-2 text-2xl font-semibold text-text-primary">
@@ -125,7 +125,7 @@ export default function MetricsView({
             <button
               type="button"
               onClick={() => router.push('/employees')}
-              className="rounded-xl border border-border-color bg-card-bg p-4 text-left shadow-sm transition-all hover:-translate-y-px hover:border-accent hover:shadow-md"
+              className="rounded-xl border border-border-color bg-card-bg p-4 text-left shadow-sm transition-transform hover:-translate-y-px hover:border-accent hover:shadow-md"
             >
               <div className="mb-1 text-sm font-medium text-text-secondary">Team</div>
               <div className="mb-2 text-2xl font-semibold text-text-primary">
@@ -170,7 +170,7 @@ export default function MetricsView({
               <p>Enable Lead Management System to see insights from your leads.</p>
               <button
                 type="button"
-                onClick={() => router.push('/customers')}
+                onClick={() => router.push('/leads')}
                 className="mt-1 inline-flex rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
               >
                 Go to leads

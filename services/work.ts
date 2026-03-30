@@ -38,6 +38,17 @@ export interface Work {
     dynamic_model_id: number | null;
     completed: boolean;
   } | null;
+  steps_completed?: number | null;
+  steps_total?: number | null;
+  template_name?: string | null;
+  duration_hours?: number | null;
+  project_id?: number | null;
+  project_name?: string | null;
+  parent_work_id?: number | null;
+  subtask_count?: number | null;
+  subtasks_completed?: number | null;
+  created_by_id?: number | null;
+  created_by_name?: string | null;
 }
 
 export interface WorkStepOut {
@@ -113,9 +124,14 @@ export interface WorkListFilters {
   assigned_to_id?: number | null;
   lead_id?: number | null;
   work_type_id?: number | null;
+  work_template_id?: number | null;
   status?: string | null;
   priority?: 'low' | 'medium' | 'high' | null;
   overdue?: boolean | null;
+  template_type?: 'simple' | 'checklist' | 'datasheet' | 'calling' | null;
+  project_id?: number | null;
+  due_date_from?: string | null;
+  due_date_to?: string | null;
   q?: string | null;
 }
 
@@ -254,6 +270,11 @@ export async function listWork(filters: WorkListFilters = {}): Promise<WorkListR
   if (filters.status) params.set('status', filters.status);
   if (filters.priority) params.set('priority', filters.priority);
   if (filters.overdue != null) params.set('overdue', String(filters.overdue));
+  if (filters.work_template_id != null) params.set('work_template_id', String(filters.work_template_id));
+  if (filters.template_type) params.set('template_type', filters.template_type);
+  if (filters.project_id != null) params.set('project_id', String(filters.project_id));
+  if (filters.due_date_from) params.set('due_date_from', filters.due_date_from);
+  if (filters.due_date_to) params.set('due_date_to', filters.due_date_to);
   if (filters.q) params.set('q', filters.q);
   const qs = params.toString();
   return apiFetch<WorkListResponse>(`/work${qs ? `?${qs}` : ''}`, { method: 'GET', auth: true });
@@ -507,6 +528,181 @@ export async function updateLeadAssignmentStatus(
     method: 'PATCH',
     auth: true,
     body: JSON.stringify({ status }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+
+// ---------- Projects ----------
+
+export interface WorkProject {
+  id: number;
+  business_id: number;
+  name: string;
+  description: string | null;
+  status: string;
+  color: string | null;
+  owner_id: number | null;
+  owner_name: string | null;
+  due_date: string | null;
+  sort_order: number;
+  work_count: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WorkProjectCreate {
+  name: string;
+  description?: string | null;
+  status?: string;
+  color?: string | null;
+  owner_id?: number | null;
+  due_date?: string | null;
+  sort_order?: number;
+}
+
+export async function listProjects(): Promise<WorkProject[]> {
+  return apiFetch<WorkProject[]>('/work/projects', { method: 'GET', auth: true });
+}
+
+export async function createProject(payload: WorkProjectCreate): Promise<WorkProject> {
+  return apiFetch<WorkProject>('/work/projects', {
+    method: 'POST', auth: true,
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function updateProject(projectId: number, payload: Partial<WorkProjectCreate>): Promise<WorkProject> {
+  return apiFetch<WorkProject>(`/work/projects/${projectId}`, {
+    method: 'PUT', auth: true,
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function deleteProject(projectId: number): Promise<void> {
+  await apiFetch(`/work/projects/${projectId}`, { method: 'DELETE', auth: true });
+}
+
+
+// ---------- Subtasks ----------
+
+export async function getSubtasks(workId: number): Promise<Work[]> {
+  return apiFetch<Work[]>(`/work/${workId}/subtasks`, { method: 'GET', auth: true });
+}
+
+export async function createSubtask(parentWorkId: number, payload: {
+  work_type_id: number;
+  assigned_to_id: number;
+  title?: string;
+  priority?: string;
+  due_date?: string | null;
+}): Promise<Work> {
+  return apiFetch<Work>('/work', {
+    method: 'POST', auth: true,
+    body: JSON.stringify({ ...payload, parent_work_id: parentWorkId }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+
+// ---------- Comments ----------
+
+export interface WorkComment {
+  id: number;
+  work_id: number;
+  user_id: number;
+  user_name: string;
+  content: string;
+  mentioned_user_ids: number[] | null;
+  parent_comment_id: number | null;
+  created_at?: string;
+  updated_at?: string;
+  replies?: WorkComment[] | null;
+}
+
+export async function listComments(workId: number): Promise<WorkComment[]> {
+  return apiFetch<WorkComment[]>(`/work/${workId}/comments`, { method: 'GET', auth: true });
+}
+
+export async function createComment(workId: number, payload: {
+  content: string;
+  mentioned_user_ids?: number[];
+  parent_comment_id?: number | null;
+}): Promise<WorkComment> {
+  return apiFetch<WorkComment>(`/work/${workId}/comments`, {
+    method: 'POST', auth: true,
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function deleteComment(workId: number, commentId: number): Promise<void> {
+  await apiFetch(`/work/${workId}/comments/${commentId}`, { method: 'DELETE', auth: true });
+}
+
+
+// ---------- Attachments ----------
+
+export interface WorkAttachment {
+  id: number;
+  business_id: number;
+  work_id: number;
+  storage_key: string;
+  original_file_name: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  created_by_user_id: number | null;
+  created_by_name: string | null;
+  download_url: string | null;
+  created_at?: string;
+}
+
+export async function listAttachments(workId: number): Promise<WorkAttachment[]> {
+  return apiFetch<WorkAttachment[]>(`/work/${workId}/attachments`, { method: 'GET', auth: true });
+}
+
+export async function uploadAttachment(workId: number, file: File): Promise<WorkAttachment> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiFetch<WorkAttachment>(`/work/${workId}/upload-attachment`, {
+    method: 'POST', auth: true,
+    body: formData,
+    // Don't set Content-Type — browser sets multipart boundary automatically
+  });
+}
+
+export async function deleteAttachment(workId: number, attachmentId: number): Promise<void> {
+  await apiFetch(`/work/${workId}/attachments/${attachmentId}`, { method: 'DELETE', auth: true });
+}
+
+
+// ---------- Quick Task ----------
+
+export async function createQuickTask(payload: {
+  text: string;
+  assigned_to_id: number;
+  priority?: string;
+  due_date?: string | null;
+}): Promise<Work> {
+  return apiFetch<Work>('/work/quick-task', {
+    method: 'POST', auth: true,
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+
+// ---------- Log Entry ----------
+
+export async function createLogEntry(payload: {
+  content: string;
+  notes?: string | null;
+}): Promise<Work> {
+  return apiFetch<Work>('/work/log-entry', {
+    method: 'POST', auth: true,
+    body: JSON.stringify(payload),
     headers: { 'Content-Type': 'application/json' },
   });
 }

@@ -1553,7 +1553,7 @@ export default function CustomerProfilePage() {
                                     </select>
                                   </td>
                                   <td className="px-3 py-2 text-right">
-                                    <Link href={`/work/${w.id}`} className="text-xs font-semibold text-accent hover:underline">
+                                    <Link href={`/workstation?work=${w.id}`} className="text-xs font-semibold text-accent hover:underline">
                                       Open
                                     </Link>
                                   </td>

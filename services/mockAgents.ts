@@ -19,7 +19,8 @@ export interface Agent {
   deployed: boolean;
   channelIds: string[];
   toolIds: string[];
-  kbIds: string[];
+  chatEnabled: boolean;
+  automationEnabled: boolean;
   createdAt: string;
 }
 
@@ -47,7 +48,8 @@ let agents: Agent[] = [
     deployed: true,
     channelIds: ['whatsapp'],
     toolIds: [],
-    kbIds: [],
+    chatEnabled: true,
+    automationEnabled: false,
     createdAt: new Date().toISOString(),
   },
   {
@@ -62,7 +64,8 @@ let agents: Agent[] = [
     deployed: false,
     channelIds: [],
     toolIds: [],
-    kbIds: [],
+    chatEnabled: true,
+    automationEnabled: false,
     createdAt: new Date().toISOString(),
   },
 ];
@@ -93,7 +96,8 @@ export async function createAgent(input: CreateAgentInput): Promise<Agent> {
     deployed: false,
     channelIds: [],
     toolIds: [],
-    kbIds: [],
+    chatEnabled: true,
+    automationEnabled: false,
     createdAt: new Date().toISOString(),
   };
   agents = [newAgent, ...agents];
@@ -127,8 +131,4 @@ export async function bindChannels(id: string, channelIds: string[]): Promise<Ag
 
 export async function bindTools(id: string, toolIds: string[]): Promise<Agent> {
   return updateAgent(id, { toolIds });
-}
-
-export async function bindKnowledgeBases(id: string, kbIds: string[]): Promise<Agent> {
-  return updateAgent(id, { kbIds });
 }

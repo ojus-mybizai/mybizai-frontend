@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import ModuleGuard from '@/components/module-guard';
+import PermissionGuard from '@/components/permission-guard';
 import { LoadingSkeleton } from '@/components/agents/loading-skeleton';
 import { FacebookSDKLoader } from '@/components/integrations/FacebookSDKLoader';
 import { MetaConnectButton } from '@/components/integrations/MetaConnectButton';
@@ -765,7 +765,7 @@ export default function LeadSourcesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('channels');
 
   return (
-    <ModuleGuard module="lms">
+    <PermissionGuard permission="manage_channels" module="lms">
       <div className="w-full max-w-full space-y-5">
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -803,6 +803,6 @@ export default function LeadSourcesPage() {
         {/* Tab content */}
         {activeTab === 'channels' ? <ChannelsTab /> : <MetaAdsTab />}
       </div>
-    </ModuleGuard>
+    </PermissionGuard>
   );
 }

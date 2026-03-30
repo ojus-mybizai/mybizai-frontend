@@ -57,8 +57,8 @@ export async function markAsRead(id: number): Promise<void> {
 }
 
 export async function markAllRead(): Promise<void> {
-  return apiFetch<void>('/notifications/read-all', {
-    method: 'PATCH',
+  return apiFetch<void>('/notifications/mark-all-read', {
+    method: 'POST',
     auth: true,
   });
 }

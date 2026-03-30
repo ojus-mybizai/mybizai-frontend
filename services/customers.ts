@@ -37,13 +37,20 @@ export interface Customer {
   latestConversationId?: string | null;
   /** Custom field values keyed by field_key (from LeadFieldConfig) */
   custom_fields?: Record<string, unknown>;
-  /** Relation counts: {work: N, order: M, appointment: K} */
+  /** Relation counts: {work: N, datasheet_record: M} */
   relations_summary?: Record<string, number>;
+  /** Pipeline stage */
+  pipelineStageId?: number | null;
+  pipelineStageName?: string | null;
+  pipelineStageColor?: string | null;
+  /** AI agent assigned to this lead */
+  aiAgentId?: number | null;
 }
 
 export interface Conversation {
   id: string;
   customerId: string; // lead_id
+  agentId?: number | null;
   agentName: string;
   status: ConversationStatus;
   updatedAt: string;
@@ -123,6 +130,7 @@ type LeadListResponse = {
 type ConvoOut = {
   id: number;
   lead_id: number;
+  agent_id?: number | null;
   agent_name?: string | null;
   mode: 'ai' | 'manual';
   summary?: string | null;
@@ -146,6 +154,8 @@ export interface ConversationListFilters {
   lead_status?: string;
   intent?: string;
   unread_only?: boolean;
+  agent_id?: number;
+  agent_name?: string;
 }
 
 type PaginatedMessages = {
@@ -217,7 +227,7 @@ function parseExtraData(extraData: Record<string, any> | null | undefined) {
   };
 }
 
-/** Lightweight list of leads for dropdowns (e.g. order/appointment create). No conversation data. */
+/** Lightweight list of leads for dropdowns. No conversation data. */
 export interface LeadOption {
   id: number;
   name: string | null;
@@ -313,6 +323,18 @@ export async function listCustomers(filters: CustomerFilters = {}) {
       createdAt: l.created_at,
       updatedAt: l.updated_at ?? undefined,
       latestConversationId: convo ? String(convo.id) : null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      custom_fields: (l as any).custom_fields,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      relations_summary: (l as any).relations_summary,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pipelineStageId: (l as any).pipeline_stage_id ?? null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pipelineStageName: (l as any).pipeline_stage_name ?? null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pipelineStageColor: (l as any).pipeline_stage_color ?? null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      aiAgentId: (l as any).ai_agent_id ?? null,
     };
   });
 
@@ -374,6 +396,7 @@ function mapConvosToConversations(leadId: number, convos: ConvoOut[]): Conversat
   return convos.map((c) => ({
     id: String(c.id),
     customerId: String(c.lead_id),
+    agentId: c.agent_id ?? null,
     agentName: c.agent_name ?? '—',
     status: c.mode,
     updatedAt: c.updated_at ?? c.last_message_at ?? new Date().toISOString(),
@@ -399,6 +422,7 @@ function mapConvosToInboxConversations(convos: ConvoOut[]): InboxConversation[] 
   return convos.map((c) => ({
     id: String(c.id),
     customerId: String(c.lead_id),
+    agentId: c.agent_id ?? null,
     agentName: c.agent_name ?? '—',
     status: c.mode,
     updatedAt: c.updated_at ?? c.last_message_at ?? new Date().toISOString(),
@@ -421,6 +445,8 @@ export async function listAllConversations(
   if (filters?.lead_status) params.set('lead_status', filters.lead_status);
   if (filters?.intent) params.set('intent', filters.intent);
   if (filters?.unread_only) params.set('unread_only', 'true');
+  if (filters?.agent_id) params.set('agent_id', String(filters.agent_id));
+  if (filters?.agent_name) params.set('agent_name', filters.agent_name);
   const qs = params.toString();
   const url = qs ? `/convo/?${qs}` : '/convo/';
   const convos = await apiFetch<ConvoOut[]>(url, { method: 'GET' });
@@ -480,6 +506,7 @@ export async function fetchCustomerDetail(id: string): Promise<CustomerDetailRes
     lastFilled,
     createdAt: lead.created_at,
     updatedAt: lead.updated_at ?? undefined,
+    aiAgentId: (lead as any).ai_agent_id ?? null,
   };
   const conversations = mapConvosToConversations(leadId, convos);
   return { customer, conversations };
@@ -672,4 +699,129 @@ export async function createLeadNote(leadId: number | string, payload: LeadNoteC
 
 export async function deleteLeadNote(leadId: number | string, noteId: number): Promise<void> {
   await apiFetch<void>(`/leads/${leadId}/notes/${noteId}`, { method: 'DELETE', auth: true });
+}
+
+
+// ---------- Pipeline Stages ----------
+
+export interface LeadPipelineStage {
+  id: number;
+  business_id: number;
+  name: string;
+  color: string | null;
+  stage_type: 'open' | 'won' | 'lost';
+  sort_order: number;
+  is_default: boolean;
+  auto_create_work: boolean;
+  work_template_id: number | null;
+  work_template_name: string | null;
+  lead_count: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export async function listPipelineStages(): Promise<LeadPipelineStage[]> {
+  return apiFetch<LeadPipelineStage[]>('/leads/pipeline-stages', { method: 'GET', auth: true });
+}
+
+export async function createPipelineStage(payload: {
+  name: string; color?: string; stage_type?: string; sort_order?: number; is_default?: boolean;
+}): Promise<LeadPipelineStage> {
+  return apiFetch<LeadPipelineStage>('/leads/pipeline-stages', {
+    method: 'POST', auth: true,
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function updatePipelineStage(stageId: number, payload: Partial<{
+  name: string; color: string; stage_type: string; sort_order: number; is_default: boolean;
+}>): Promise<LeadPipelineStage> {
+  return apiFetch<LeadPipelineStage>(`/leads/pipeline-stages/${stageId}`, {
+    method: 'PUT', auth: true,
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function deletePipelineStage(stageId: number): Promise<void> {
+  await apiFetch(`/leads/pipeline-stages/${stageId}`, { method: 'DELETE', auth: true });
+}
+
+export async function moveLeadToStage(leadId: number | string, pipelineStageId: number): Promise<Customer> {
+  return apiFetch<Customer>(`/leads/${leadId}/move-stage`, {
+    method: 'PUT', auth: true,
+    body: JSON.stringify({ pipeline_stage_id: pipelineStageId }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+
+// ---------- Lead Activities ----------
+
+export interface LeadActivity {
+  id: number;
+  lead_id: number;
+  user_id: number | null;
+  user_name: string | null;
+  activity_type: string;
+  description: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at?: string;
+}
+
+export async function listLeadActivities(leadId: number | string, page = 1, perPage = 50): Promise<LeadActivity[]> {
+  return apiFetch<LeadActivity[]>(`/leads/${leadId}/activities?page=${page}&per_page=${perPage}`, {
+    method: 'GET', auth: true,
+  });
+}
+
+
+// ---------- Linked Datasheets ----------
+
+export interface LinkedDatasheet {
+  model_id: number;
+  name: string;
+  display_name: string;
+  record_count: number;
+}
+
+export interface LinkedRecordField {
+  id: number;
+  name: string;
+  display_name: string;
+  field_type: string;
+  is_required: boolean;
+  config: Record<string, unknown> | null;
+}
+
+export interface LinkedRecord {
+  id: number;
+  data: Record<string, unknown>;
+  record_key: string | null;
+  status: string | null;
+  created_at: string | null;
+}
+
+export interface LinkedRecordsResponse {
+  fields: LinkedRecordField[];
+  records: LinkedRecord[];
+}
+
+export async function getLinkedDatasheets(leadId: number | string): Promise<LinkedDatasheet[]> {
+  return apiFetch<LinkedDatasheet[]>(`/leads/${leadId}/linked-datasheets`, { method: 'GET', auth: true });
+}
+
+export async function getLinkedRecords(leadId: number | string, modelId: number): Promise<LinkedRecordsResponse> {
+  return apiFetch<LinkedRecordsResponse>(`/leads/${leadId}/linked-records/${modelId}`, { method: 'GET', auth: true });
+}
+
+export async function setLeadAiAgent(
+  leadId: number | string,
+  agentId: number | null,
+): Promise<{ lead_id: number; ai_agent_id: number | null }> {
+  return apiFetch(`/leads/${leadId}/ai-agent`, {
+    method: 'PUT',
+    body: JSON.stringify({ agent_id: agentId }),
+  });
 }

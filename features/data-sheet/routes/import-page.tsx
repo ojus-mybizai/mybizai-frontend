@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import * as XLSX from 'xlsx';
+import type * as XLSXTypes from 'xlsx';
 import { useDataSheetContext } from '@/features/data-sheet/context/data-sheet-context';
 import { listFields, uploadImport, getImportJob, type DynamicField } from '@/features/data-sheet/api';
 import { normalizeApiError } from '@/features/data-sheet/api/normalize-error';
@@ -31,7 +31,8 @@ function parseCsv(text: string): string[][] {
   });
 }
 
-function parseExcel(file: File): Promise<string[][]> {
+async function parseExcel(file: File): Promise<string[][]> {
+  const XLSX: typeof XLSXTypes = await import('xlsx');
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {

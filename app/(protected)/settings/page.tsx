@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import PermissionGuard from '@/components/permission-guard';
 import { useAuthStore } from '@/lib/auth-store';
-import { SettingsKnowledgeBaseTab } from '@/components/settings/knowledge-base-tab';
 import {
-  User, Building2, Users, BookOpen, Bell, Settings2,
+  User, Building2, Users, Bell, Settings2,
   Lock, Mail, Phone, Globe, Clock, DollarSign, Shield,
   Save, AlertCircle, CheckCircle2, Eye, EyeOff,
   Briefcase, MapPin, Target, Hash, Smartphone, Monitor,
+  AlertTriangle, Trash2,
 } from 'lucide-react';
 import {
   getNotificationPreferences,
@@ -37,6 +39,8 @@ import {
   updateCustomRole,
   deleteCustomRole,
   updateRoleAssignments,
+  deleteBusiness,
+  deleteAccount,
 } from '@/services/settings';
 
 type TabKey =
@@ -44,10 +48,11 @@ type TabKey =
   | 'workspace'
   | 'business'
   | 'roles'
-  | 'knowledge_base'
-  | 'notifications';
+  | 'notifications'
+  | 'danger_zone';
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [tab, setTab] = useState<TabKey>('profile');
   const [profile, setProfile] = useState<ProfileSettings | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null);
@@ -59,6 +64,16 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Danger Zone state
+  const [showDeleteBusinessModal, setShowDeleteBusinessModal] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteBusinessConfirm, setDeleteBusinessConfirm] = useState('');
+  const [deleteBusinessPassword, setDeleteBusinessPassword] = useState('');
+  const [deleteAccountConfirm, setDeleteAccountConfirm] = useState('');
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [profileForm, setProfileForm] = useState<{ name: string; phone: string }>({
     name: '',
@@ -117,6 +132,7 @@ export default function SettingsPage() {
 
   const isOwner = useAuthStore((s) => s.isOwner);
   const hasPermission = useAuthStore((s) => s.hasPermission);
+  const logout = useAuthStore((s) => s.logout);
   const canManageRoles = hasPermission('manage_settings') && permissions.length > 0;
   const isOwnerOrManager = isOwner || canManageRoles;
 
@@ -453,6 +469,7 @@ export default function SettingsPage() {
   };
 
   return (
+    <PermissionGuard permission="manage_settings">
     <div className="mx-auto max-w-7xl space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -475,8 +492,8 @@ export default function SettingsPage() {
                 { key: 'workspace', label: 'Workspace', icon: Settings2 },
                 { key: 'business', label: 'Business', icon: Building2 },
                 { key: 'roles', label: 'Team & Roles', icon: Users },
-                { key: 'knowledge_base', label: 'Knowledge Base', icon: BookOpen },
                 { key: 'notifications', label: 'Notifications', icon: Bell },
+                { key: 'danger_zone', label: 'Danger Zone', icon: AlertTriangle },
               ] as const).map((t) => {
                 const Icon = t.icon;
                 const isActive = tab === t.key;
@@ -1367,8 +1384,280 @@ export default function SettingsPage() {
 
           {tab === 'notifications' && <NotificationPreferencesTab />}
 
-          {tab === 'knowledge_base' && <SettingsKnowledgeBaseTab />}
+
+          {tab === 'danger_zone' && (
+            <div className="space-y-6">
+              {/* Delete Business Section — owner only */}
+              {isOwner && (
+                <div className="rounded-2xl border border-red-200 bg-red-50/60 p-6 dark:border-red-800 dark:bg-red-950/20">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10">
+                      <Building2 className="h-4 w-4 text-red-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-red-900 dark:text-red-200">Delete Business</h3>
+                      <p className="text-xs text-red-700 dark:text-red-400">
+                        Permanently delete your business and all associated data
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm text-red-800 dark:text-red-300">
+                    This will permanently delete your business
+                    {workspace?.name ? <strong> &ldquo;{workspace.name}&rdquo;</strong> : ''} and all associated data
+                    including leads, conversations, AI agents, channel integrations,
+                    catalog items, orders, contacts, scheduled follow-ups, and team access.
+                    <strong> This action cannot be undone.</strong>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteBusinessConfirm('');
+                      setDeleteBusinessPassword('');
+                      setDeleteError(null);
+                      setShowDeleteBusinessModal(true);
+                    }}
+                    className="mt-4 rounded-lg border border-red-300 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 dark:border-red-700"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Trash2 className="h-4 w-4" />
+                      Delete Business
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              {/* Delete Account Section — all users */}
+              <div className="rounded-2xl border border-red-200 bg-red-50/60 p-6 dark:border-red-800 dark:bg-red-950/20">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10">
+                    <User className="h-4 w-4 text-red-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-red-900 dark:text-red-200">Delete Account</h3>
+                    <p className="text-xs text-red-700 dark:text-red-400">
+                      Permanently delete your user account
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm text-red-800 dark:text-red-300">
+                  This will permanently delete your user account and all personal data.
+                  {isOwner
+                    ? ' Since you are the business owner, your business and all its data will also be deleted.'
+                    : ' You will lose access to any businesses you are a member of.'}
+                  <strong> This action cannot be undone.</strong>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteAccountConfirm('');
+                    setDeleteAccountPassword('');
+                    setDeleteError(null);
+                    setShowDeleteAccountModal(true);
+                  }}
+                  className="mt-4 rounded-lg border border-red-300 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 dark:border-red-700"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Trash2 className="h-4 w-4" />
+                    Delete Account
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Business Modal */}
+          {showDeleteBusinessModal && (
+            <div
+              className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+              onClick={() => !deleting && setShowDeleteBusinessModal(false)}
+            >
+              <div
+                className="w-full max-w-md rounded-2xl border border-border-color bg-card-bg p-6 shadow-lg"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  <h2 className="text-base font-semibold text-text-primary">Delete Business</h2>
+                </div>
+                <p className="mt-2 text-sm text-text-secondary">
+                  This will permanently delete <strong className="text-text-primary">{workspace?.name || 'your business'}</strong> and
+                  all associated data. This action cannot be undone.
+                </p>
+
+                {deleteError && (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {deleteError}
+                  </div>
+                )}
+
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary">
+                      Type <strong className="text-text-primary">{workspace?.name || 'business name'}</strong> to confirm
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteBusinessConfirm}
+                      onChange={(e) => setDeleteBusinessConfirm(e.target.value)}
+                      placeholder={workspace?.name || 'business name'}
+                      className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                      autoComplete="off"
+                      disabled={deleting}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary">
+                      Enter your password
+                    </label>
+                    <input
+                      type="password"
+                      value={deleteBusinessPassword}
+                      onChange={(e) => setDeleteBusinessPassword(e.target.value)}
+                      placeholder="Your password"
+                      className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                      autoComplete="current-password"
+                      disabled={deleting}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteBusinessModal(false)}
+                    disabled={deleting}
+                    className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-bg-secondary disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      deleting ||
+                      !deleteBusinessPassword ||
+                      deleteBusinessConfirm.trim().toLowerCase() !== (workspace?.name || '').toLowerCase()
+                    }
+                    onClick={async () => {
+                      if (!profile?.current_business_id) return;
+                      setDeleting(true);
+                      setDeleteError(null);
+                      try {
+                        await deleteBusiness(profile.current_business_id, deleteBusinessPassword);
+                        logout();
+                        router.push('/login');
+                      } catch (e: any) {
+                        setDeleteError(e?.data?.detail || e?.message || 'Failed to delete business');
+                        setDeleting(false);
+                      }
+                    }}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deleting ? 'Deleting…' : 'Delete Business'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Account Modal */}
+          {showDeleteAccountModal && (
+            <div
+              className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+              onClick={() => !deleting && setShowDeleteAccountModal(false)}
+            >
+              <div
+                className="w-full max-w-md rounded-2xl border border-border-color bg-card-bg p-6 shadow-lg"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  <h2 className="text-base font-semibold text-text-primary">Delete Account</h2>
+                </div>
+                <p className="mt-2 text-sm text-text-secondary">
+                  This will permanently delete your account
+                  {isOwner ? (
+                    <> and your business <strong className="text-text-primary">{workspace?.name || ''}</strong> with all its data</>
+                  ) : null}.
+                  This action cannot be undone.
+                </p>
+
+                {deleteError && (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {deleteError}
+                  </div>
+                )}
+
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary">
+                      Type <strong className="text-text-primary">delete</strong> to confirm
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteAccountConfirm}
+                      onChange={(e) => setDeleteAccountConfirm(e.target.value)}
+                      placeholder="delete"
+                      className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                      autoComplete="off"
+                      disabled={deleting}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary">
+                      Enter your password
+                    </label>
+                    <input
+                      type="password"
+                      value={deleteAccountPassword}
+                      onChange={(e) => setDeleteAccountPassword(e.target.value)}
+                      placeholder="Your password"
+                      className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                      autoComplete="current-password"
+                      disabled={deleting}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteAccountModal(false)}
+                    disabled={deleting}
+                    className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-bg-secondary disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      deleting ||
+                      !deleteAccountPassword ||
+                      deleteAccountConfirm.trim().toLowerCase() !== 'delete'
+                    }
+                    onClick={async () => {
+                      setDeleting(true);
+                      setDeleteError(null);
+                      try {
+                        await deleteAccount(deleteAccountPassword);
+                        logout();
+                        router.push('/login');
+                      } catch (e: any) {
+                        setDeleteError(e?.data?.detail || e?.message || 'Failed to delete account');
+                        setDeleting(false);
+                      }
+                    }}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deleting ? 'Deleting…' : 'Delete Account'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+    </PermissionGuard>
   );
 }
 

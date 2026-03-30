@@ -28,6 +28,9 @@ import { getFieldTypeLabel, FIELD_TYPES } from '@/features/data-sheet/utils/fiel
 import { FieldConfigPanel } from '@/features/data-sheet/components/field-config-panel';
 import { DeleteModelModal } from '@/features/data-sheet/components/delete-model-modal';
 import { ConfirmModal } from '@/features/data-sheet/components/confirm-modal';
+import { CreateChildDatasheetModal } from '@/components/data-sheet/create-child-datasheet-modal';
+import { getReverseRelations, type ReverseRelationMeta } from '@/services/dynamic-data';
+import { Layers, ExternalLink, Plus } from 'lucide-react';
 
 function SortableFieldRow({
   field,
@@ -95,12 +98,26 @@ export function SettingsPage() {
   const [savedFeedback, setSavedFeedback] = useState(false);
   const [reordering, setReordering] = useState(false);
 
+  // Child datasheets
+  const [childSheetModalOpen, setChildSheetModalOpen] = useState(false);
+  const [childRelations, setChildRelations] = useState<ReverseRelationMeta[]>([]);
+
   const modelId = ctx?.modelId ?? '';
   const model = ctx?.model;
   const fields = ctx?.fields ? [...ctx.fields].sort((a, b) => a.order_index - b.order_index) : [];
 
+  // Fetch child relations (which models link to this one)
+  useEffect(() => {
+    if (!modelId) return;
+    let cancelled = false;
+    getReverseRelations(modelId)
+      .then((rels) => { if (!cancelled) setChildRelations(rels); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [modelId]);
+
   const handleUpdateModel = useCallback(
-    async (payload: { display_name?: string; description?: string | null }) => {
+    async (payload: { display_name?: string; description?: string | null; enable_embeddings?: boolean }) => {
       if (!modelId || saving) return;
       setSaving(true);
       setError(null);
@@ -241,6 +258,29 @@ export function SettingsPage() {
               className="mt-1 block w-full max-w-md rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
             />
           </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={model.enable_embeddings}
+              onClick={() => void handleUpdateModel({ enable_embeddings: !model.enable_embeddings })}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 ${
+                model.enable_embeddings ? 'bg-accent' : 'bg-border-color'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  model.enable_embeddings ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+            <div>
+              <label className="block text-sm font-medium text-text-primary">Semantic search</label>
+              <p className="text-xs text-text-secondary">
+                Generate AI embeddings for records so agents can search this datasheet by meaning, not just keywords.
+              </p>
+            </div>
+          </div>
           {savedFeedback && (
             <p className="text-xs text-green-600 dark:text-green-400" role="status">Saved</p>
           )}
@@ -349,6 +389,95 @@ export function SettingsPage() {
           <p className="mt-2 text-xs text-text-secondary" role="status">Updating order…</p>
         )}
       </section>
+
+      {/* ── Child Datasheets ───────────────────────────────────── */}
+      <section className="rounded-xl border border-border-color bg-card-bg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+              <Layers className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">Child Datasheets</h2>
+              <p className="text-xs text-text-muted">
+                Sub-tables that appear on each {model?.display_name || 'record'} record
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setChildSheetModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Create Child Datasheet
+          </button>
+        </div>
+
+        {childRelations.length === 0 ? (
+          <div className="rounded-lg border-2 border-dashed border-border-color py-8 text-center">
+            <Layers className="h-8 w-8 mx-auto text-text-muted/40 mb-2" />
+            <p className="text-sm text-text-muted">No child datasheets yet.</p>
+            <p className="text-xs text-text-muted/70 mt-1">
+              Create a child datasheet to see related records inline on each {model?.display_name || 'record'}.
+            </p>
+            <button
+              type="button"
+              onClick={() => setChildSheetModalOpen(true)}
+              className="mt-3 text-sm text-primary hover:underline font-medium"
+            >
+              + Create your first child datasheet
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {childRelations.map((rel) => (
+              <div
+                key={`${rel.source_model_id}-${rel.field_id}`}
+                className="flex items-center justify-between rounded-lg border border-border-color bg-bg-secondary/20 px-4 py-3 hover:bg-bg-secondary/40 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded bg-bg-secondary">
+                    <Layers className="h-4 w-4 text-text-muted" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">
+                      {rel.source_model_display_name}
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      via <code className="bg-bg-secondary px-1 rounded text-[10px]">{rel.field_name}</code> field · {rel.relation_kind}
+                    </p>
+                  </div>
+                </div>
+                <a
+                  href={`/data-sheet/${rel.source_model_id}`}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Child datasheet creation modal */}
+      {childSheetModalOpen && model && (
+        <CreateChildDatasheetModal
+          parentModelId={Number(modelId)}
+          parentModelName={model.name}
+          parentDisplayName={model.display_name}
+          onClose={() => setChildSheetModalOpen(false)}
+          onSuccess={(childId) => {
+            setChildSheetModalOpen(false);
+            // Refresh child relations list
+            getReverseRelations(modelId)
+              .then(setChildRelations)
+              .catch(() => {});
+          }}
+        />
+      )}
 
       <section className="rounded-xl border border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20 p-6">
         <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">Danger zone</h2>
@@ -646,7 +775,7 @@ function InlineAddField({
               relationBuiltinModel={relationBuiltinModel}
               onRelationBuiltinModelChange={setRelationBuiltinModel}
               relationKind={relationKind}
-              onRelationKindChange={setRelationKind}
+              onRelationKindChange={(kind) => setRelationKind(kind as 'many_to_one' | 'one_to_many' | 'many_to_many' | null)}
               excludeModelId={typeof modelId === 'number' ? modelId : null}
               defaultValue={defaultValue}
               onDefaultValueChange={setDefaultValue}

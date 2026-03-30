@@ -5,8 +5,12 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { listModels, deleteModel, type DynamicModel } from '@/features/data-sheet/api';
 import { normalizeApiError } from '@/features/data-sheet/api/normalize-error';
+import dynamic from 'next/dynamic';
 import { DeleteModelModal } from '@/features/data-sheet/components/delete-model-modal';
-import { CreateModelModal } from '@/features/data-sheet/components/create-model-modal';
+const CreateModelModal = dynamic(
+  () => import('@/features/data-sheet/components/create-model-modal').then(m => m.CreateModelModal),
+  { ssr: false }
+);
 import { useStarredDatasheets } from '@/lib/use-starred-datasheets';
 
 export function ModelDirectoryPage() {

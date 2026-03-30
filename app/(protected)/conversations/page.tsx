@@ -18,6 +18,8 @@ import {
   type ConversationListFilters,
 } from '@/services/customers';
 import { getConversationAnalytics, type ConversationAnalyticsResponse } from '@/services/analytics';
+import { switchConversationAgent, listAgentsForBusiness, type AgentSummary } from '@/services/conversations';
+import { useDebounce } from '@/lib/use-debounce';
 
 function formatTime(dateStr: string | undefined): string {
   if (!dateStr) return '—';
@@ -80,7 +82,7 @@ const LEAD_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'won', label: 'Won' },
 ];
 
-export function ConversationsView({ initialConversationId }: { initialConversationId?: string }) {
+export function ConversationsView({ initialConversationId, agentFilter }: { initialConversationId?: string; agentFilter?: string }) {
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -97,10 +99,15 @@ export function ConversationsView({ initialConversationId }: { initialConversati
   const [modeFilter, setModeFilter] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('');
   const [intentFilter, setIntentFilter] = useState('');
+  const debouncedIntent = useDebounce(intentFilter, 300);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(!!initialConversationId);
   const [detailTab, setDetailTab] = useState<'chat' | 'analytics'>('chat');
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [switchingAgent, setSwitchingAgent] = useState(false);
+  const [agentSwitchOpen, setAgentSwitchOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const chatHeaderRef = useRef<HTMLDivElement | null>(null);
 
@@ -120,8 +127,9 @@ export function ConversationsView({ initialConversationId }: { initialConversati
       channel_type: channelFilter || undefined,
       mode: modeFilter || undefined,
       lead_status: leadStatusFilter || undefined,
-      intent: intentFilter.trim() || undefined,
+      intent: debouncedIntent.trim() || undefined,
       unread_only: unreadOnly || undefined,
+      agent_name: agentFilter || undefined,
     };
     listAllConversations(filters)
       .then((list) => {
@@ -133,7 +141,7 @@ export function ConversationsView({ initialConversationId }: { initialConversati
     return () => {
       cancelled = true;
     };
-  }, [channelFilter, modeFilter, leadStatusFilter, intentFilter, unreadOnly]);
+  }, [channelFilter, modeFilter, leadStatusFilter, debouncedIntent, unreadOnly, agentFilter]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -198,6 +206,54 @@ export function ConversationsView({ initialConversationId }: { initialConversati
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Load agents for agent-switch dropdown
+  useEffect(() => {
+    listAgentsForBusiness()
+      .then(setAgents)
+      .catch(() => setAgents([]));
+  }, []);
+
+  // Close agent dropdown when clicking outside
+  useEffect(() => {
+    if (!agentSwitchOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-agent-dropdown]')) setAgentSwitchOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [agentSwitchOpen]);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toastMessage) return;
+    const t = setTimeout(() => setToastMessage(null), 3000);
+    return () => clearTimeout(t);
+  }, [toastMessage]);
+
+  const handleSwitchAgent = async (agentId: number) => {
+    if (!selectedId || switchingAgent) return;
+    setSwitchingAgent(true);
+    try {
+      await switchConversationAgent(Number(selectedId), agentId);
+      const agent = agents.find((a) => a.id === agentId);
+      // Update local state
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedId
+            ? { ...c, agentId: agentId, agentName: agent?.name ?? '—' }
+            : c,
+        ),
+      );
+      setToastMessage(`Agent switched to ${agent?.name ?? 'new agent'}`);
+    } catch {
+      setToastMessage('Failed to switch agent');
+    } finally {
+      setSwitchingAgent(false);
+      setAgentSwitchOpen(false);
+    }
+  };
 
   const handleSend = async (e: FormEvent) => {
     e.preventDefault();
@@ -390,6 +446,14 @@ export function ConversationsView({ initialConversationId }: { initialConversati
                                 </span>
                               )}
                               <AIStatusBadge mode={conv.status} />
+                              {conv.agentName && conv.agentName !== '—' && (
+                                <span
+                                  className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                                  title={`Agent: ${conv.agentName}`}
+                                >
+                                  {conv.agentName}
+                                </span>
+                              )}
                             </div>
                             <p className="line-clamp-2 text-sm text-text-secondary mt-1">
                               {conv.lastMessagePreview || '—'}
@@ -444,16 +508,70 @@ export function ConversationsView({ initialConversationId }: { initialConversati
                           <span className="text-sm text-text-secondary">{selected.channelName}</span>
                         )}
                         <AIStatusBadge mode={selected.status} />
+                        {selected.agentName && selected.agentName !== '—' && (
+                          <span className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                            Agent: {selected.agentName}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleToggleMode}
-                    className="shrink-0 rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm font-semibold text-text-primary hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
-                  >
-                    Toggle to {selected.status === 'ai' ? 'Manual' : 'AI'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* Agent switch dropdown */}
+                    <div className="relative" data-agent-dropdown>
+                      <button
+                        type="button"
+                        onClick={() => setAgentSwitchOpen((o) => !o)}
+                        disabled={switchingAgent}
+                        className="shrink-0 rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm font-semibold text-text-primary hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                      >
+                        {switchingAgent ? 'Switching...' : 'Switch Agent'}
+                      </button>
+                      {agentSwitchOpen && (
+                        <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-border-color bg-card-bg shadow-lg">
+                          <div className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-text-secondary border-b border-border-color">
+                            Select Agent
+                          </div>
+                          <ul className="max-h-48 overflow-y-auto py-1" role="listbox">
+                            {agents.length === 0 && (
+                              <li className="px-3 py-2 text-sm text-text-secondary">No agents available</li>
+                            )}
+                            {agents
+                              .filter((a) => a.status === 'active')
+                              .map((agent) => {
+                                const isCurrent = selected.agentId === agent.id;
+                                return (
+                                  <li key={agent.id}>
+                                    <button
+                                      type="button"
+                                      role="option"
+                                      aria-selected={isCurrent}
+                                      disabled={isCurrent}
+                                      onClick={() => handleSwitchAgent(agent.id)}
+                                      className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${
+                                        isCurrent
+                                          ? 'bg-accent/10 text-accent font-medium cursor-default'
+                                          : 'text-text-primary hover:bg-bg-secondary'
+                                      }`}
+                                    >
+                                      <span>{agent.name}</span>
+                                      <span className="text-xs capitalize text-text-secondary">{agent.role}</span>
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleMode}
+                      className="shrink-0 rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm font-semibold text-text-primary hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                      Toggle to {selected.status === 'ai' ? 'Manual' : 'AI'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Tab bar: Chat | Session analytics */}
@@ -644,10 +762,28 @@ export function ConversationsView({ initialConversationId }: { initialConversati
               </>
             )}
           </div>
+
+          {/* Toast notification */}
+          {toastMessage && (
+            <div className="fixed bottom-6 right-6 z-50 rounded-lg border border-border-color bg-card-bg px-4 py-3 text-sm font-medium text-text-primary shadow-lg animate-in fade-in slide-in-from-bottom-2">
+              {toastMessage}
+            </div>
+          )}
         </div>
   );
 }
 
 export default function ConversationsPage() {
-  return <ConversationsView />;
+  // Read ?agent= query parameter for agent-filtered conversation views
+  const [agentFilter, setAgentFilter] = useState<string | undefined>();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const agent = params.get('agent');
+      if (agent) setAgentFilter(agent);
+    }
+  }, []);
+
+  return <ConversationsView agentFilter={agentFilter} />;
 }

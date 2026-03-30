@@ -44,7 +44,7 @@ export function LeadsCharts({ data }: { data: ReportsDashboard['leads'] }) {
       <section id="leads" className="rounded-xl border border-border-color bg-card-bg p-5">
         <h2 className="text-lg font-semibold text-text-primary mb-2">Leads</h2>
         <p className="text-sm text-text-secondary mb-2">No lead data yet.</p>
-        <Link href="/customers" className="text-sm font-semibold text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+        <Link href='/leads' className="text-sm font-semibold text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
           Add leads
         </Link>
       </section>

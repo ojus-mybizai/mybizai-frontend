@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ModuleGuard from '@/components/module-guard';
+import PermissionGuard from '@/components/permission-guard';
 import {
   listLeadTemplates,
   deleteLeadTemplate,
@@ -47,7 +47,7 @@ export default function LeadTemplatesPage() {
   };
 
   return (
-    <ModuleGuard module="agents">
+    <PermissionGuard permission="manage_agents" module="agents">
       <div className="mx-auto max-w-7xl space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -155,6 +155,6 @@ export default function LeadTemplatesPage() {
             </div>
           )}
         </div>
-    </ModuleGuard>
+    </PermissionGuard>
   );
 }

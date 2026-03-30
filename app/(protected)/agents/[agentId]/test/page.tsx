@@ -4,6 +4,7 @@ import { FormEvent, MouseEvent, useEffect, useRef, useState } from 'react';
 import { ChatBubble } from '@/components/agents/chat-bubble';
 import { EmptyState } from '@/components/agents/empty-state';
 import { useAgentStore } from '@/lib/agent-store';
+import { useShallow } from 'zustand/react/shallow';
 import { testAgent } from '@/services/agents';
 
 interface TestMessage {
@@ -13,7 +14,7 @@ interface TestMessage {
 }
 
 export default function AgentTestPage() {
-  const { current } = useAgentStore((s) => ({ current: s.current }));
+  const { current } = useAgentStore(useShallow((s) => ({ current: s.current })));
   const [messages, setMessages] = useState<TestMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);

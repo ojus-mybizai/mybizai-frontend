@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import ModuleGuard from '@/components/module-guard';
+import PermissionGuard from '@/components/permission-guard';
 import { LoadingSkeleton } from '@/components/agents/loading-skeleton';
 import { FacebookSDKLoader } from '@/components/integrations/FacebookSDKLoader';
 import { MetaConnectButton } from '@/components/integrations/MetaConnectButton';
-import { createChannel, deleteChannel, listChannels, type Channel, type MetaChannelType } from '@/services/channels';
+import { createChannel, deleteChannel, listChannels, setChannelDefaultAgent, type Channel, type MetaChannelType } from '@/services/channels';
+import { listAgents, type Agent } from '@/services/agents';
 
 const CHANNEL_TYPE_LABELS: Record<string, string> = {
   whatsapp: 'WhatsApp',
@@ -24,9 +25,11 @@ const CHANNEL_CONFIG: Array<{ type: MetaChannelType; name: string; description: 
 
 export default function ChannelsPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [savingAgentFor, setSavingAgentFor] = useState<string | null>(null);
   const [showIndiaMARTForm, setShowIndiaMARTForm] = useState(false);
   const [indiamartName, setIndiamartName] = useState('');
   const [indiamartSellerId, setIndiamartSellerId] = useState('');
@@ -49,6 +52,7 @@ export default function ChannelsPage() {
 
   useEffect(() => {
     void loadChannels();
+    listAgents().then(setAgents).catch(() => {});
   }, [loadChannels]);
 
   const handleRemoveChannel = async (channelId: string) => {
@@ -101,6 +105,22 @@ export default function ChannelsPage() {
     }
   }, []);
 
+  const handleSetDefaultAgent = async (channelId: string, agentId: number | null) => {
+    setSavingAgentFor(channelId);
+    try {
+      await setChannelDefaultAgent(channelId, agentId);
+      setChannels((prev) =>
+        prev.map((ch) =>
+          ch.id === channelId ? { ...ch, defaultAgentId: agentId, isConnected: agentId !== null } : ch
+        )
+      );
+    } catch (err) {
+      setChannelsError(err instanceof Error ? err.message : 'Failed to set default agent');
+    } finally {
+      setSavingAgentFor(null);
+    }
+  };
+
   const typeCount: Record<string, number> = {};
   channels.forEach((ch) => {
     typeCount[ch.type] = (typeCount[ch.type] ?? 0) + 1;
@@ -116,7 +136,7 @@ export default function ChannelsPage() {
   };
 
   return (
-    <ModuleGuard module="lms">
+    <PermissionGuard permission="manage_channels" module="lms">
       <div className="w-full max-w-full space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -175,6 +195,7 @@ export default function ChannelsPage() {
                         <th className="px-4 py-3 font-semibold text-text-primary">Name</th>
                         <th className="px-4 py-3 font-semibold text-text-primary">Type</th>
                         <th className="px-4 py-3 font-semibold text-text-primary">Status</th>
+                        <th className="px-4 py-3 font-semibold text-text-primary">Default AI Agent</th>
                         <th className="px-4 py-3 font-semibold text-text-primary">Leads</th>
                         <th className="px-4 py-3 font-semibold text-text-primary text-right">Actions</th>
                       </tr>
@@ -207,6 +228,24 @@ export default function ChannelsPage() {
                                 />
                                 {ch.isConnected ? 'Connected' : 'Not connected'}
                               </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <select
+                                value={ch.defaultAgentId ?? ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  handleSetDefaultAgent(ch.id, val ? Number(val) : null);
+                                }}
+                                disabled={savingAgentFor === ch.id}
+                                className="w-full max-w-[180px] rounded-md border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary disabled:opacity-50"
+                              >
+                                <option value="">No agent</option>
+                                {agents.map((a) => (
+                                  <option key={a.id} value={a.id}>
+                                    {a.name}
+                                  </option>
+                                ))}
+                              </select>
                             </td>
                             <td className="px-4 py-3 text-text-secondary">
                               {leadCount} {leadCount === 1 ? 'lead' : 'leads'}
@@ -324,6 +363,6 @@ export default function ChannelsPage() {
             </div>
           </div>
         </div>
-    </ModuleGuard>
+    </PermissionGuard>
   );
 }

@@ -242,3 +242,26 @@ export async function updateBusinessInfo(
   });
 }
 
+/**
+ * Permanently delete a business and all associated data.
+ * Requires the business owner's password for confirmation.
+ */
+export async function deleteBusiness(businessId: number, password: string): Promise<void> {
+  await apiFetch<void>(`/business/${businessId}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ password }),
+  });
+}
+
+/**
+ * Permanently delete the current user's account.
+ * If the user is a business owner, their business will also be deleted.
+ * Requires the user's password for confirmation.
+ */
+export async function deleteAccount(password: string): Promise<void> {
+  await apiFetch<void>('/users/me', {
+    method: 'DELETE',
+    body: JSON.stringify({ password }),
+  });
+}
+

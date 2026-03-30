@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -16,14 +16,32 @@ import {
   Settings,
   MessagesSquare,
   BarChart2,
+  Home,
+  CheckSquare,
+  CreditCard,
+  MapPin,
+  Phone,
+  TrendingUp,
+  Clipboard,
+  List,
+  UserPlus,
+  DollarSign,
+  Package,
+  Calendar,
+  BookOpen,
+  Radio,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { performLogout } from '@/lib/auth-actions';
 import { useThemeStore } from '@/lib/theme-store';
 import { useAgentStore } from '@/lib/agent-store';
+import { useTourStore } from '@/lib/tour-store';
 import { DataSheetNav } from '@/components/data-sheet-nav';
 import NotificationBell from '@/components/notifications/notification-bell';
+import { TourOverlay } from '@/components/tour/tour-overlay';
+import { OnboardingChecklist } from '@/components/tour/onboarding-checklist';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -76,16 +94,25 @@ function buildNavItems(
   if (lmsEnabled) {
     items.push({ kind: 'section', label: 'Work' });
     items.push({ label: 'My Workstation', href: '/employee-dashboard', icon: Briefcase });
-    items.push({ label: 'Work & Tasks',   href: '/work',               icon: ClipboardList });
+    items.push({ label: 'Workstation',    href: '/workstation',        icon: CheckSquare });
+    if (hasPermission('manage_work')) {
+      items.push({ label: 'Work & Tasks',   href: '/work',               icon: ClipboardList });
+      items.push({ label: 'Processes',      href: '/processes',          icon: ClipboardList });
+    }
     items.push({ label: 'Team Chats',     href: '/chats',              icon: MessagesSquare });
+    items.push({ label: 'AI Assistants',   href: '/agent-chat',         icon: Bot });
   }
 
   // ── CRM (customer-facing) ─────────────────────────────────────────────────
   if (lmsEnabled) {
     items.push({ kind: 'section', label: 'CRM' });
-    items.push({ label: 'Customers',     href: '/customers',     icon: Users });
+    if (hasPermission('manage_leads')) {
+      items.push({ label: 'Leads',          href: '/leads',          icon: Users });
+    }
     items.push({ label: 'Conversations', href: '/conversations', icon: MessageSquare });
-    items.push({ label: 'Lead Sources',  href: '/lead-sources',  icon: Target });
+    if (hasPermission('manage_channels')) {
+      items.push({ label: 'Lead Sources',  href: '/lead-sources',  icon: Target });
+    }
   }
 
   // ── Data & Insights ───────────────────────────────────────────────────────
@@ -101,11 +128,175 @@ function buildNavItems(
     items.push({ label: 'Employees', href: '/employees', icon: UserCog });
   }
 
+  // ── Automation ────────────────────────────────────────────────────────────
+  if (lmsEnabled && hasPermission('manage_settings')) {
+    items.push({ label: 'Automation', href: '/automation', icon: Zap });
+  }
+
   // ── Modules ───────────────────────────────────────────────────────────────
   if (agentsEnabled && hasPermission('manage_agents')) {
     items.push({ kind: 'section', label: 'Modules' });
     items.push({
-      label: 'Business Agents',
+      label: 'AI Agents',
+      href: '/agents',
+      icon: Bot,
+      children: [
+        { label: 'All Agents',          href: '/agents',            group: 'manage' },
+        { label: 'New Agent',           href: '/agents/new',        group: 'manage' },
+        { label: 'Last Opened Agent',   href: '/agents',            group: 'workspace', isLastAgent: true },
+        { label: 'Lead Templates',      href: '/lead-templates',    group: 'analytics' },
+        { label: 'Agent Analytics',     href: '/analytics',         group: 'analytics' },
+        { label: 'Message Templates',   href: '/agents/templates',  group: 'analytics' },
+      ],
+    });
+  }
+
+  return items;
+}
+
+/* ─── Icon resolver for blueprint nav ───────────────────────────────────── */
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  'layout-dashboard': LayoutDashboard,
+  'dashboard': LayoutDashboard,
+  'users': Users,
+  'user-plus': UserPlus,
+  'user-cog': UserCog,
+  'message-square': MessageSquare,
+  'messages-square': MessagesSquare,
+  'target': Target,
+  'briefcase': Briefcase,
+  'clipboard-list': ClipboardList,
+  'clipboard': Clipboard,
+  'list': List,
+  'file-text': FileText,
+  'bar-chart-2': BarChart2,
+  'bot': Bot,
+  'settings': Settings,
+  'home': Home,
+  'check-square': CheckSquare,
+  'credit-card': CreditCard,
+  'map-pin': MapPin,
+  'phone': Phone,
+  'trending-up': TrendingUp,
+  'dollar-sign': DollarSign,
+  'package': Package,
+  'calendar': Calendar,
+  'book-open': BookOpen,
+  'radio': Radio,
+  'zap': Zap,
+};
+
+function resolveIcon(iconName?: string): LucideIcon {
+  if (!iconName) return FileText;
+  return ICON_MAP[iconName] || FileText;
+}
+
+/* ─── Builtin target → URL mapping ──────────────────────────────────────── */
+
+const BUILTIN_TARGETS: Record<string, string> = {
+  dashboard: '/dashboard',
+  leads: '/leads',
+  customers: '/leads',
+  conversations: '/conversations',
+  workstation: '/employee-dashboard',
+  work: '/work',
+  employees: '/employees',
+  chats: '/chats',
+  reports: '/reports',
+  settings: '/settings',
+  'lead-sources': '/lead-sources',
+  agents: '/agents',
+  automation: '/automation',
+};
+
+/* ─── Build nav from navigation_config ──────────────────────────────────── */
+
+interface NavConfigGroup {
+  group: string;
+  icon?: string;
+  items: Array<{
+    label: string;
+    type: string;
+    target?: string;
+    url?: string;
+    icon?: string;
+    permission?: string;
+    filter?: string;
+  }>;
+}
+
+function buildCustomNavItems(
+  navConfig: NavConfigGroup[],
+  hasPermission: (key: string) => boolean,
+  agentsEnabled: boolean,
+): NavEntry[] {
+  const items: NavEntry[] = [];
+
+  // Always show dashboard first
+  items.push({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard });
+
+  for (const group of navConfig) {
+    const groupItems: NavEntry[] = [];
+
+    for (const item of group.items) {
+      // Check permission
+      if (item.permission && !hasPermission(item.permission)) continue;
+
+      let href: string;
+      const icon = resolveIcon(item.icon);
+
+      // If url is directly provided, use it
+      if (item.url) {
+        href = item.url;
+      } else {
+        switch (item.type) {
+          case 'builtin':
+            href = BUILTIN_TARGETS[item.target ?? ''] || `/${item.target ?? ''}`;
+            break;
+          case 'datasheet':
+            href = `/data-sheet/${item.target}`;
+            break;
+          case 'work_template':
+            href = `/work?template=${item.target}`;
+            break;
+          case 'agent_conversations':
+            href = `/conversations?agent=${encodeURIComponent(item.target ?? '')}`;
+            break;
+          case 'internal_agent':
+            href = `/agent-chat/${encodeURIComponent(item.target ?? '')}`;
+            break;
+          default:
+            href = `/${item.target || ''}`;
+        }
+      }
+
+      groupItems.push({ label: item.label, href, icon });
+    }
+
+    if (groupItems.length > 0) {
+      items.push({ kind: 'section', label: group.group });
+      items.push(...groupItems);
+    }
+  }
+
+  // Always add Data & Insights section with DataSheet dropdown for advanced users
+  items.push({ kind: 'section', label: 'Data & Insights' });
+  items.push({ kind: 'datasheet' });
+  if (hasPermission('view_reports')) {
+    items.push({ label: 'Reports', href: '/reports', icon: BarChart2 });
+  }
+
+  // Automation
+  if (hasPermission('manage_settings')) {
+    items.push({ label: 'Automation', href: '/automation', icon: Zap });
+  }
+
+  // Always add Modules section if agents enabled
+  if (agentsEnabled && hasPermission('manage_agents')) {
+    items.push({ kind: 'section', label: 'Modules' });
+    items.push({
+      label: 'AI Agents',
       href: '/agents',
       icon: Bot,
       children: [
@@ -129,16 +320,18 @@ const TITLE_MAP: Record<string, string> = {
   '/employee-dashboard': 'My Workstation',
   '/work':               'Work & Tasks',
   '/chats':              'Team Chats',
-  '/customers':          'Customers',
+  '/agent-chat':         'AI Assistants',
+  '/leads':              'Leads',
   '/conversations':      'Conversations',
   '/lead-sources':       'Lead Sources',
   '/data-sheet':         'Data Sheet',
   '/reports':            'Reports',
   '/employees':          'Employees',
-  '/agents':             'Business Agents',
+  '/agents':             'AI Agents',
   '/lead-templates':     'Lead Templates',
   '/analytics':          'Agent Analytics',
   '/settings':           'Settings',
+  '/automation':         'Automation',
 };
 
 function getTitle(pathname: string | null): string {
@@ -161,12 +354,22 @@ export default function AppShell({ children }: AppShellProps) {
   const lmsEnabled  = business?.lms_enabled  !== false;
   const agentsEnabled = business?.agents_enabled !== false;
   const hasPermission = useAuthStore((s) => s.hasPermission);
-  const navItems = buildNavItems(lmsEnabled, agentsEnabled, hasPermission);
+  const navConfig = business?.extra_data?.navigation_config as NavConfigGroup[] | undefined;
+  const navItems = navConfig && navConfig.length > 0
+    ? buildCustomNavItems(navConfig, hasPermission, agentsEnabled)
+    : buildNavItems(lmsEnabled, agentsEnabled, hasPermission);
+
+  const isInitialized = useAuthStore((s) => s.isInitialized);
+  // Only check loading AFTER mount to avoid SSR/client hydration mismatch
+  // During SSR and first client render, always show skeleton (consistent on both sides)
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [openNavHref, setOpenNavHref] = useState<string | null>(
     pathname?.startsWith('/agents') ? '/agents' : null,
   );
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const navLoading = !mounted || !isInitialized || !user;
   const theme     = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const lastAgentId = useAgentStore((s) => s.lastAgentId);
@@ -210,10 +413,14 @@ export default function AppShell({ children }: AppShellProps) {
       }
     };
 
+    // Generate a data-tour attribute from the href for the tour system
+    const tourId = item.href.replace(/^\//, '').replace(/\//g, '-') || 'home';
+
     return (
-      <div key={item.href}>
+      <div key={item.href || item.label}>
         <button
           type="button"
+          data-tour={`nav-${tourId}`}
           onClick={() => {
             if (isAgents && item.children) {
               setOpenNavHref(isOpen ? null : item.href);
@@ -297,29 +504,59 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
-        {navItems.map((entry, idx) => {
-          // Section divider
-          if (isSection(entry)) {
-            return (
-              <div key={`s-${entry.label}`} className={`${idx > 0 ? 'mt-4' : 'mt-2'} mb-1 flex items-center gap-2`}>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary/60 whitespace-nowrap">
-                  {entry.label}
-                </span>
-                <div className="h-px flex-1 bg-border-color/60" />
+        {navLoading ? (
+          /* Sidebar skeleton while auth/user data loads */
+          <div className="space-y-1 py-1">
+            {[1, 2].map((section) => (
+              <div key={section}>
+                <div className={`${section > 1 ? 'mt-4' : 'mt-1'} mb-2 ml-1`}>
+                  <div className="h-2.5 w-14 animate-pulse rounded bg-bg-secondary" />
+                </div>
+                {[1, 2, 3].map((item) => (
+                  <div key={item} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2">
+                    <div className="h-4 w-4 animate-pulse rounded bg-bg-secondary shrink-0" />
+                    <div className={`h-3 animate-pulse rounded bg-bg-secondary ${item === 1 ? 'w-20' : item === 2 ? 'w-24' : 'w-16'}`} />
+                  </div>
+                ))}
               </div>
-            );
-          }
+            ))}
+            <div className="mt-4 mb-2 ml-1">
+              <div className="h-2.5 w-16 animate-pulse rounded bg-bg-secondary" />
+            </div>
+            {[1, 2, 3, 4].map((item) => (
+              <div key={`c-${item}`} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2">
+                <div className="h-4 w-4 animate-pulse rounded bg-bg-secondary shrink-0" />
+                <div className={`h-3 animate-pulse rounded bg-bg-secondary ${item % 2 === 0 ? 'w-24' : 'w-20'}`} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+          {navItems.map((entry, idx) => {
+            // Section divider
+            if (isSection(entry)) {
+              return (
+                <div key={`s-${entry.label}`} className={`${idx > 0 ? 'mt-4' : 'mt-2'} mb-1 flex items-center gap-2`}>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary/60 whitespace-nowrap">
+                    {entry.label}
+                  </span>
+                  <div className="h-px flex-1 bg-border-color/60" />
+                </div>
+              );
+            }
 
-          // DataSheetNav slot
-          if (isDataSheetSlot(entry)) {
-            return (
-              <DataSheetNav key="datasheet" onNavigate={() => setSidebarOpen(false)} />
-            );
-          }
+            // DataSheetNav slot
+            if (isDataSheetSlot(entry)) {
+              return (
+                <DataSheetNav key="datasheet" onNavigate={() => setSidebarOpen(false)} />
+              );
+            }
 
-          // Regular nav item
-          return renderNavItem(entry);
-        })}
+            // Regular nav item
+            return renderNavItem(entry);
+          })}
+          </>
+        )}
       </nav>
 
       {/* Footer — user info + settings/logout */}
@@ -349,6 +586,17 @@ export default function AppShell({ children }: AppShellProps) {
           >
             <span>{theme === 'dark' ? '🌙' : '☀️'}</span>
             <span className="hidden lg:inline">{theme === 'dark' ? 'Dark' : 'Light'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSidebarOpen(false);
+              useTourStore.getState().toggleChecklist();
+            }}
+            title="Tour & Onboarding"
+            className="flex items-center justify-center rounded-md border border-border-color p-1.5 text-text-secondary hover:bg-primary/10 hover:text-primary transition-colors"
+          >
+            <span className="text-sm" aria-hidden>🎓</span>
           </button>
           <button
             type="button"
@@ -438,17 +686,22 @@ export default function AppShell({ children }: AppShellProps) {
 
         {/* Page content */}
         <main
-          className={
+          key={pathname}
+          className={`${mounted ? 'animate-page-in' : ''} ${
             pathname?.startsWith('/conversations') || pathname?.startsWith('/chats') || pathname === '/dashboard'
               ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-2 md:p-3'
               : pathname?.match(/^\/data-sheet\/[^/]+(\/)?$/)
                 ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-2 md:px-3 py-4 md:py-5'
                 : 'min-h-0 flex-1 overflow-y-auto px-2 md:px-3 py-4 md:py-5'
-          }
+          }`}
         >
           {children}
         </main>
       </div>
+
+      {/* Tour overlay + onboarding checklist */}
+      <TourOverlay />
+      <OnboardingChecklist />
     </div>
   );
 }

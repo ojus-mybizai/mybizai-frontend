@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { listLeadFields, type LeadFieldConfig, type EntityType } from '@/services/lead-fields';
 import { listWork } from '@/services/work';
-import { listContacts } from '@/services/contacts';
 import { listEmployees } from '@/services/employees';
 import { queryRecords } from '@/services/dynamic-data';
 
@@ -18,7 +17,6 @@ export interface RelationValue {
 
 export const RELATION_ENTITY_TYPE_MAP: Record<string, EntityType | null> = {
   work: null,               // Work has no EntityType in LeadEntityLink
-  contact: 'contact',
   employee: 'employee',
   datasheet: 'datasheet_record',
 };
@@ -27,7 +25,6 @@ export const RELATION_ENTITY_TYPE_MAP: Record<string, EntityType | null> = {
 
 const RELATION_META: Record<string, { icon: string; label: string }> = {
   work:        { icon: '🔧', label: 'Work Item' },
-  contact:     { icon: '👤', label: 'Contact' },
   employee:    { icon: '👥', label: 'Employee' },
   datasheet:   { icon: '🗄', label: 'Record' },
 };
@@ -311,13 +308,6 @@ async function fetchRelationOptions(
       case 'work': {
         const res = await listWork({ q: search || undefined, per_page: 30 });
         return res.items.map((w) => ({ id: w.id, label: w.title || `Work #${w.id}` }));
-      }
-      case 'contact': {
-        const contacts = await listContacts({ search: search || undefined });
-        return contacts.slice(0, 30).map((c) => ({
-          id: c.id,
-          label: c.full_name || c.phone || `Contact #${c.id}`,
-        }));
       }
       case 'employee': {
         const employees = await listEmployees();

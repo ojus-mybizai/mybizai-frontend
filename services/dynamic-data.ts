@@ -9,6 +9,8 @@ export interface DynamicModel {
   description: string | null;
   status: string;
   schema_version: number;
+  parent_model_id: number | null;
+  enable_embeddings: boolean;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -23,6 +25,7 @@ export interface DynamicModelUpdate {
   display_name?: string;
   description?: string | null;
   status?: 'active' | 'archived';
+  enable_embeddings?: boolean;
 }
 
 export interface DynamicField {
@@ -459,5 +462,133 @@ export async function getRecordHistory(
   return apiFetch(
     `/dynamic-data/models/${modelId}/records/${recordId}/history`,
     { method: 'GET' }
+  );
+}
+
+// ── Reverse Relations ─────────────────────────────────────────────
+
+export interface ReverseRelationMeta {
+  field_id: number;
+  field_name: string;
+  field_display_name: string;
+  source_model_id: number;
+  source_model_name: string;
+  source_model_display_name: string;
+  relation_kind: string;
+}
+
+export interface ReverseRelationResponse {
+  items: Array<{
+    id: number;
+    record_key: string;
+    dynamic_model_id: number;
+    data: Record<string, unknown>;
+    created_at: string | null;
+    updated_at: string | null;
+  }>;
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+  source_field: ReverseRelationMeta | null;
+}
+
+/**
+ * Get metadata about all fields on OTHER models that point TO this model.
+ * Powers the "Related Records" section headers in the detail panel.
+ */
+export async function getReverseRelations(
+  modelId: number | string
+): Promise<ReverseRelationMeta[]> {
+  return apiFetch<ReverseRelationMeta[]>(
+    `/dynamic-data/models/${modelId}/reverse-relations`,
+    { method: 'GET' }
+  );
+}
+
+/**
+ * Query paginated child records that link TO a specific parent record.
+ * Powers the inline sub-table rows in the detail panel.
+ */
+export async function queryReverseRecords(
+  modelId: number | string,
+  recordId: number | string,
+  params: {
+    source_model_id?: number;
+    source_field_id?: number;
+    page?: number;
+    per_page?: number;
+  } = {}
+): Promise<ReverseRelationResponse> {
+  const qs = new URLSearchParams();
+  if (params.source_model_id) qs.set('source_model_id', String(params.source_model_id));
+  if (params.source_field_id) qs.set('source_field_id', String(params.source_field_id));
+  if (params.page) qs.set('page', String(params.page));
+  if (params.per_page) qs.set('per_page', String(params.per_page));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<ReverseRelationResponse>(
+    `/dynamic-data/models/${modelId}/records/${recordId}/reverse-records${suffix}`,
+    { method: 'GET' }
+  );
+}
+
+/**
+ * Create a new record in sourceModelId and auto-link it to a parent via
+ * the specified relation field.  The relation field value is set server-side.
+ */
+export async function createLinkedRecord(
+  sourceModelId: number | string,
+  data: Record<string, unknown>,
+  linkFieldId: number,
+  linkTargetRecordId: number
+): Promise<DynamicRecord> {
+  return apiFetch<DynamicRecord>(
+    `/dynamic-data/models/${sourceModelId}/records/linked`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        data,
+        link_field_id: linkFieldId,
+        link_target_record_id: linkTargetRecordId,
+      }),
+    }
+  );
+}
+
+// ── Child Datasheets ──────────────────────────────────────────────
+
+export interface ChildModelCreatePayload {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  fields: DynamicFieldCreate[];
+}
+
+/**
+ * Get all child models whose parent_model_id equals this model.
+ */
+export async function getChildModels(
+  modelId: number | string
+): Promise<DynamicModel[]> {
+  return apiFetch<DynamicModel[]>(
+    `/dynamic-data/models/${modelId}/children`,
+    { method: 'GET' }
+  );
+}
+
+/**
+ * Create a new child datasheet under a parent model.
+ * The server auto-creates a relation field pointing back to the parent.
+ */
+export async function createChildModel(
+  parentModelId: number | string,
+  payload: ChildModelCreatePayload
+): Promise<DynamicModel> {
+  return apiFetch<DynamicModel>(
+    `/dynamic-data/models/${parentModelId}/children`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { listModels, listFields } from '@/features/data-sheet/api';
 import type { DynamicModel } from '@/services/dynamic-data';
 const RELATION_KINDS = [
+  { value: 'one_to_one', label: 'One-to-one link', desc: 'Each record links to exactly one record in the other sheet (e.g., one lead becomes one patient)' },
   { value: 'many_to_one', label: 'Link to one record', desc: 'This record points to one record in the other sheet (e.g., an order links to one customer)' },
   { value: 'one_to_many', label: 'Link from other records', desc: 'Other records point back to this one (e.g., a customer has many orders)' },
   { value: 'many_to_many', label: 'Link to multiple records', desc: 'This record connects to many records in the other sheet (e.g., a product has many tags)' },
@@ -24,8 +25,8 @@ export interface FieldConfigPanelProps {
   onConfigChange: (config: Record<string, unknown>) => void;
   relationModelId: number | null;
   onRelationModelIdChange: (id: number | null) => void;
-  relationKind: 'many_to_one' | 'one_to_many' | 'many_to_many' | null;
-  onRelationKindChange: (kind: 'many_to_one' | 'one_to_many' | 'many_to_many' | null) => void;
+  relationKind: 'one_to_one' | 'many_to_one' | 'one_to_many' | 'many_to_many' | null;
+  onRelationKindChange: (kind: 'one_to_one' | 'many_to_one' | 'one_to_many' | 'many_to_many' | null) => void;
   relationBuiltinModel?: string | null;
   onRelationBuiltinModelChange?: (model: string | null) => void;
   relationReadOnly?: boolean;

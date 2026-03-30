@@ -37,11 +37,6 @@ const TOOL_LABEL: Record<string, string> = {
   delete_record:        'Delete Record',
   list_records:         'List Records',
   get_record:           'Get Record',
-  search_catalog:       'Catalog Search',
-  create_order:         'Create Order',
-  update_order:         'Update Order',
-  get_order:            'Get Order',
-  list_orders:          'List Orders',
   create_lead:          'Create Lead',
   update_lead:          'Update Lead',
   get_lead:             'Get Lead',
@@ -50,7 +45,6 @@ const TOOL_LABEL: Record<string, string> = {
   update_task:          'Update Task',
   list_tasks:           'List Tasks',
   send_message:         'Send Message',
-  schedule_appointment: 'Schedule Appt',
   get_analytics:        'Analytics',
   web_search:           'Web Search',
 };
@@ -67,7 +61,6 @@ const TOOL_COLOR: Record<string, string> = {
   create_record:     'bg-green-500/10 text-green-600',
   update_record:     'bg-amber-500/10 text-amber-600',
   delete_record:     'bg-red-500/10 text-red-600',
-  create_order:      'bg-green-500/10 text-green-600',
   create_lead:       'bg-cyan-500/10 text-cyan-600',
   send_message:      'bg-indigo-500/10 text-indigo-600',
 };

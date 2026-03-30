@@ -176,7 +176,7 @@ function WorkCard({
 
   return (
     <div
-      onClick={() => router.push(`/work/${w.id}`)}
+      onClick={() => router.push(`/workstation?work=${w.id}`)}
       className={`group flex cursor-pointer flex-col rounded-xl border bg-card-bg p-4 transition-all hover:shadow-md hover:border-accent ${
         isOverdue ? 'border-l-4 border-l-red-500 border-border-color' : 'border-border-color'
       }`}
@@ -228,7 +228,7 @@ function WorkCard({
               disabled={updatingId === w.id}
               onClick={async () => {
                 await onStart(w.id);
-                router.push(`/work/${w.id}`);
+                router.push(`/workstation?work=${w.id}`);
               }}
               className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50"
             >
@@ -248,7 +248,7 @@ function WorkCard({
           {/* View detail — always available as fallback for in_progress cards */}
           {w.status === 'in_progress' && (
             <Link
-              href={`/work/${w.id}`}
+              href={`/workstation?work=${w.id}`}
               className="rounded-lg border border-border-color px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-secondary"
             >
               Open
@@ -529,7 +529,7 @@ function ActivityFeed({ userId }: { userId: number | null }) {
             {activities.map((ev, i) => (
               <Link
                 key={ev.id}
-                href={`/work/${ev.work_id}`}
+                href={`/workstation?work=${ev.work_id}`}
                 className="flex gap-3 py-3 hover:bg-bg-secondary -mx-4 px-4 rounded-lg transition group"
               >
                 {/* Icon + vertical line */}
@@ -721,7 +721,7 @@ export default function EmployeeDashboardPage() {
           onCreated={(w) => {
             setShowLogModal(false);
             // Navigate directly to the newly created work item
-            router.push(`/work/${w.id}`);
+            router.push(`/workstation?work=${w.id}`);
           }}
         />
       )}
@@ -907,7 +907,7 @@ export default function EmployeeDashboardPage() {
                     return (
                       <li key={w.id}>
                         <Link
-                          href={`/work/${w.id}`}
+                          href={`/workstation?work=${w.id}`}
                           className="flex items-center justify-between px-4 py-2.5 hover:bg-bg-secondary text-sm transition"
                         >
                           <span className="truncate text-text-primary max-w-[160px]">
@@ -937,7 +937,7 @@ export default function EmployeeDashboardPage() {
                 { href: '/work?filter=overdue', icon: '⚠', label: 'Overdue work' },
                 { href: '/work', icon: '📋', label: 'All assigned work' },
                 { href: '/conversations', icon: '💬', label: 'Conversations' },
-                { href: '/customers', icon: '👥', label: 'Customers' },
+                { href: '/leads', icon: '👥', label: 'Customers' },
               ].map((l) => (
                 <Link
                   key={l.href}

@@ -12,10 +12,12 @@ const httpsOptions = {
   cert: readFileSync('./localhost+2.pem'),
 };
 
+const port = parseInt(process.env.PORT, 10) || 3000;
+
 app.prepare().then(() => {
   createServer(httpsOptions, (req, res) => {
     handle(req, res);
-  }).listen(3000, () => {
-    console.log('> ✅ Server ready on https://localhost:3000');
+  }).listen(port, () => {
+    console.log(`> ✅ Server ready on https://localhost:${port}`);
   });
 });

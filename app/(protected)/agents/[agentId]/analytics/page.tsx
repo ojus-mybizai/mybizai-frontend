@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAgentStore } from '@/lib/agent-store';
+import { useShallow } from 'zustand/react/shallow';
 import { getAgentAnalytics, recalculateAgentAnalytics } from '@/services/analytics';
 
 const AgentAnalyticsCharts = dynamic(
@@ -18,7 +19,7 @@ function formatDate(d: Date) {
 export default function AgentAnalyticsPage() {
   const params = useParams<{ agentId: string }>();
   const agentId = params?.agentId ?? '';
-  const { current } = useAgentStore((s) => ({ current: s.current }));
+  const { current } = useAgentStore(useShallow((s) => ({ current: s.current })));
   const [startDate, setStartDate] = useState(() =>
     formatDate(new Date(Date.now() - 30 * 86400000)),
   );

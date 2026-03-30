@@ -47,14 +47,14 @@ export default function NotificationBell() {
   const closePanel = useNotificationStore((s) => s.closePanel);
   const markAsRead = useNotificationStore((s) => s.markAsRead);
   const markAllRead = useNotificationStore((s) => s.markAllRead);
-  const fetchUnreadCount = useNotificationStore((s) => s.fetchUnreadCount);
+  const connectSSE = useNotificationStore((s) => s.connectSSE);
+  const disconnectSSE = useNotificationStore((s) => s.disconnectSSE);
 
-  // Poll unread count every 30 seconds
+  // Connect SSE stream for real-time notifications
   useEffect(() => {
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30_000);
-    return () => clearInterval(interval);
-  }, [fetchUnreadCount]);
+    connectSSE();
+    return () => disconnectSSE();
+  }, [connectSSE, disconnectSSE]);
 
   // Close on click outside
   useEffect(() => {

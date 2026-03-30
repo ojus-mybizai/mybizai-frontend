@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import PermissionGuard from '@/components/permission-guard';
 import { useAuthStore } from '@/lib/auth-store';
 
 const ReportChartsOverview = dynamic(
@@ -115,14 +116,22 @@ export default function ReportsPage() {
   const executiveRow = useMemo(() => (rows.length === 1 && isExecutive ? rows[0] : null), [rows, isExecutive]);
 
   return (
+    <PermissionGuard permission="view_reports">
     <div className="w-full space-y-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-xl font-semibold text-text-primary sm:text-2xl">Reports</h1>
               <p className="text-base text-text-secondary">
-                Overview of leads, catalog, work, orders, and team.
+                Overview of leads, work, and team.
               </p>
             </div>
+            <div className="flex gap-2">
+              <Link
+                href="/reports/builder"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                Report Builder
+              </Link>
             {!isExecutive && lmsEnabled && (
               <Link
                 href="/employees"
@@ -131,15 +140,14 @@ export default function ReportsPage() {
                 Manage team
               </Link>
             )}
+            </div>
           </div>
 
           {/* On this page */}
           <nav aria-label="On this page" className="flex flex-wrap items-center gap-2 rounded-xl border border-border-color bg-card-bg px-4 py-3">
             <span className="text-sm font-medium text-text-secondary mr-1">Jump to:</span>
             <a href="#leads" className="text-sm font-medium text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded px-1">Leads</a>
-            <a href="#catalog" className="text-sm font-medium text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded px-1">Catalog</a>
             <a href="#work" className="text-sm font-medium text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded px-1">Work</a>
-            <a href="#orders" className="text-sm font-medium text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded px-1">Orders</a>
             {lmsEnabled && (
               <a href="#team-report" className="text-sm font-medium text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded px-1">Team report</a>
             )}
@@ -185,23 +193,11 @@ export default function ReportsPage() {
             )}
             {!dashboardLoading && dashboard && (
               <>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="rounded-lg border border-border-color bg-bg-primary p-3">
                     <div className="text-xs text-text-secondary">Action: follow up new leads</div>
                     <div className="mt-1 text-lg font-semibold text-text-primary">
                       {dashboard.leads.by_status.new ?? 0}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-border-color bg-bg-primary p-3">
-                    <div className="text-xs text-text-secondary">Action: out-of-stock items</div>
-                    <div className="mt-1 text-lg font-semibold text-text-primary">
-                      {dashboard.catalog.by_availability.out_of_stock ?? 0}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-border-color bg-bg-primary p-3">
-                    <div className="text-xs text-text-secondary">Action: pending orders</div>
-                    <div className="mt-1 text-lg font-semibold text-text-primary">
-                      {(dashboard.orders.by_status.pending ?? 0) + (dashboard.orders.by_status.confirmed ?? 0)}
                     </div>
                   </div>
                   <div className="rounded-lg border border-border-color bg-bg-primary p-3">
@@ -401,5 +397,6 @@ export default function ReportsPage() {
             </div>
           )}
           </div>
+    </PermissionGuard>
   );
 }

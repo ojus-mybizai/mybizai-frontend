@@ -5,7 +5,6 @@ import {
   Agent,
   AgentStatus,
   bindChannels,
-  bindKnowledgeBases,
   bindTools,
   createAgent,
   deleteAgent,
@@ -13,26 +12,35 @@ import {
   listAgents,
   toggleAgentStatus,
   updateAgent,
+  listAvailableSkills,
+  listAgentTemplates,
+  createAgentFromTemplate,
   type CreateAgentInput,
   type UpdateAgentInput,
   type BindToolConfigInput,
+  type SkillDefinition,
+  type AgentTemplate,
 } from '@/services/agents';
 
 interface AgentState {
   agents: Agent[];
   current: Agent | null;
+  skills: SkillDefinition[];
+  templates: AgentTemplate[];
   loading: boolean;
   error: string | null;
   lastAgentId: string | null;
   list(): Promise<void>;
   select(id: string): Promise<void>;
   create(input: CreateAgentInput): Promise<Agent>;
+  createFromTemplate(templateId: string): Promise<Agent>;
   update(id: string, input: UpdateAgentInput): Promise<Agent>;
   remove(id: string): Promise<void>;
   setStatus(id: string, status: AgentStatus): Promise<Agent>;
   saveChannels(id: string, channelIds: string[]): Promise<Agent | null>;
   saveTools(id: string, toolIds: string[], toolConfigs?: Record<string, BindToolConfigInput>): Promise<Agent | null>;
-  saveKB(id: string, kbIds: string[]): Promise<Agent | null>;
+  loadSkills(): Promise<void>;
+  loadTemplates(): Promise<void>;
   resetError(): void;
   setLastAgentId(id: string | null): void;
 }
@@ -40,6 +48,8 @@ interface AgentState {
 export const useAgentStore = create<AgentState>((set, get) => ({
   agents: [],
   current: null,
+  skills: [],
+  templates: [],
   loading: false,
   error: null,
   lastAgentId: null,
@@ -173,24 +183,34 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
   },
 
-  async saveKB(id, kbIds) {
+
+  async createFromTemplate(templateId: string) {
     set({ loading: true, error: null });
     try {
-      await bindKnowledgeBases(id, kbIds);
-      const refreshed = await getAgent(id);
-      if (refreshed) {
-        set({
-          agents: get().agents.map((a) => (a.id === id ? refreshed : a)),
-          current: refreshed,
-          loading: false,
-        });
-      } else {
-        set({ loading: false });
-      }
-      return refreshed;
+      const agent = await createAgentFromTemplate(templateId);
+      set({ agents: [agent, ...get().agents], current: agent, loading: false });
+      return agent;
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
       throw err;
+    }
+  },
+
+  async loadSkills() {
+    try {
+      const skills = await listAvailableSkills();
+      set({ skills });
+    } catch (err) {
+      console.error('Failed to load skills:', err);
+    }
+  },
+
+  async loadTemplates() {
+    try {
+      const templates = await listAgentTemplates();
+      set({ templates });
+    } catch (err) {
+      console.error('Failed to load templates:', err);
     }
   },
 

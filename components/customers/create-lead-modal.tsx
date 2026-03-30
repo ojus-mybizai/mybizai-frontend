@@ -158,7 +158,7 @@ function DuplicateDialog({
 
           {selected === 'skip' ? (
             <Link
-              href={`/customers/${info.lead_id}`}
+              href={`/leads/${info.lead_id}`}
               className="flex-1 text-center py-2 rounded-lg bg-bg-secondary border border-border-color hover:bg-card-bg text-xs font-semibold text-text-primary transition-colors"
               onClick={onCancel}
             >
@@ -269,7 +269,7 @@ export function CreateLeadModal({ isOpen, onClose, fieldConfigs }: CreateLeadMod
     }
 
     handleClose();
-    router.push(`/customers/${created.id}`);
+    router.push(`/leads/${created.id}`);
   };
 
   // ── Step 2: user picks action from duplicate dialog ───────────────────────
@@ -294,7 +294,7 @@ export function CreateLeadModal({ isOpen, onClose, fieldConfigs }: CreateLeadMod
         };
         await updateLead(String(dupCheck.duplicate_info.lead_id), updatePayload);
         handleClose();
-        router.push(`/customers/${dupCheck.duplicate_info.lead_id}`);
+        router.push(`/leads/${dupCheck.duplicate_info.lead_id}`);
       } else if (action === 'create_anyway') {
         await doCreate(pendingData);
       }

@@ -38,6 +38,28 @@ export interface AgentToolAssignment {
   config: JsonMap;
 }
 
+export interface TriggerConfig {
+  type: 'event' | 'schedule' | 'manual' | 'webhook';
+  event?: string;
+  filters?: Record<string, unknown>;
+  cron?: string;
+}
+
+export interface AgentDatasheetAccess {
+  id: number;
+  agentId: number;
+  dynamicModelId: number;
+  dynamicModelName: string | null;
+  dynamicModelDisplayName: string | null;
+  allowedOperations: string[];
+  readableFields: string[] | null;
+  writableFields: string[] | null;
+  filterFields: string[] | null;
+  instruction: string | null;
+  searchMode: string;
+  maxResults: number;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -61,7 +83,16 @@ export interface Agent {
   channelIds: string[];
   toolIds: string[];
   toolAssignments: AgentToolAssignment[];
-  kbIds: string[];
+  // Unified agent mode toggles
+  chatEnabled: boolean;
+  automationEnabled: boolean;
+  // Automation fields
+  triggers: TriggerConfig[] | null;
+  scheduleCron: string | null;
+  maxActionsPerRun: number;
+  skills: string[] | null;
+  lastRunAt: string | null;
+  totalRuns: number;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -87,6 +118,13 @@ export interface UpdateAgentInput {
   openingMessage?: string;
   fallbackMessage?: string;
   businessContextHint?: string;
+  // Unified agent fields
+  chatEnabled?: boolean;
+  automationEnabled?: boolean;
+  triggers?: TriggerConfig[] | null;
+  scheduleCron?: string | null;
+  maxActionsPerRun?: number;
+  skills?: string[] | null;
 }
 
 export interface BindToolConfigInput {
@@ -117,6 +155,14 @@ type ApiChatAgent = {
   status: AgentStatus;
   deployed: boolean;
   reply_mode?: string;
+  chat_enabled?: boolean;
+  automation_enabled?: boolean;
+  triggers?: TriggerConfig[] | null;
+  schedule_cron?: string | null;
+  max_actions_per_run?: number;
+  skills?: string[] | null;
+  last_run_at?: string | null;
+  total_runs?: number;
   created_at: string;
   updated_at: string | null;
   channels?: Array<{ id: number }>;
@@ -130,7 +176,6 @@ type ApiChatAgent = {
     rule_policy?: JsonMap;
     tool: { id: number; name: string };
   }>;
-  knowledge_bases?: Array<{ id: number }>;
 };
 
 const VALID_REPLY_MODES: ReplyMode[] = ['auto', 'template_only', 'ai_only'];
@@ -187,7 +232,16 @@ function mapAgent(a: ApiChatAgent): Agent {
       rulePolicy: ta.rule_policy ?? {},
       config: ta.config ?? {},
     })),
-    kbIds: (a.knowledge_bases ?? []).map((k) => String(k.id)),
+    // Unified agent mode toggles
+    chatEnabled: a.chat_enabled ?? true,
+    automationEnabled: a.automation_enabled ?? false,
+    // Automation fields
+    triggers: a.triggers ?? null,
+    scheduleCron: a.schedule_cron ?? null,
+    maxActionsPerRun: a.max_actions_per_run ?? 10,
+    skills: a.skills ?? null,
+    lastRunAt: a.last_run_at ?? null,
+    totalRuns: a.total_runs ?? 0,
     createdAt: a.created_at,
     updatedAt: a.updated_at,
   };
@@ -265,6 +319,13 @@ export async function updateAgent(id: string, input: UpdateAgentInput): Promise<
   if (input.openingMessage !== undefined) payload.opening_message = input.openingMessage;
   if (input.fallbackMessage !== undefined) payload.fallback_message = input.fallbackMessage;
   if (input.businessContextHint !== undefined) payload.business_context_hint = input.businessContextHint;
+  // Unified agent fields
+  if (input.chatEnabled !== undefined) payload.chat_enabled = input.chatEnabled;
+  if (input.automationEnabled !== undefined) payload.automation_enabled = input.automationEnabled;
+  if (input.triggers !== undefined) payload.triggers = input.triggers;
+  if (input.scheduleCron !== undefined) payload.schedule_cron = input.scheduleCron;
+  if (input.maxActionsPerRun !== undefined) payload.max_actions_per_run = input.maxActionsPerRun;
+  if (input.skills !== undefined) payload.skills = input.skills;
 
   const updated = await apiFetch<ApiChatAgent>(`/chat_agents/${id}`, {
     method: 'PUT',
@@ -311,15 +372,6 @@ export async function bindTools(
   });
 }
 
-export async function bindKnowledgeBases(id: string, kbIds: string[]): Promise<void> {
-  const normalizedIds = kbIds
-    .map((v) => Number(v))
-    .filter((v) => Number.isFinite(v) && Number.isInteger(v) && v > 0);
-  await apiFetch(`/chat_agents/${id}/knowledge_bases`, {
-    method: 'PUT',
-    body: JSON.stringify({ knowledge_base_ids: normalizedIds }),
-  });
-}
 
 export async function testAgent(id: string, userMessage: string): Promise<string> {
   const res = await apiFetch<{ response: string }>(`/chat_agents/${id}/test`, {
@@ -327,5 +379,188 @@ export async function testAgent(id: string, userMessage: string): Promise<string
     body: JSON.stringify({ user_message: userMessage }),
   });
   return res.response;
+}
+
+// ---------- AI Agent Builder ----------
+
+export interface AIBuildResponse {
+  message: string;
+  agent_created: boolean;
+  agent_id: number | null;
+  agent_name: string | null;
+  tools_created: string[];
+  config_preview: Record<string, unknown> | null;
+}
+
+export async function aiBuildAgent(description: string, conversationHistory: Array<{ role: string; content: string }> = []): Promise<AIBuildResponse> {
+  return apiFetch<AIBuildResponse>('/chat_agents/ai-build', {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ description, conversation_history: conversationHistory }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+
+// ─── Datasheet Access (Unified Agent) ────────────────────────
+
+export interface DatasheetAccessInput {
+  dynamic_model_id: number;
+  allowed_operations: string[];
+  readable_fields?: string[] | null;
+  writable_fields?: string[] | null;
+  filter_fields?: string[] | null;
+  instruction?: string | null;
+  search_mode?: string;
+  max_results?: number;
+}
+
+interface ApiDatasheetAccess {
+  id: number;
+  agent_id: number;
+  dynamic_model_id: number;
+  dynamic_model_name: string | null;
+  dynamic_model_display_name: string | null;
+  allowed_operations: string[];
+  readable_fields: string[] | null;
+  writable_fields: string[] | null;
+  filter_fields: string[] | null;
+  instruction: string | null;
+  search_mode: string;
+  max_results: number;
+}
+
+function mapDatasheetAccess(a: ApiDatasheetAccess): AgentDatasheetAccess {
+  return {
+    id: a.id,
+    agentId: a.agent_id,
+    dynamicModelId: a.dynamic_model_id,
+    dynamicModelName: a.dynamic_model_name,
+    dynamicModelDisplayName: a.dynamic_model_display_name,
+    allowedOperations: a.allowed_operations ?? [],
+    readableFields: a.readable_fields,
+    writableFields: a.writable_fields,
+    filterFields: a.filter_fields,
+    instruction: a.instruction,
+    searchMode: a.search_mode ?? 'structured',
+    maxResults: a.max_results ?? 25,
+  };
+}
+
+export async function listDatasheetAccess(agentId: string): Promise<AgentDatasheetAccess[]> {
+  const data = await apiFetch<ApiDatasheetAccess[]>(`/chat_agents/${agentId}/datasheet-access`);
+  return data.map(mapDatasheetAccess);
+}
+
+export async function saveDatasheetAccess(
+  agentId: string,
+  items: DatasheetAccessInput[],
+): Promise<AgentDatasheetAccess[]> {
+  const data = await apiFetch<ApiDatasheetAccess[]>(`/chat_agents/${agentId}/datasheet-access`, {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
+  });
+  return data.map(mapDatasheetAccess);
+}
+
+
+// ─── Skills (Unified Agent — Automation) ────────────────────
+
+export interface SkillDefinition {
+  name: string;
+  description: string;
+  category: string;
+  parameters: Record<string, unknown>;
+  is_llm_based: boolean;
+  requires_confirmation: boolean;
+  estimated_latency_ms: number;
+}
+
+export interface DynamicTrigger {
+  event: string;
+  label: string;
+  datasheet_id: number;
+  datasheet_name: string;
+}
+
+export interface SkillsAndTriggersResponse {
+  skills: SkillDefinition[];
+  dynamic_triggers: DynamicTrigger[];
+}
+
+export async function listAvailableSkills(): Promise<SkillDefinition[]> {
+  const res = await apiFetch<SkillsAndTriggersResponse>('/chat_agents/skills/available');
+  return res.skills ?? [];
+}
+
+export async function listAvailableSkillsAndTriggers(): Promise<SkillsAndTriggersResponse> {
+  return apiFetch<SkillsAndTriggersResponse>('/chat_agents/skills/available');
+}
+
+export async function runAgentManually(agentId: string, context?: Record<string, unknown>): Promise<unknown> {
+  return apiFetch(`/chat_agents/${agentId}/run`, {
+    method: 'POST',
+    body: JSON.stringify(context ?? {}),
+  });
+}
+
+
+// ─── Agent Templates ─────────────────────────────────────────
+
+export interface AgentTemplate {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  skills: string[];
+  triggers: TriggerConfig[];
+  schedule_cron?: string;
+  settings: Record<string, unknown>;
+  category: string;
+  icon: string;
+}
+
+export async function listAgentTemplates(): Promise<AgentTemplate[]> {
+  const res = await apiFetch<{ templates?: AgentTemplate[] }>('/business-agents/templates');
+  return res.templates ?? [];
+}
+
+export async function createAgentFromTemplate(templateId: string): Promise<Agent> {
+  const data = await apiFetch<ApiChatAgent>(`/business-agents/from-template/${templateId}`, {
+    method: 'POST',
+  });
+  return mapAgent(data);
+}
+
+
+// ─── Agent Run History (Automation) ──────────────────────────
+
+export interface AgentSkillResult {
+  skill: string;
+  args: Record<string, unknown>;
+  success: boolean;
+  output?: unknown;
+  error?: string;
+  execution_time_ms: number;
+}
+
+export type AgentRunStatus = 'pending' | 'running' | 'success' | 'partial' | 'failed' | 'skipped' | 'timeout';
+
+export interface AgentRun {
+  id: number;
+  trigger_event?: string;
+  reasoning?: string;
+  actions_taken?: AgentSkillResult[];
+  status: AgentRunStatus;
+  tokens_used: number;
+  cost_usd: number;
+  duration_ms: number;
+  error?: string;
+  created_at?: string;
+}
+
+export async function listAgentRuns(agentId: string, limit = 20): Promise<AgentRun[]> {
+  const res = await apiFetch<{ runs?: AgentRun[] }>(`/business-agents/${agentId}/runs?limit=${limit}`);
+  return res.runs ?? [];
 }
 

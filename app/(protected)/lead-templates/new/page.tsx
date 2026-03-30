@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ModuleGuard from '@/components/module-guard';
+import PermissionGuard from '@/components/permission-guard';
 import { createLeadTemplate } from '@/services/lead-templates';
 import type { TemplateField } from '@/services/lead-templates';
 
@@ -77,7 +77,7 @@ export default function NewLeadTemplatePage() {
   };
 
   return (
-    <ModuleGuard module="agents">
+    <PermissionGuard permission="manage_agents" module="agents">
       <div className="mx-auto max-w-3xl space-y-6">
           <div>
             <h2 className="text-xl font-semibold text-text-primary sm:text-2xl">New Lead Template</h2>
@@ -226,6 +226,6 @@ export default function NewLeadTemplatePage() {
             </div>
           </form>
         </div>
-    </ModuleGuard>
+    </PermissionGuard>
   );
 }

@@ -88,12 +88,47 @@ async function buildError(response: Response): Promise<ApiError> {
     data = await response.json();
     if (data && typeof data === "object") {
       const payload = data as Record<string, unknown>;
-      const maybeMsg =
-        (typeof payload.message === "string" && payload.message) ||
-        (typeof payload.detail === "string" && payload.detail) ||
-        null;
-      if (maybeMsg) {
-        message = maybeMsg;
+
+      // Case 1: simple string message or detail
+      if (typeof payload.message === "string" && payload.message) {
+        message = payload.message;
+      } else if (typeof payload.detail === "string" && payload.detail) {
+        message = payload.detail;
+      }
+      // Case 2: structured detail object (e.g., validation errors)
+      else if (payload.detail && typeof payload.detail === "object") {
+        const detail = payload.detail as Record<string, unknown>;
+        if (typeof detail.message === "string") {
+          message = detail.message;
+        }
+        // Append field-level errors for user clarity
+        if (Array.isArray(detail.errors) && detail.errors.length > 0) {
+          const fieldErrors = (detail.errors as Array<Record<string, string>>)
+            .map((e) => {
+              const field = e.field || "unknown";
+              const err = e.error || e.message || "invalid";
+              const errLabel = err === "not_unique" ? "already exists"
+                : err === "required" ? "is required"
+                : err === "invalid_type" ? "has invalid type"
+                : err;
+              return `${field}: ${errLabel}`;
+            })
+            .join(", ");
+          message = message ? `${message} — ${fieldErrors}` : fieldErrors;
+        }
+      }
+      // Case 3: FastAPI Pydantic validation errors (array of {loc, msg, type})
+      else if (Array.isArray(payload.detail)) {
+        const msgs = (payload.detail as Array<{ loc?: string[]; msg?: string }>)
+          .slice(0, 3)
+          .map((e) => {
+            const field = e.loc ? e.loc.filter((l) => l !== "body").join(".") : "";
+            return field ? `${field}: ${e.msg}` : (e.msg || "");
+          })
+          .filter(Boolean);
+        if (msgs.length > 0) {
+          message = msgs.join(", ");
+        }
       }
     }
   } catch {
@@ -126,10 +161,17 @@ async function refreshAccessToken(): Promise<string | null> {
       (typeof payload.access_token === "string" && payload.access_token) ||
       (typeof payload.accessToken === "string" && payload.accessToken) ||
       null;
-    const user =
+    const rawUser =
       payload.user && typeof payload.user === "object"
         ? (payload.user as Record<string, unknown>)
         : null;
+    // Merge business data into user so app-shell can read user.businesses[0].extra_data
+    const businessData = payload.business && typeof payload.business === "object"
+      ? (payload.business as Record<string, unknown>)
+      : null;
+    const user = rawUser
+      ? { ...rawUser, businesses: businessData ? [businessData] : [] }
+      : null;
     const onboardingRequired =
       (payload.onboarding_required as boolean | undefined) ??
       (payload.onboardingRequired as boolean | undefined) ??

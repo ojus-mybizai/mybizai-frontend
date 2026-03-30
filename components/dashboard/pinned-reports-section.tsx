@@ -4,7 +4,12 @@ import { useState, useEffect } from 'react';
 import { getDashboardPins, updateDashboardPins } from '@/services/settings';
 import { listModels } from '@/services/dynamic-data';
 import type { DynamicModel } from '@/services/dynamic-data';
-import { DatasheetReportWidget } from './datasheet-report-widget';
+import dynamic from 'next/dynamic';
+
+const DatasheetReportWidget = dynamic(
+  () => import('./datasheet-report-widget').then((m) => m.DatasheetReportWidget),
+  { ssr: false, loading: () => <div className="h-48 animate-pulse rounded-xl bg-bg-secondary" /> }
+);
 
 export function PinnedReportsSection() {
   const [pinnedIds, setPinnedIds] = useState<number[]>([]);
