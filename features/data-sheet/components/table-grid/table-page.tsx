@@ -22,7 +22,7 @@ import {
   bindAttachment,
   type QueryResponse,
 } from '@/features/data-sheet/api';
-import { listAttachments, deleteAttachment } from '@/services/dynamic-data';
+import { listAttachments, deleteAttachment, createView } from '@/services/dynamic-data';
 import { searchBuiltinModel, getReverseRelations } from '@/services/dynamic-data';
 import type { ReverseRelationMeta } from '@/services/dynamic-data';
 import type { QueryFilter } from '@/components/data-sheet/data-sheet-filter-builder';
@@ -31,6 +31,8 @@ import { queryParamsFromSearchParams } from '@/features/data-sheet/state/query-p
 import {
   getStoredViewState,
   setStoredViewState,
+  lockViewPersist,
+  unlockViewPersist,
   type ViewMode,
   type CardViewConfig,
   type ListViewConfig,
@@ -97,7 +99,7 @@ export function TablePage() {
   const [cellErrors, setCellErrors] = useState<Record<string, Record<string, string>>>({});
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<Set<string> | null>(null);
-  const [views, setViews] = useState<Array<{ id: number; name: string; config: Record<string, unknown> }>>([]);
+  const [views, setViews] = useState<Array<{ id: number; name: string; config: Record<string, unknown>; is_default?: boolean }>>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmDeleteRowId, setConfirmDeleteRowId] = useState<number | null>(null);
@@ -122,17 +124,40 @@ export function TablePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'columns' | 'views' | 'display'>('columns');
 
-  // Load view mode from localStorage on mount
+  // Load view: backend default takes priority, then localStorage, then built-in table default.
+  // Lock persists during load so the persist effect can't write 'table' to localStorage before backend responds.
   useEffect(() => {
     if (!ctx?.modelId) return;
-    const stored = getStoredViewState(ctx.modelId);
-    if (stored) {
-      if (stored.viewMode) setViewMode(stored.viewMode);
-      if (stored.cardConfig) setCardConfig(stored.cardConfig);
-      if (stored.listConfig) setListConfig(stored.listConfig);
-      if (stored.calendarConfig) setCalendarConfig(stored.calendarConfig);
-      if (stored.kanbanConfig) setKanbanConfig(stored.kanbanConfig);
+    const mid = ctx.modelId;
+    lockViewPersist(mid);
+
+    function applyLocalStorage() {
+      const stored = getStoredViewState(mid);
+      if (stored) {
+        if (stored.viewMode) setViewMode(stored.viewMode);
+        if (stored.cardConfig) setCardConfig(stored.cardConfig);
+        if (stored.listConfig) setListConfig(stored.listConfig);
+        if (stored.calendarConfig) setCalendarConfig(stored.calendarConfig);
+        if (stored.kanbanConfig) setKanbanConfig(stored.kanbanConfig);
+      }
     }
+
+    listViews(mid)
+      .then((list) => {
+        setViews(list.map((v) => ({ id: v.id, name: v.name, config: v.config ?? {}, is_default: v.is_default })));
+        const defaultView = list.find((v) => v.is_default);
+        if (defaultView?.config) {
+          applyView(defaultView.config);
+        } else {
+          applyLocalStorage();
+        }
+        unlockViewPersist(mid);
+      })
+      .catch(() => {
+        applyLocalStorage();
+        unlockViewPersist(mid);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx?.modelId]);
 
   // Load reverse relation metadata (which child models point to this one)
@@ -145,7 +170,7 @@ export function TablePage() {
     return () => { cancelled = true; };
   }, [ctx?.modelId]);
 
-  // Persist view mode changes
+  // Persist view mode changes (lock mechanism in view-state.ts prevents writes during initial load)
   const persistViewState = useCallback(() => {
     if (!ctx?.modelId) return;
     setStoredViewState(ctx.modelId, {
@@ -268,7 +293,7 @@ export function TablePage() {
     if (!ctx?.modelId) return;
     try {
       const list = await listViews(ctx.modelId);
-      setViews(list.map((v) => ({ id: v.id, name: v.name, config: v.config ?? {} })));
+      setViews(list.map((v) => ({ id: v.id, name: v.name, config: v.config ?? {}, is_default: v.is_default })));
     } catch {
       setViews([]);
     }
@@ -434,10 +459,17 @@ export function TablePage() {
   }, [ctx?.modelId, selectedIds, refetch]);
 
   const applyView = useCallback((config: Record<string, unknown>) => {
-    const f = (config.filters as QueryFilter[]) ?? [];
-    const s = (config.sort as SortRule[]) ?? [];
-    setFilters(f);
-    setSort(s);
+    if (config.filters) setFilters((config.filters as QueryFilter[]) ?? []);
+    if (config.sort) setSort((config.sort as SortRule[]) ?? []);
+    if (config.viewMode) setViewMode(config.viewMode as ViewMode);
+    if (config.visibleColumns) {
+      const cols = config.visibleColumns as string[];
+      setVisibleColumns(Array.isArray(cols) && cols.length > 0 ? new Set(cols) : null);
+    }
+    if (config.cardConfig) setCardConfig(config.cardConfig as CardViewConfig);
+    if (config.listConfig) setListConfig(config.listConfig as ListViewConfig);
+    if (config.calendarConfig) setCalendarConfig(config.calendarConfig as CalendarViewConfig);
+    if (config.kanbanConfig) setKanbanConfig(config.kanbanConfig as KanbanViewConfig);
     setPage(1);
   }, []);
 
@@ -1032,23 +1064,83 @@ export function TablePage() {
 
               {/* Saved Views Tab */}
               {settingsTab === 'views' && (
-                <div className="space-y-2">
-                  <p className="mb-2 text-xs text-text-secondary">Apply a saved filter & sort configuration</p>
-                  {views.length === 0 ? (
-                    <p className="py-4 text-center text-sm text-text-secondary">No saved views yet</p>
-                  ) : (
-                    views.map((v) => (
+                <div className="space-y-3">
+                  {/* Save Current View */}
+                  <div className="rounded-lg border border-border-color bg-bg-secondary/50 p-3">
+                    <p className="text-xs font-semibold text-text-primary mb-2">Save Current View</p>
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const form = e.currentTarget;
+                        const nameInput = form.elements.namedItem('viewName') as HTMLInputElement;
+                        const isDefault = (form.elements.namedItem('isDefault') as HTMLInputElement)?.checked ?? false;
+                        const name = nameInput?.value?.trim();
+                        if (!name || !ctx?.modelId) return;
+                        try {
+                          await createView(ctx.modelId, {
+                            name,
+                            config: {
+                              viewMode,
+                              filters,
+                              sort,
+                              visibleColumns: visibleColumns ? Array.from(visibleColumns) : null,
+                              cardConfig,
+                              listConfig,
+                              calendarConfig,
+                              kanbanConfig,
+                            },
+                            is_default: isDefault,
+                          });
+                          nameInput.value = '';
+                          await loadViews();
+                        } catch { /* ignore */ }
+                      }}
+                      className="flex flex-col gap-2"
+                    >
+                      <input
+                        name="viewName"
+                        type="text"
+                        placeholder="View name (e.g. Kanban by Status)"
+                        className="w-full rounded-md border border-border-color bg-card-bg px-3 py-1.5 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                        required
+                        minLength={1}
+                        maxLength={128}
+                      />
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
+                          <input name="isDefault" type="checkbox" className="rounded border-border-color" />
+                          Set as default view
+                        </label>
+                        <button
+                          type="submit"
+                          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 transition-colors"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
+                  {/* Existing Saved Views */}
+                  <div>
+                    <p className="mb-2 text-xs text-text-secondary">
+                      {views.length === 0 ? 'No saved views yet. Save your current view above.' : 'Click a view to apply it.'}
+                    </p>
+                    {views.map((v) => (
                       <button
                         key={v.id}
                         type="button"
                         onClick={() => { applyView(v.config); setSettingsOpen(false); }}
-                        className="flex w-full items-center gap-2 rounded-lg border border-border-color px-3 py-2.5 text-left text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+                        className="flex w-full items-center gap-2 rounded-lg border border-border-color px-3 py-2.5 text-left text-sm text-text-primary hover:bg-bg-secondary transition-colors mb-1.5"
                       >
                         <svg className="h-4 w-4 shrink-0 text-text-secondary" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                        {v.name}
+                        <span className="flex-1 truncate">{v.name}</span>
+                        {v.is_default && (
+                          <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">Default</span>
+                        )}
                       </button>
-                    ))
-                  )}
+                    ))}
+                  </div>
                 </div>
               )}
 

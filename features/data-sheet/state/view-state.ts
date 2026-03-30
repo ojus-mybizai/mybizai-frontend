@@ -54,6 +54,24 @@ const DEFAULT_KANBAN_CONFIG: KanbanViewConfig = { groupByField: null, cardFields
 
 const VALID_VIEW_MODES: ViewMode[] = ['table', 'card', 'list', 'calendar', 'kanban'];
 
+/**
+ * Per-model persist lock: prevents localStorage writes until the initial view
+ * has been loaded from the backend or localStorage. This avoids the race condition
+ * where the persist effect writes `viewMode: 'table'` (the default useState)
+ * before the backend default view has been fetched and applied.
+ *
+ * Call `unlockViewPersist(modelId)` after the initial load is complete.
+ */
+const _persistLocks = new Set<string>();
+
+export function lockViewPersist(modelId: string): void {
+  _persistLocks.add(modelId);
+}
+
+export function unlockViewPersist(modelId: string): void {
+  _persistLocks.delete(modelId);
+}
+
 export function getStoredViewState(modelId: string): ViewStateSnapshot | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -91,6 +109,8 @@ export function getStoredViewState(modelId: string): ViewStateSnapshot | null {
 
 export function setStoredViewState(modelId: string, snapshot: ViewStateSnapshot): void {
   if (typeof window === 'undefined') return;
+  // Don't persist while initial view is being loaded from the backend
+  if (_persistLocks.has(modelId)) return;
   try {
     const payload = {
       visibleColumns:
