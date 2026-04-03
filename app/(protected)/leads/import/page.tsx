@@ -78,7 +78,7 @@ const LEAD_FIELD_LABELS: Record<LeadField, string> = {
   notes: 'Notes',
 };
 
-const LEAD_FIELDS: LeadField[] = ['name', 'phone', 'email', 'status', 'priority', 'source', 'notes'];
+const LEAD_FIELDS: LeadField[] = ['name', 'phone', 'email', 'priority', 'source', 'notes'];
 
 // ─── Step 1 — Settings ────────────────────────────────────────────────────────
 
@@ -292,7 +292,6 @@ function UploadStep({
             ['Name', 'name, full name, customer name, lead name'],
             ['Phone', 'phone, mobile, tel, telephone, contact number'],
             ['Email', 'email, email address, e-mail'],
-            ['Status', 'status, lead status, stage'],
             ['Priority', 'priority, urgency'],
             ['Source', 'source, lead source, channel'],
             ['Notes', 'notes, comments, remarks, description'],

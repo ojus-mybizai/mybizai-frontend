@@ -57,7 +57,7 @@ async function fetchDashboardData(lmsEnabled: boolean): Promise<DashboardData> {
 
   const { data: leadStats, error: leadError } = leadResult;
   const totalLeads = leadStats?.total_leads ?? 0;
-  const won = leadStats?.by_status?.won ?? 0;
+  const won = leadStats?.by_stage?.won ?? 0;
   const conversionRate = totalLeads > 0 ? (won / totalLeads) * 100 : 0;
   const convoList = Array.isArray(convos) ? convos : [];
 
@@ -111,7 +111,7 @@ function formatRelative(iso?: string | null): string {
 
 function buildInsights(leadStats: LeadStats): DashboardInsights {
   const total = leadStats.total_leads ?? 0;
-  const won = leadStats.by_status?.won ?? 0;
+  const won = leadStats.by_stage?.won ?? 0;
   const conversion = total > 0 ? (won / total) * 100 : 0;
 
   const summary =
@@ -130,15 +130,12 @@ function buildInsights(leadStats: LeadStats): DashboardInsights {
     topSource = `Top source: ${name}.`;
   }
 
-  const byStatus = leadStats.by_status ?? {};
-  const newCount = byStatus.new ?? 0;
-  const contacted = byStatus.contacted ?? 0;
-  const qualified = byStatus.qualified ?? 0;
-  const statusParts: string[] = [];
-  if (newCount) statusParts.push(`${newCount} new`);
-  if (contacted) statusParts.push(`${contacted} contacted`);
-  if (qualified) statusParts.push(`${qualified} qualified`);
-  const statusBreakdown = statusParts.length ? `Pipeline: ${statusParts.join(', ')}.` : undefined;
+  const byStage = leadStats.by_stage ?? {};
+  const stageEntries = Object.entries(byStage);
+  const stageParts: string[] = stageEntries
+    .filter(([, count]) => count > 0)
+    .map(([name, count]) => `${count} ${name}`);
+  const statusBreakdown = stageParts.length ? `Pipeline: ${stageParts.join(', ')}.` : undefined;
 
   return { summary, topSource, statusBreakdown };
 }

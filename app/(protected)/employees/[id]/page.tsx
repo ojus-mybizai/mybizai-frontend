@@ -59,15 +59,6 @@ const STATUS_WORK_COLORS: Record<string, string> = {
   cancelled: 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300',
 };
 
-const LEAD_STATUS_COLORS: Record<string, string> = {
-  new: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-  contacted: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
-  qualified: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
-  proposal: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300',
-  negotiation: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  won: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-  lost: 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300',
-};
 
 const TEMPLATE_TYPE_COLORS: Record<string, string> = {
   simple: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
@@ -1090,14 +1081,12 @@ export default function EmployeeDetailPage() {
                               {lead.phone || '—'}
                             </td>
                             <td className="px-4 py-3">
-                              {lead.status ? (
+                              {lead.pipelineStageName ? (
                                 <span
-                                  className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-                                    LEAD_STATUS_COLORS[lead.status] ??
-                                    'bg-bg-secondary text-text-secondary'
-                                  }`}
+                                  className="rounded-full px-2 py-0.5 text-xs font-medium"
+                                  style={lead.pipelineStageColor ? { backgroundColor: lead.pipelineStageColor + '20', color: lead.pipelineStageColor } : undefined}
                                 >
-                                  {lead.status}
+                                  {lead.pipelineStageName}
                                 </span>
                               ) : (
                                 <span className="text-xs text-text-secondary">—</span>
@@ -1150,7 +1139,7 @@ export default function EmployeeDetailPage() {
                       {bizActivity.map((item) => {
                         const ACTION_ICONS: Record<string, string> = {
                           lead_created: '➕', lead_note_added: '📝', lead_note_deleted: '🗑️',
-                          lead_status_changed: '🔄', lead_updated: '✏️', lead_assigned: '👤', lead_deleted: '❌',
+                          lead_stage_changed: '🔄', lead_updated: '✏️', lead_assigned: '👤', lead_deleted: '❌',
                           datasheet_model_created: '📊', datasheet_model_updated: '📊', datasheet_model_deleted: '🗑️',
                           datasheet_record_created: '➕', datasheet_record_updated: '📊', datasheet_record_deleted: '🗑️',
                           datasheet_records_imported: '📥',
@@ -1172,7 +1161,7 @@ export default function EmployeeDetailPage() {
                         const ACTION_LABELS: Record<string, string> = {
                           lead_created: 'Created lead', lead_note_added: 'Added note to lead',
                           lead_note_deleted: 'Deleted lead note',
-                          lead_status_changed: 'Changed lead status', lead_updated: 'Updated lead',
+                          lead_stage_changed: 'Changed lead stage', lead_updated: 'Updated lead',
                           lead_assigned: 'Assigned lead', lead_deleted: 'Deleted lead',
                           datasheet_model_created: 'Created datasheet', datasheet_model_updated: 'Updated datasheet',
                           datasheet_model_deleted: 'Deleted datasheet',
@@ -1226,8 +1215,8 @@ export default function EmployeeDetailPage() {
                                   {item.action_type === 'lead_note_added' && Boolean(item.metadata.preview) && (
                                     <span className="italic">"{String(item.metadata.preview)}"</span>
                                   )}
-                                  {Boolean(item.metadata.old_status) && Boolean(item.metadata.new_status) && (
-                                    <span>{String(item.metadata.old_status)} → {String(item.metadata.new_status)}</span>
+                                  {Boolean(item.metadata.old_stage) && Boolean(item.metadata.new_stage) && (
+                                    <span>{String(item.metadata.old_stage)} → {String(item.metadata.new_stage)}</span>
                                   )}
                                 </div>
                               )}

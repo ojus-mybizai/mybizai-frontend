@@ -11,15 +11,19 @@ import { LeadStatsCard } from '@/components/customers/lead-stats-card';
 import { LeadFieldConfigPanel } from '@/components/customers/lead-field-config-panel';
 import { useShallow } from 'zustand/react/shallow';
 import { useCustomerStore } from '@/lib/customer-store';
+import { useLeadStats } from '@/lib/hooks/use-reference-data';
 import type { CustomerFilters as CustomerFiltersType } from '@/services/customers';
 import { listLeadFields, getVisibleFields, type LeadFieldConfig } from '@/services/lead-fields';
-import { LeadAnalyticsDashboard } from '@/components/customers/lead-analytics-dashboard';
+import dynamic from 'next/dynamic';
+const LeadAnalyticsDashboard = dynamic(
+  () => import('@/components/customers/lead-analytics-dashboard').then(m => m.LeadAnalyticsDashboard),
+  { ssr: false, loading: () => <div className="h-64 animate-pulse bg-bg-secondary rounded-lg" /> }
+);
 import { LeadPipelineBoard } from '@/components/leads/lead-pipeline-board';
 import { PipelineEditorModal } from '@/components/leads/pipeline-editor-modal';
 import { listPipelineStages, moveLeadToStage, type LeadPipelineStage } from '@/services/customers';
 
-const PER_PAGE_OPTIONS = [10, 25, 50] as const;
-const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 25;
 
 function initialFiltersFromSearchParams(searchParams: ReturnType<typeof useSearchParams>): CustomerFiltersType & { page: number; perPage: number } {
   const assignedToId = searchParams.get('assigned_to_id');
@@ -72,19 +76,17 @@ function CustomersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialFilters = useMemo(() => initialFiltersFromSearchParams(searchParams), [searchParams]);
-  const { customers, list, total, totalPages, page, loadingList, leadStats, loadLeadStats, deleteLead } = useCustomerStore(
+  const { customers, list, listAppend, total, loadingList, deleteLead } = useCustomerStore(
     useShallow((s) => ({
       customers: s.customers,
       list: s.list,
+      listAppend: s.listAppend,
       total: s.total,
-      totalPages: s.totalPages,
-      page: s.page,
       loadingList: s.loadingList,
-      leadStats: s.leadStats,
-      loadLeadStats: s.loadLeadStats,
       deleteLead: s.deleteLead,
     }))
   );
+  const { data: leadStats } = useLeadStats();
 
   const [filters, setFilters] = useState(initialFilters);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -96,6 +98,7 @@ function CustomersContent() {
   const menuRef = useRef<HTMLDivElement>(null);
   const [fieldConfigs, setFieldConfigs] = useState<LeadFieldConfig[]>([]);
   const [showFieldConfig, setShowFieldConfig] = useState(false);
+  const isLoadMoreRef = useRef(false);
 
   // Custom fields: visible non-system, non-relation fields (shown as data cells)
   const customColumns = useMemo(
@@ -139,26 +142,24 @@ function CustomersContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (isLoadMoreRef.current) {
+      isLoadMoreRef.current = false;
+      return;
+    }
     void list(filters);
   }, [filters]);
 
-  useEffect(() => {
-    void loadLeadStats();
-  }, []);
 
   const filteredCustomers = useMemo(() => {
-    if (closedFilter === 'open') return customers.filter((c) => !c.status || ['new', 'contacted', 'qualified'].includes(c.status));
-    if (closedFilter === 'closed') return customers.filter((c) => c.status && ['won', 'lost'].includes(c.status));
+    if (closedFilter === 'open') return customers.filter((c) => !c.pipeline_stage_type || c.pipeline_stage_type === 'open');
+    if (closedFilter === 'closed') return customers.filter((c) => c.pipeline_stage_type === 'won' || c.pipeline_stage_type === 'lost');
     return customers;
   }, [customers, closedFilter]);
 
   const isEmpty = !loadingList && filteredCustomers.length === 0;
-  const perPage = filters.perPage ?? DEFAULT_PAGE_SIZE;
-  const start = total === 0 ? 0 : (page - 1) * perPage + 1;
-  const end = Math.min(page * perPage, total);
 
   const segmentParts: string[] = [];
-  if (filters.status) segmentParts.push(`Status: ${filters.status}`);
+  if (filters.pipelineStageId) segmentParts.push('Pipeline stage filter');
   if (filters.priority) segmentParts.push(`Priority: ${filters.priority}`);
   if (filters.source) segmentParts.push(`Source: ${filters.source.replace('_', ' ')}`);
   if (filters.channelId != null) segmentParts.push('Channel filter');
@@ -167,13 +168,28 @@ function CustomersContent() {
   const segmentSummary = segmentParts.length > 0 ? segmentParts.join(' · ') : null;
 
   const handleSegmentClick = (partial: Partial<CustomerFiltersType>) => {
-    setFilters((f) => ({ ...f, ...partial, page: 1 }));
+    applyFilters(partial);
+  };
+
+  const hasMore = customers.length < total;
+
+  const handleLoadMore = () => {
+    const nextPage = (filters.page || 1) + 1;
+    const nextFilters = { ...filters, page: nextPage };
+    isLoadMoreRef.current = true;
+    setFilters(nextFilters);
+    void listAppend(nextFilters);
+  };
+
+  // When filters change (except page increment for load-more), reset to page 1
+  const applyFilters = (next: Partial<CustomerFiltersType>) => {
+    setFilters((f) => ({ ...f, ...next, page: 1 }));
   };
 
   return (
     <>
-        <div className="w-full space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full flex-col h-[calc(100vh-4rem)] gap-4">
+          <div className="shrink-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-text-primary sm:text-2xl">Leads</h2>
               <p className="text-base text-text-secondary">Manage your leads and lead activity.</p>
@@ -216,7 +232,7 @@ function CustomersContent() {
           </div>
 
           {/* View toggle + Open/Closed quick-filter */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="shrink-0 flex flex-wrap items-center gap-2">
             {/* View toggle */}
             <div className="flex rounded-lg border border-border-color overflow-hidden text-sm font-medium">
               <button
@@ -264,12 +280,7 @@ function CustomersContent() {
                   <button
                     key={f}
                     type="button"
-                    onClick={() => {
-                      setClosedFilter(f);
-                      if (f === 'open') setFilters((prev) => ({ ...prev, page: 1, status: undefined }));
-                      else if (f === 'closed') setFilters((prev) => ({ ...prev, page: 1, status: undefined }));
-                      else setFilters((prev) => ({ ...prev, page: 1, status: undefined }));
-                    }}
+                    onClick={() => setClosedFilter(f)}
                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
                       closedFilter === f
                         ? f === 'open' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
@@ -312,18 +323,18 @@ function CustomersContent() {
           )}
 
           {pageView === 'analytics' && (
-            <LeadAnalyticsDashboard closedFilter={closedFilter === 'all' ? undefined : closedFilter} />
+            <LeadAnalyticsDashboard />
           )}
 
           {pageView === 'list' && (
             <>
-            <CustomerFilters initial={filters} onApply={(next) => setFilters((f) => ({ ...f, ...next }))} />
+            <CustomerFilters initial={filters} onApply={applyFilters} />
 
           {/* Segment summary bar */}
           {!loadingList && (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-color bg-card-bg px-4 py-2 text-sm text-text-secondary">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-color bg-card-bg px-4 py-2 text-sm text-text-secondary shrink-0">
               <span className="font-medium text-text-primary">
-                Showing {total === 0 ? '0' : `${start}–${end}`} of {total} leads
+                {filteredCustomers.length} of {total} leads
               </span>
               {segmentSummary && (
                 <>
@@ -334,7 +345,7 @@ function CustomersContent() {
             </div>
           )}
 
-          {loadingList && <div className="text-base text-text-secondary">Loading customers…</div>}
+          {loadingList && customers.length === 0 && <div className="text-base text-text-secondary">Loading leads…</div>}
 
           {isEmpty && (
             <div className="rounded-xl border border-border-color bg-card-bg px-6 py-10 text-center text-base text-text-secondary">
@@ -344,14 +355,14 @@ function CustomersContent() {
           )}
 
           {!isEmpty && (
-            <div className="overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-sm">
-              <div className="overflow-x-auto">
+            <div className="flex-1 min-h-0 overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-sm flex flex-col">
+              <div className="flex-1 min-h-0 overflow-auto">
               <table className="min-w-full divide-y divide-border-color">
-                <thead className="bg-bg-secondary">
+                <thead className="bg-bg-secondary sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Lead</th>
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Contact</th>
-                    <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Status</th>
+                    <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Stage</th>
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Priority</th>
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Score</th>
                     <th className="px-4 py-2.5 text-left text-sm font-semibold text-text-secondary">Source</th>
@@ -396,15 +407,12 @@ function CustomersContent() {
                         )}
                       </td>
                       <td className="px-4 py-2.5">
-                        {c.status ? (
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-sm font-semibold ${
-                            c.status === 'won' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' :
-                            c.status === 'qualified' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' :
-                            c.status === 'contacted' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
-                            c.status === 'lost' ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' :
-                            'bg-gray-100 text-gray-800 dark:bg-gray-700/40 dark:text-gray-300'
-                          }`}>
-                            {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                        {c.pipelineStageName ? (
+                          <span
+                            className="inline-flex items-center rounded-full px-2.5 py-1 text-sm font-semibold"
+                            style={c.pipelineStageColor ? { backgroundColor: c.pipelineStageColor + '20', color: c.pipelineStageColor } : undefined}
+                          >
+                            {c.pipelineStageName}
                           </span>
                         ) : (
                           <span className="text-text-secondary">—</span>
@@ -604,43 +612,29 @@ function CustomersContent() {
               </table>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-color px-4 py-3 text-sm text-text-secondary">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span>
-                    Page {page} of {totalPages} · {total === 0 ? '0' : `${start}–${end}`} of {total} leads
-                  </span>
-                  <label className="flex items-center gap-2">
-                    <span>Per page</span>
-                    <select
-                      value={perPage}
-                      onChange={(e) => setFilters((f) => ({ ...f, perPage: Number(e.target.value) as typeof PER_PAGE_OPTIONS[number], page: 1 }))}
-                      className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                    >
-                      {PER_PAGE_OPTIONS.map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="flex gap-2">
+              {/* Load More */}
+              {hasMore && (
+                <div className="shrink-0 border-t border-border-color px-4 py-3 text-center">
                   <button
                     type="button"
-                    disabled={page <= 1}
-                    onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, (f.page || 1) - 1) }))}
-                    className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 disabled:opacity-50"
+                    disabled={loadingList}
+                    onClick={handleLoadMore}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border-color bg-bg-primary px-5 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary disabled:opacity-50 transition-colors"
                   >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    disabled={page >= totalPages}
-                    onClick={() => setFilters((f) => ({ ...f, page: (f.page || 1) + 1 }))}
-                    className="rounded-lg border border-border-color bg-bg-primary px-3 py-2 disabled:opacity-50"
-                  >
-                    Next
+                    {loadingList ? (
+                      <>
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Loading…
+                      </>
+                    ) : (
+                      <>Load more ({total - customers.length} remaining)</>
+                    )}
                   </button>
                 </div>
-              </div>
+              )}
             </div>
           )}
             </>

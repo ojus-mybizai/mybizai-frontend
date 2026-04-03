@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 
 export interface LeadsActivityPoint {
@@ -8,43 +8,19 @@ export interface LeadsActivityPoint {
   count: number;
 }
 
-interface LeadsActivityState {
-  data: LeadsActivityPoint[];
-  loading: boolean;
-  error: string | null;
+export function useLeadsActivity(days: number = 30) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['leads-activity', days],
+    queryFn: ({ signal }) =>
+      apiFetch<{ series: LeadsActivityPoint[] }>(`/leads/stats/over_time?days=${days}`, {
+        method: 'GET',
+        signal,
+      }).then((res) => (Array.isArray(res.series) ? res.series : [])),
+  });
+
+  return {
+    data: data ?? [],
+    loading: isLoading,
+    error: error ? (error instanceof Error ? error.message : 'Failed to load activity') : null,
+  };
 }
-
-export function useLeadsActivity(days: number = 30): LeadsActivityState {
-  const [data, setData] = useState<LeadsActivityPoint[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    apiFetch<{ series: LeadsActivityPoint[] }>(`/leads/stats/over_time?days=${days}`, {
-      method: 'GET',
-    })
-      .then((res) => {
-        if (cancelled) return;
-        setData(Array.isArray(res.series) ? res.series : []);
-      })
-      .catch((e: any) => {
-        if (cancelled) return;
-        setError(e?.message ?? 'Failed to load activity');
-        setData([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [days]);
-
-  return { data, loading, error };
-}
-

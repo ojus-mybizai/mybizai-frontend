@@ -7,8 +7,14 @@ declare global {
     FB?: {
       init: (config: { appId: string; cookie: boolean; xfbml: boolean; version: string }) => void;
       login: (
-        cb: (response: { authResponse?: { accessToken: string } | null }) => void,
-        opts: { scope: string }
+        cb: (response: {
+          authResponse?: {
+            accessToken?: string;
+            code?: string;
+          } | null;
+          status?: string;
+        }) => void,
+        opts: Record<string, unknown>
       ) => void;
     };
     fbAsyncInit?: () => void;

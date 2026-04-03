@@ -1,7 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect } from 'react';
-import { useAuthStore } from '@/lib/auth-store';
+import { useAuthStore, getStoredUser } from '@/lib/auth-store';
 import { apiFetch, API_BASE_URL } from '@/lib/api-client';
 import { subscribeAuthEvents } from '@/lib/auth-events';
 
@@ -29,6 +29,14 @@ export default function AuthBootstrap({ children }: Props) {
 
     async function init() {
       try {
+        // Restore cached user from sessionStorage so sidebar renders instantly (post-hydration)
+        if (typeof window !== 'undefined') {
+          const cachedUser = getStoredUser();
+          if (cachedUser && !useAuthStore.getState().user) {
+            setUser(cachedUser);
+          }
+        }
+
         // Restore access token from sessionStorage if store has none (e.g. after full page reload)
         if (typeof window !== 'undefined') {
           try {
@@ -106,7 +114,7 @@ export default function AuthBootstrap({ children }: Props) {
         }
 
         const withToken = useAuthStore.getState();
-        if (withToken.accessToken) {
+        if (withToken.accessToken && !withToken.user) {
           try {
             const me = await apiFetch<Record<string, unknown>>('/auth/users/me', { method: 'GET' });
             if (isMounted && me && typeof me === 'object') {

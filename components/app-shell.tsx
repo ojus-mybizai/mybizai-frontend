@@ -31,6 +31,7 @@ import {
   BookOpen,
   Radio,
   Zap,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -89,6 +90,9 @@ function buildNavItems(
 
   // ── Dashboard (always, no section header) ────────────────────────────────
   items.push({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard });
+  if (hasPermission('manage_settings')) {
+    items.push({ label: 'Business Builder', href: '/builder', icon: Sparkles });
+  }
 
   // ── Work (daily employee flow) ────────────────────────────────────────────
   if (lmsEnabled) {

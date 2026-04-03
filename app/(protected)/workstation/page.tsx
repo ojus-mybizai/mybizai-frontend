@@ -209,18 +209,14 @@ export default function WorkstationPage() {
   const [executionRules, setExecutionRules] = useState<Record<string, unknown> | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
 
-  /* data fetch */
+  /* data fetch — work items (needed for all tabs) */
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [workRes, empList] = await Promise.all([
-          listWork({ per_page: 200 }),
-          listEmployees(),
-        ]);
+        const workRes = await listWork({ per_page: 200 });
         if (cancelled) return;
         setAllWork(workRes.items);
-        setEmployees(empList.map((e) => ({ user_id: e.user_id, name: e.name, email: e.email })));
       } catch (err) {
         console.error('Failed to load workstation data', err);
       } finally {
@@ -230,6 +226,22 @@ export default function WorkstationPage() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  /* employees — deferred until a work item is selected or a modal opens */
+  const [employeesLoaded, setEmployeesLoaded] = useState(false);
+  useEffect(() => {
+    if (employeesLoaded) return;
+    if (!selectedWorkId && !quickTaskOpen && !assignWorkOpen) return;
+    let cancelled = false;
+    listEmployees()
+      .then((empList) => {
+        if (cancelled) return;
+        setEmployees(empList.map((e) => ({ user_id: e.user_id, name: e.name, email: e.email })));
+        setEmployeesLoaded(true);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedWorkId, quickTaskOpen, assignWorkOpen, employeesLoaded]);
 
   /* open work from URL query param ?work=123 */
   useEffect(() => {

@@ -48,37 +48,68 @@ function SortableFieldRow({
     transform: CSS.Transform.toString(transform),
     transition,
   };
+  const meta = FIELD_TYPE_META[field.field_type];
   return (
     <li
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 rounded-lg border border-border-color bg-bg-primary px-4 py-3 ${isDragging ? 'opacity-70 z-10' : ''}`}
+      className={`group flex items-center gap-3 rounded-lg border bg-bg-primary px-4 py-3 transition-all ${
+        isDragging ? 'opacity-70 z-10 shadow-lg border-accent/40' : isEditing ? 'border-accent/50 ring-1 ring-accent/20' : 'border-border-color hover:border-border-color/80 hover:shadow-sm'
+      }`}
     >
+      {/* Drag handle */}
       <button
         type="button"
-        className="cursor-grab touch-none rounded p-1 text-text-secondary hover:bg-bg-secondary active:cursor-grabbing"
+        className="cursor-grab touch-none rounded p-1 text-text-secondary/40 hover:text-text-secondary active:cursor-grabbing"
         {...attributes}
         {...listeners}
         aria-label="Drag to reorder"
       >
-        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
-          <path d="M7 2a1 1 0 011 1v1h3V3a1 1 0 112 0v1h3a1 1 0 110 2h-3v1a1 1 0 11-2 0V6H8v1a1 1 0 01-2 0V4H3a1 1 0 010-2h3V3a1 1 0 011-1zm-4 9a1 1 0 011-1h3v1a1 1 0 11-2 0v-1H4a1 1 0 01-1-1zm12 0a1 1 0 01-1 1h-3v1a1 1 0 112 0v1h3a1 1 0 110 2h-3v1a1 1 0 11-2 0v-1h-3a1 1 0 01-1-1zM7 14a1 1 0 011 1v3h3a1 1 0 110 2H8v3a1 1 0 11-2 0v-3H3a1 1 0 110-2h3v-3a1 1 0 011-1z" />
+        <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+          <circle cx="5" cy="3" r="1.5" /><circle cx="11" cy="3" r="1.5" />
+          <circle cx="5" cy="8" r="1.5" /><circle cx="11" cy="8" r="1.5" />
+          <circle cx="5" cy="13" r="1.5" /><circle cx="11" cy="13" r="1.5" />
         </svg>
       </button>
+
+      {/* Type icon */}
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg-secondary text-sm font-bold ${meta?.color ?? 'text-text-secondary'}`}>
+        {meta?.icon ?? '?'}
+      </span>
+
+      {/* Field info */}
       <div className="min-w-0 flex-1">
-        <span className="font-medium text-text-primary">{field.display_name}</span>
-        <span className="ml-2 text-xs text-text-secondary">
-          {field.name} · {getFieldTypeLabel(field.field_type)}
-          {field.is_required && ' · required'}
-          {field.is_unique && ' · unique'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-text-primary truncate">{field.display_name}</span>
+          <span className="shrink-0 rounded bg-bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">
+            {getFieldTypeLabel(field.field_type)}
+          </span>
+        </div>
+        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-secondary/70">
+          <code className="rounded bg-bg-secondary/60 px-1">{field.name}</code>
+          {field.is_required && (
+            <span className="rounded-full bg-red-100 px-1.5 py-px text-[10px] font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">required</span>
+          )}
+          {field.is_unique && (
+            <span className="rounded-full bg-blue-100 px-1.5 py-px text-[10px] font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">unique</span>
+          )}
+          {field.field_type === 'computed' && (
+            <span className="rounded-full bg-amber-100 px-1.5 py-px text-[10px] font-medium text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">auto</span>
+          )}
+        </div>
       </div>
+
+      {/* Edit button */}
       <button
         type="button"
         onClick={onEditClick}
-        className="rounded-md border border-border-color bg-bg-secondary px-2 py-1 text-xs text-text-secondary hover:bg-bg-primary"
+        className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+          isEditing
+            ? 'bg-accent text-white'
+            : 'border border-border-color bg-bg-secondary text-text-secondary opacity-0 group-hover:opacity-100 hover:bg-bg-primary'
+        }`}
       >
-        {isEditing ? 'Done' : 'Edit'}
+        {isEditing ? 'Editing' : 'Edit'}
       </button>
     </li>
   );
@@ -232,10 +263,18 @@ export function SettingsPage() {
   return (
     <div className="space-y-6">
       <section className="rounded-xl border border-border-color bg-card-bg p-6">
-        <h2 className="text-lg font-semibold text-text-primary">Model settings</h2>
-        <div className="mt-4 space-y-4">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
+            <svg className="h-5 w-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          </div>
           <div>
-            <label className="block text-sm font-medium text-text-secondary">Display name</label>
+            <h2 className="text-lg font-semibold text-text-primary">Model settings</h2>
+            <p className="text-xs text-text-secondary">Configure display name, description, and search settings</p>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-1.5">Display name</label>
             <input
               type="text"
               defaultValue={model.display_name}
@@ -243,11 +282,11 @@ export function SettingsPage() {
                 const v = e.target.value.trim();
                 if (v && v !== model.display_name) void handleUpdateModel({ display_name: v });
               }}
-              className="mt-1 block w-full max-w-md rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
+              className="block w-full max-w-md rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-secondary">Description</label>
+            <label className="block text-sm font-medium text-text-primary mb-1.5">Description</label>
             <textarea
               rows={2}
               defaultValue={model.description ?? ''}
@@ -255,7 +294,7 @@ export function SettingsPage() {
                 const v = e.target.value.trim() || null;
                 if (v !== (model.description ?? '')) void handleUpdateModel({ description: v });
               }}
-              className="mt-1 block w-full max-w-md rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
+              className="block w-full max-w-md rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
           <div className="flex items-center gap-3">
@@ -292,11 +331,20 @@ export function SettingsPage() {
 
       <section className="rounded-xl border border-border-color bg-card-bg p-6">
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">Fields</h2>
-            <p className="text-xs text-text-secondary mt-0.5">
-              {fields.length} field{fields.length !== 1 ? 's' : ''} · drag to reorder
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
+              <svg className="h-5 w-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">Fields</h2>
+              <p className="text-xs text-text-secondary mt-0.5">
+                <span className="inline-flex items-center gap-1">
+                  <span className="font-medium text-text-primary">{fields.length}</span> field{fields.length !== 1 ? 's' : ''}
+                  <span className="text-text-secondary/40 mx-0.5">·</span>
+                  drag to reorder
+                </span>
+              </p>
+            </div>
           </div>
           {!addFieldOpen && (
             <button
@@ -479,18 +527,25 @@ export function SettingsPage() {
         />
       )}
 
-      <section className="rounded-xl border border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20 p-6">
-        <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">Danger zone</h2>
-        <p className="mt-2 text-sm text-text-secondary">
-          Delete this data sheet. This action cannot be undone. All records, fields, and data will be permanently deleted.
-        </p>
-        <button
-          type="button"
-          onClick={() => setDeleteModelOpen(true)}
-          className="mt-4 rounded-lg border border-red-300 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 dark:border-red-700"
-        >
-          Delete this model
-        </button>
+      <section className="rounded-xl border border-red-200/60 bg-red-50/30 dark:border-red-900/40 dark:bg-red-950/10 p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 dark:bg-red-900/30">
+            <svg className="h-5 w-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          </div>
+          <div className="flex-1">
+            <h2 className="text-base font-semibold text-red-700 dark:text-red-400">Danger zone</h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              Permanently delete <strong className="text-text-primary">{model.display_name}</strong> and all its records ({fields.length} field{fields.length !== 1 ? 's' : ''}). This cannot be undone.
+            </p>
+            <button
+              type="button"
+              onClick={() => setDeleteModelOpen(true)}
+              className="mt-3 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 transition-colors dark:border-red-700 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
+            >
+              Delete this datasheet
+            </button>
+          </div>
+        </div>
       </section>
 
       {editFieldId && (
@@ -544,21 +599,26 @@ export function SettingsPage() {
 /* ─── Field type metadata ─────────────────────────────────────────────────── */
 
 const FIELD_TYPE_META: Record<string, { icon: string; color: string; desc: string }> = {
-  text:      { icon: 'Aa',  color: 'text-blue-500',    desc: 'Short text, names, titles' },
-  long_text: { icon: '¶',   color: 'text-indigo-500',  desc: 'Paragraphs, notes, descriptions' },
-  number:    { icon: '123', color: 'text-green-500',   desc: 'Integer or decimal numbers' },
-  currency:  { icon: '$',   color: 'text-emerald-500', desc: 'Money / price amount' },
-  boolean:   { icon: '✓',   color: 'text-teal-500',    desc: 'Yes / No checkbox' },
-  date:      { icon: '📅',  color: 'text-orange-400',  desc: 'Date or date-time value' },
-  enum:      { icon: '≡',   color: 'text-purple-500',  desc: 'Fixed dropdown options' },
-  image:     { icon: '🖼',  color: 'text-pink-500',    desc: 'Image file upload' },
-  file:      { icon: '📎',  color: 'text-rose-500',    desc: 'Any file attachment' },
-  relation:  { icon: '↗',   color: 'text-cyan-500',    desc: 'Link to another sheet' },
+  text:         { icon: 'Aa',  color: 'text-blue-500',    desc: 'Short text, names, titles' },
+  long_text:    { icon: '¶',   color: 'text-indigo-500',  desc: 'Paragraphs, notes, descriptions' },
+  number:       { icon: '123', color: 'text-green-500',   desc: 'Integer or decimal numbers' },
+  currency:     { icon: '$',   color: 'text-emerald-500', desc: 'Money / price amount' },
+  boolean:      { icon: '✓',   color: 'text-teal-500',    desc: 'Yes / No checkbox' },
+  date:         { icon: '📅',  color: 'text-orange-400',  desc: 'Date or date-time value' },
+  time:         { icon: '🕐',  color: 'text-orange-500',  desc: 'Time of day (HH:MM)' },
+  enum:         { icon: '≡',   color: 'text-purple-500',  desc: 'Fixed dropdown options' },
+  multi_select: { icon: '☰',   color: 'text-violet-500',  desc: 'Select multiple tags / options' },
+  phone:        { icon: '📞',  color: 'text-sky-500',     desc: 'Phone number with country code' },
+  computed:     { icon: 'fx',  color: 'text-amber-500',   desc: 'Auto-calculated formula field' },
+  image:        { icon: '🖼',  color: 'text-pink-500',    desc: 'Image file upload' },
+  file:         { icon: '📎',  color: 'text-rose-500',    desc: 'Any file attachment' },
+  relation:     { icon: '↗',   color: 'text-cyan-500',    desc: 'Link to another sheet' },
 };
 
-const TYPE_ROWS: string[][] = [
-  ['text', 'long_text', 'number', 'currency', 'boolean'],
-  ['date', 'enum', 'image', 'file', 'relation'],
+const TYPE_ROWS: { label: string; types: string[] }[] = [
+  { label: 'Basic', types: ['text', 'long_text', 'number', 'currency', 'boolean'] },
+  { label: 'Structured', types: ['date', 'time', 'enum', 'multi_select', 'phone'] },
+  { label: 'Advanced', types: ['computed', 'image', 'file', 'relation'] },
 ];
 
 /* ─── InlineAddField ──────────────────────────────────────────────────────── */
@@ -658,7 +718,7 @@ function InlineAddField({
     }
   };
 
-  const hasConfig = ['enum', 'relation', 'currency', 'boolean', 'image', 'file'].includes(fieldType);
+  const hasConfig = ['enum', 'multi_select', 'relation', 'currency', 'boolean', 'image', 'file', 'phone', 'time', 'computed'].includes(fieldType);
 
   return (
     <div className="mt-4 rounded-xl border-2 border-accent/30 bg-bg-secondary/40 overflow-hidden">
@@ -717,50 +777,62 @@ function InlineAddField({
           </button>
         </div>
 
-        {/* Type picker — 2 rows × 5 chips */}
-        <div className="space-y-1.5">
-          {TYPE_ROWS.map((row, ri) => (
-            <div key={ri} className="flex gap-1.5">
-              {row.map((t) => {
-                const meta = FIELD_TYPE_META[t] ?? { icon: '?', color: '', desc: '' };
-                const selected = fieldType === t;
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    title={`${getFieldTypeLabel(t)} — ${meta.desc}`}
-                    onClick={() => {
-                      setFieldType(t);
-                      setConfig({});
-                      setRelationModelId(null);
-                      setRelationBuiltinModel(null);
-                      setRelationKind(null);
-                    }}
-                    className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg border py-2.5 text-center transition-all ${
-                      selected
-                        ? 'border-accent bg-accent/10 shadow-sm'
-                        : 'border-border-color bg-bg-primary hover:border-accent/40 hover:bg-bg-secondary'
-                    }`}
-                  >
-                    <span className={`text-sm font-bold leading-none ${selected ? 'text-accent' : meta.color}`}>
-                      {meta.icon}
-                    </span>
-                    <span className={`text-[10px] font-medium leading-tight ${selected ? 'text-accent' : 'text-text-secondary'}`}>
-                      {getFieldTypeLabel(t).split(' ')[0]}
-                    </span>
-                  </button>
-                );
-              })}
+        {/* Type picker — categorized rows */}
+        <div className="space-y-3">
+          {TYPE_ROWS.map((group) => (
+            <div key={group.label}>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary/60">{group.label}</p>
+              <div className="flex gap-1.5">
+                {group.types.map((t) => {
+                  const meta = FIELD_TYPE_META[t] ?? { icon: '?', color: '', desc: '' };
+                  const selected = fieldType === t;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      title={`${getFieldTypeLabel(t)} — ${meta.desc}`}
+                      onClick={() => {
+                        setFieldType(t);
+                        setConfig({});
+                        setRelationModelId(null);
+                        setRelationBuiltinModel(null);
+                        setRelationKind(null);
+                      }}
+                      className={`flex flex-1 flex-col items-center gap-1 rounded-lg border py-2.5 text-center transition-all ${
+                        selected
+                          ? 'border-accent bg-accent/10 shadow-sm ring-1 ring-accent/20'
+                          : 'border-border-color bg-bg-primary hover:border-accent/40 hover:bg-bg-secondary'
+                      }`}
+                    >
+                      <span className={`text-sm font-bold leading-none ${selected ? 'text-accent' : meta.color}`}>
+                        {meta.icon}
+                      </span>
+                      <span className={`text-[10px] font-medium leading-tight ${selected ? 'text-accent' : 'text-text-secondary'}`}>
+                        {getFieldTypeLabel(t).split(' ')[0]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ))}
-          <p className="text-[11px] text-text-secondary pt-0.5">
-            <span className="font-medium text-text-primary">{getFieldTypeLabel(fieldType)}</span>
-            {' — '}
-            {FIELD_TYPE_META[fieldType]?.desc ?? ''}
-            {fieldType === 'relation' && (
-              <span className="ml-1 text-amber-500">· Cannot be changed after creation</span>
-            )}
-          </p>
+          {/* Selected type description */}
+          <div className="flex items-center gap-2 rounded-lg bg-bg-secondary/50 px-3 py-2">
+            <span className={`text-sm font-bold ${FIELD_TYPE_META[fieldType]?.color ?? ''}`}>
+              {FIELD_TYPE_META[fieldType]?.icon ?? '?'}
+            </span>
+            <div>
+              <span className="text-xs font-medium text-text-primary">{getFieldTypeLabel(fieldType)}</span>
+              <span className="mx-1 text-text-secondary/40">—</span>
+              <span className="text-xs text-text-secondary">{FIELD_TYPE_META[fieldType]?.desc ?? ''}</span>
+              {fieldType === 'relation' && (
+                <span className="ml-1.5 text-xs text-amber-500">Cannot be changed after creation</span>
+              )}
+              {fieldType === 'computed' && (
+                <span className="ml-1.5 text-xs text-amber-500">Read-only, auto-calculated</span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Type-specific config */}
@@ -859,6 +931,9 @@ function EditFieldModal({
   const [isSearchable, setIsSearchable] = useState(field.is_searchable);
   const [config, setConfig] = useState<Record<string, unknown>>(field.config ?? {});
   const [defaultValue, setDefaultValue] = useState<unknown>(field.default_value);
+  const [showDelete, setShowDelete] = useState(false);
+
+  const meta = FIELD_TYPE_META[field.field_type];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -874,80 +949,141 @@ function EditFieldModal({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
       <div
-        className="w-full max-w-[calc(100vw-2rem)] rounded-xl border border-border-color bg-card-bg p-6 shadow-lg max-h-[90vh] overflow-y-auto sm:max-w-md"
+        className="w-full max-w-[calc(100vw-2rem)] rounded-2xl border border-border-color bg-card-bg shadow-2xl max-h-[90vh] overflow-y-auto sm:max-w-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold text-text-primary">Edit field</h3>
-        <p className="mt-1 text-sm text-text-secondary">
-          {field.name} · {getFieldTypeLabel(field.field_type)}
-        </p>
-        <p className="mt-0.5 text-xs text-text-secondary">Type cannot be changed.</p>
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-border-color px-6 py-4">
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bg-secondary text-lg font-bold ${meta?.color ?? 'text-text-secondary'}`}>
+            {meta?.icon ?? '?'}
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold text-text-primary">Edit field</h3>
+            <p className="text-xs text-text-secondary">
+              <code className="rounded bg-bg-secondary px-1">{field.name}</code>
+              <span className="mx-1.5">·</span>
+              <span className={meta?.color ?? ''}>{getFieldTypeLabel(field.field_type)}</span>
+              <span className="ml-1 text-text-secondary/50">(type cannot be changed)</span>
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors" aria-label="Close">
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+          {/* Display name */}
           <div>
-            <label className="block text-sm font-medium text-text-secondary">Display name</label>
+            <label className="block text-sm font-medium text-text-primary mb-1.5">Display name</label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               required
-              className="mt-1 block w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
+              className="block w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
-          <div className="border-t border-border-color pt-3">
-            <FieldConfigPanel
-              fieldType={field.field_type}
-              config={config}
-              onConfigChange={setConfig}
-              relationModelId={field.relation_model_id ?? null}
-              onRelationModelIdChange={() => {}}
-              relationBuiltinModel={field.relation_builtin_model ?? null}
-              onRelationBuiltinModelChange={() => {}}
-              relationKind={field.relation_kind as 'many_to_one' | 'one_to_many' | 'many_to_many' | null}
-              onRelationKindChange={() => {}}
-              relationReadOnly
-              defaultValue={defaultValue}
-              onDefaultValueChange={setDefaultValue}
-            />
+
+          {/* Type-specific config */}
+          <FieldConfigPanel
+            fieldType={field.field_type}
+            config={config}
+            onConfigChange={setConfig}
+            relationModelId={field.relation_model_id ?? null}
+            onRelationModelIdChange={() => {}}
+            relationBuiltinModel={field.relation_builtin_model ?? null}
+            onRelationBuiltinModelChange={() => {}}
+            relationKind={field.relation_kind as 'many_to_one' | 'one_to_many' | 'many_to_many' | null}
+            onRelationKindChange={() => {}}
+            relationReadOnly
+            defaultValue={defaultValue}
+            onDefaultValueChange={setDefaultValue}
+          />
+
+          {/* Field properties — styled toggle grid */}
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-2">Properties</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { key: 'required', label: 'Required', desc: 'Must have a value', checked: isRequired, onChange: setIsRequired },
+                { key: 'unique', label: 'Unique', desc: 'No duplicate values', checked: isUnique, onChange: setIsUnique },
+                { key: 'editable', label: 'Editable', desc: 'Can be modified', checked: isEditable, onChange: setIsEditable },
+                { key: 'searchable', label: 'Searchable', desc: 'Included in search', checked: isSearchable, onChange: setIsSearchable },
+              ].map(({ key, label, desc, checked, onChange }) => (
+                <label
+                  key={key}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all ${
+                    checked ? 'border-accent/40 bg-accent/5' : 'border-border-color bg-bg-primary hover:border-border-color/80'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => onChange(e.target.checked)}
+                    className="h-4 w-4 rounded border-border-color text-accent focus:ring-accent"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-text-primary">{label}</span>
+                    <p className="text-[10px] text-text-secondary leading-tight">{desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={isRequired} onChange={(e) => setIsRequired(e.target.checked)} />
-              <span className="text-sm text-text-secondary">Required</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={isUnique} onChange={(e) => setIsUnique(e.target.checked)} />
-              <span className="text-sm text-text-secondary">Unique</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={isEditable} onChange={(e) => setIsEditable(e.target.checked)} />
-              <span className="text-sm text-text-secondary">Editable</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={isSearchable} onChange={(e) => setIsSearchable(e.target.checked)} />
-              <span className="text-sm text-text-secondary">Searchable</span>
-            </label>
-          </div>
-          <div className="flex justify-end gap-2 pt-2 border-t border-border-color">
-            <button type="button" onClick={onClose} className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:bg-bg-secondary">
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => onRequestDelete(field)}
-              disabled={saving}
-              className="rounded-lg border border-red-200 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 dark:border-red-700"
-            >
-              Delete field
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-md border border-border-color bg-bg-secondary px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+
+          {/* Footer actions */}
+          <div className="flex items-center justify-between gap-3 border-t border-border-color pt-4">
+            {/* Delete — tucked away with confirmation */}
+            <div>
+              {!showDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDelete(true)}
+                  className="text-xs text-red-500/70 hover:text-red-600 transition-colors"
+                >
+                  Delete field
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-red-600">Are you sure?</span>
+                  <button
+                    type="button"
+                    onClick={() => onRequestDelete(field)}
+                    disabled={saving}
+                    className="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    Yes, delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDelete(false)}
+                    className="text-xs text-text-secondary hover:text-text-primary"
+                  >
+                    No
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Save / Cancel */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-border-color px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

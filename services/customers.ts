@@ -7,6 +7,7 @@ export interface LinkedChannel {
   channel_id: number;
   channel_type: string;
   channel_identifier: string;
+  display_name?: string;
 }
 
 export interface Customer {
@@ -23,7 +24,6 @@ export interface Customer {
   lastActivity: string;
   lastMessagePreview: string;
   aiActive: boolean;
-  status?: 'new' | 'contacted' | 'qualified' | 'lost' | 'won';
   priority?: 'low' | 'medium' | 'high';
   source?: string;
   notes?: string | null;
@@ -43,6 +43,7 @@ export interface Customer {
   pipelineStageId?: number | null;
   pipelineStageName?: string | null;
   pipelineStageColor?: string | null;
+  pipeline_stage_type?: string;
   /** AI agent assigned to this lead */
   aiAgentId?: number | null;
 }
@@ -87,12 +88,13 @@ export interface CustomerFilters {
   search?: string;
   page?: number;
   perPage?: number;
-  status?: 'new' | 'contacted' | 'qualified' | 'lost' | 'won';
+  stage_type?: string;
   priority?: 'low' | 'medium' | 'high';
   source?: string;
   channelId?: number; // Filter by channel (leads linked to this channel)
   assignedToId?: number | null; // Filter by assignee; use with assignedFilter for "unassigned"
   assignedFilter?: 'all' | 'unassigned' | 'me'; // me = current user (owner)
+  pipelineStageId?: number | null; // Filter by pipeline stage
 }
 
 type Lead = {
@@ -102,7 +104,6 @@ type Lead = {
   name?: string | null;
   phone?: string | null;
   email?: string | null;
-  status?: string;
   priority?: string;
   source?: string | null;
   notes?: string | null;
@@ -259,7 +260,7 @@ export async function listCustomers(filters: CustomerFilters = {}) {
   params.set('page', String(page));
   params.set('per_page', String(perPage));
   if (search) params.set('search', search);
-  if (filters.status) params.set('status', filters.status);
+  if (filters.stage_type) params.set('stage_type', filters.stage_type);
   if (filters.priority) params.set('priority', filters.priority);
   if (filters.source) params.set('source', filters.source);
   if (filters.channelId != null) params.set('channel_id', String(filters.channelId));
@@ -269,26 +270,22 @@ export async function listCustomers(filters: CustomerFilters = {}) {
 
   const data = await apiFetch<LeadListResponse>(`/leads?${params.toString()}`, { method: 'GET' });
 
-  // Only fetch conversations if we have leads (avoid unnecessary API call)
+  // Only fetch conversations for the displayed leads (not ALL conversations)
   let latestByLead = new Map<number, ConvoOut>();
   if (data.leads.length > 0) {
     try {
-      // Fetch conversations only for the leads we're displaying (more efficient)
       const leadIds = data.leads.map(l => l.id);
-      // For now, we'll fetch all conversations but this could be optimized to fetch only for specific leads
-      const convos = await apiFetch<ConvoOut[]>('/convo/', { method: 'GET' });
+      // Use lead_ids filter to fetch only relevant conversations
+      const convos = await apiFetch<ConvoOut[]>(`/convo/?lead_ids=${leadIds.join(',')}`, { method: 'GET' });
       for (const c of convos) {
-        if (leadIds.includes(c.lead_id)) {
-          const prev = latestByLead.get(c.lead_id);
-          const ts = c.last_message_at ?? c.updated_at ?? '';
-          const prevTs = prev?.last_message_at ?? prev?.updated_at ?? '';
-          if (!prev || (ts && prevTs && new Date(ts).getTime() > new Date(prevTs).getTime())) {
-            latestByLead.set(c.lead_id, c);
-          }
+        const prev = latestByLead.get(c.lead_id);
+        const ts = c.last_message_at ?? c.updated_at ?? '';
+        const prevTs = prev?.last_message_at ?? prev?.updated_at ?? '';
+        if (!prev || (ts && prevTs && new Date(ts).getTime() > new Date(prevTs).getTime())) {
+          latestByLead.set(c.lead_id, c);
         }
       }
     } catch (error) {
-      // If conversation fetch fails, continue without conversation data
       console.warn('Failed to fetch conversations for lead list:', error);
     }
   }
@@ -311,7 +308,6 @@ export async function listCustomers(filters: CustomerFilters = {}) {
       lastActivity: last,
       lastMessagePreview: convo?.summary ?? '—',
       aiActive: (convo?.mode ?? 'ai') === 'ai',
-      status: l.status as 'new' | 'contacted' | 'qualified' | 'lost' | 'won' | undefined,
       priority: l.priority as 'low' | 'medium' | 'high' | undefined,
       source: l.source ?? undefined,
       notes: l.notes ?? null,
@@ -378,7 +374,6 @@ export async function getCustomer(id: string): Promise<Customer | null> {
     lastActivity: last,
     lastMessagePreview: latestConvo?.summary ?? '—',
     aiActive: (latestConvo?.mode ?? 'ai') === 'ai',
-    status: lead.status as 'new' | 'contacted' | 'qualified' | 'lost' | 'won' | undefined,
     priority: lead.priority as 'low' | 'medium' | 'high' | undefined,
     source: lead.source ?? undefined,
     notes: lead.notes ?? null,
@@ -495,7 +490,6 @@ export async function fetchCustomerDetail(id: string): Promise<CustomerDetailRes
     lastActivity: last,
     lastMessagePreview: latestConvo?.summary ?? '—',
     aiActive: (latestConvo?.mode ?? 'ai') === 'ai',
-    status: lead.status as 'new' | 'contacted' | 'qualified' | 'lost' | 'won' | undefined,
     priority: lead.priority as 'low' | 'medium' | 'high' | undefined,
     source: lead.source ?? undefined,
     notes: lead.notes ?? null,
@@ -583,7 +577,6 @@ export interface LeadCreate {
   name: string;
   phone: string;
   email?: string;
-  status?: 'new' | 'contacted' | 'qualified' | 'lost' | 'won';
   priority?: 'low' | 'medium' | 'high';
   source?: string;
   notes?: string;
@@ -594,7 +587,6 @@ export interface LeadUpdate {
   name?: string;
   phone?: string;
   email?: string;
-  status?: 'new' | 'contacted' | 'qualified' | 'lost' | 'won';
   priority?: 'low' | 'medium' | 'high';
   source?: string;
   notes?: string;
@@ -604,7 +596,7 @@ export interface LeadUpdate {
 
 export interface LeadStats {
   total_leads: number;
-  by_status: Record<string, number>;
+  by_stage: Record<string, number>;
   by_priority: Record<string, number>;
   by_source: Record<string, number>;
 }

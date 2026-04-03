@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PermissionGuard from '@/components/permission-guard';
 import { AgentStatusBadge } from '@/components/agents/agent-status-badge';
@@ -15,7 +15,7 @@ import { LayoutTemplate, Plus, ChevronDown, ChevronUp, Zap, MessageSquare } from
 
 // ─── Template Card ───────────────────────────────────────────
 
-function TemplateCard({ t, onUse }: { t: AgentTemplate; onUse: (t: AgentTemplate) => void }) {
+const TemplateCard = memo(function TemplateCard({ t, onUse }: { t: AgentTemplate; onUse: (t: AgentTemplate) => void }) {
   const cat: Record<string, string> = {
     sales: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
     marketing: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300',
@@ -42,11 +42,11 @@ function TemplateCard({ t, onUse }: { t: AgentTemplate; onUse: (t: AgentTemplate
       </div>
     </button>
   );
-}
+});
 
 // ─── Agent Card ──────────────────────────────────────────────
 
-function AgentCard({
+const AgentCard = memo(function AgentCard({
   agent,
   onOpen,
   onDeploy,
@@ -114,23 +114,20 @@ function AgentCard({
       </div>
     </div>
   );
-}
+});
 
 // ─── Main Page ───────────────────────────────────────────────
 
 export default function AgentsClient() {
   const router = useRouter();
-  const { agents, loading, list, setStatus, templates, loadTemplates, createFromTemplate } = useAgentStore(
-    useShallow((s) => ({
-      agents: s.agents,
-      loading: s.loading,
-      list: s.list,
-      setStatus: s.setStatus,
-      templates: s.templates,
-      loadTemplates: s.loadTemplates,
-      createFromTemplate: s.createFromTemplate,
-    })),
+  // Split data (triggers re-renders) from actions (stable refs, no re-renders)
+  const { agents, loading, templates } = useAgentStore(
+    useShallow((s) => ({ agents: s.agents, loading: s.loading, templates: s.templates })),
   );
+  const list = useAgentStore((s) => s.list);
+  const setStatus = useAgentStore((s) => s.setStatus);
+  const loadTemplates = useAgentStore((s) => s.loadTemplates);
+  const createFromTemplate = useAgentStore((s) => s.createFromTemplate);
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);

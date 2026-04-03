@@ -326,7 +326,6 @@ export default function CustomerProfilePage() {
           name: currentCustomer.name || undefined,
           phone: currentCustomer.phone || undefined,
           email: currentCustomer.email || undefined,
-          status: currentCustomer.status,
           priority: currentCustomer.priority,
           source: currentCustomer.source,
           notes: currentCustomer.notes || undefined,
@@ -553,21 +552,12 @@ export default function CustomerProfilePage() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-xl font-semibold text-text-primary">{displayName}</h1>
-                  {currentCustomer.status && (
+                  {currentCustomer.pipelineStageName && (
                     <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-sm font-medium ${
-                        currentCustomer.status === 'won'
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
-                          : currentCustomer.status === 'qualified'
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
-                            : currentCustomer.status === 'contacted'
-                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-                              : currentCustomer.status === 'lost'
-                                ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
-                                : 'bg-gray-100 text-gray-700 dark:bg-gray-700/40 dark:text-gray-300'
-                      }`}
+                      className="inline-flex items-center rounded-full px-2.5 py-1 text-sm font-medium"
+                      style={currentCustomer.pipelineStageColor ? { backgroundColor: currentCustomer.pipelineStageColor + '20', color: currentCustomer.pipelineStageColor } : { backgroundColor: '#e5e7eb', color: '#374151' }}
                     >
-                      {currentCustomer.status.charAt(0).toUpperCase() + currentCustomer.status.slice(1)}
+                      {currentCustomer.pipelineStageName}
                     </span>
                   )}
                   {currentCustomer.priority && (
@@ -631,7 +621,6 @@ export default function CustomerProfilePage() {
                       name: currentCustomer.name || '',
                       phone: currentCustomer.phone || '',
                       email: currentCustomer.email || '',
-                      status: currentCustomer.status as LeadUpdate['status'],
                       priority: currentCustomer.priority as LeadUpdate['priority'],
                       source: currentCustomer.source || '',
                     });
@@ -693,89 +682,24 @@ export default function CustomerProfilePage() {
               <div className="p-4">
                 {activeTab === 'overview' && (
                   <div className="space-y-4">
-                    {/* Pipeline stages — clickable, saves to backend */}
+                    {/* Pipeline stage display */}
                     <section>
                       <div className="flex items-center justify-between mb-3">
                         <h2 className="text-sm font-semibold text-text-secondary">Pipeline stage</h2>
-                        <span className="text-xs text-text-secondary">Click a stage to update</span>
                       </div>
-                      {/* Main funnel: New → Contacted → Qualified → Won */}
-                      <div className="flex items-stretch gap-0 mb-2">
-                        {(['new', 'contacted', 'qualified', 'won'] as const).map((stage, i, arr) => {
-                          const isActive = currentCustomer.status === stage;
-                          const stageIndex = ['new', 'contacted', 'qualified', 'won', 'lost'].indexOf(currentCustomer.status ?? 'new');
-                          const thisIndex = ['new', 'contacted', 'qualified', 'won'].indexOf(stage);
-                          const isPast = stageIndex > thisIndex && currentCustomer.status !== 'lost';
-                          const styleMap: Record<string, { active: string; past: string; idle: string; dot: string }> = {
-                            new:       { active: 'bg-gray-500 border-gray-500 text-white shadow-lg scale-105', past: 'bg-gray-200 border-gray-300 text-gray-600 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300', idle: 'border-border-color text-text-secondary hover:border-gray-400 hover:text-text-primary', dot: 'bg-gray-500' },
-                            contacted: { active: 'bg-amber-500 border-amber-500 text-white shadow-lg scale-105', past: 'bg-amber-100 border-amber-300 text-amber-700 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-300', idle: 'border-border-color text-text-secondary hover:border-amber-400 hover:text-amber-500', dot: 'bg-amber-500' },
-                            qualified: { active: 'bg-blue-500 border-blue-500 text-white shadow-lg scale-105', past: 'bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300', idle: 'border-border-color text-text-secondary hover:border-blue-400 hover:text-blue-500', dot: 'bg-blue-500' },
-                            won:       { active: 'bg-emerald-500 border-emerald-500 text-white shadow-lg scale-105', past: 'bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-300', idle: 'border-border-color text-text-secondary hover:border-emerald-400 hover:text-emerald-500', dot: 'bg-emerald-500' },
-                          };
-                          const s = styleMap[stage];
-                          const cls = isActive ? s.active : isPast ? s.past : s.idle;
-                          return (
-                            <div key={stage} className="flex items-center flex-1 min-w-0">
-                              <button
-                                type="button"
-                                disabled={isSaving}
-                                onClick={async () => {
-                                  if (isActive || !id) return;
-                                  setIsSaving(true);
-                                  setActionError(null);
-                                  setActionNotice(null);
-                                  try {
-                                    await updateLead(id, { status: stage });
-                                    setActionNotice(`Stage updated to ${stage.charAt(0).toUpperCase() + stage.slice(1)}.`);
-                                  } catch {
-                                    setActionError('Failed to update stage.');
-                                  } finally {
-                                    setIsSaving(false);
-                                  }
-                                }}
-                                className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-2 py-3 text-xs font-semibold rounded-lg border-2 transition-all cursor-pointer disabled:cursor-not-allowed ${cls}`}
-                              >
-                                <span className={`h-2.5 w-2.5 rounded-full ${isActive || isPast ? s.dot : 'bg-border-color'}`} />
-                                <span className="truncate">{stage.charAt(0).toUpperCase() + stage.slice(1)}</span>
-                              </button>
-                              {i < arr.length - 1 && (
-                                <div className={`w-5 flex-none flex items-center justify-center ${isPast ? 'text-text-primary' : 'text-border-color'}`}>
-                                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                                  </svg>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                      <div className="flex items-center gap-2">
+                        {currentCustomer.pipelineStageName ? (
+                          <span
+                            className="inline-flex items-center rounded-full px-3 py-1.5 text-sm font-semibold"
+                            style={currentCustomer.pipelineStageColor ? { backgroundColor: currentCustomer.pipelineStageColor + '20', color: currentCustomer.pipelineStageColor } : { backgroundColor: '#e5e7eb', color: '#374151' }}
+                          >
+                            {currentCustomer.pipelineStageName}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-text-secondary">No stage assigned</span>
+                        )}
                       </div>
-                      {/* Lost as a separate row */}
-                      <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={async () => {
-                          if (currentCustomer.status === 'lost' || !id) return;
-                          setIsSaving(true);
-                          setActionError(null);
-                          setActionNotice(null);
-                          try {
-                            await updateLead(id, { status: 'lost' });
-                            setActionNotice('Stage updated to Lost.');
-                          } catch {
-                            setActionError('Failed to update stage.');
-                          } finally {
-                            setIsSaving(false);
-                          }
-                        }}
-                        className={`w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg border-2 transition-all ${
-                          currentCustomer.status === 'lost'
-                            ? 'bg-red-500 border-red-500 text-white shadow-md'
-                            : 'border-border-color text-text-secondary hover:border-red-400 hover:text-red-500'
-                        }`}
-                      >
-                        <span className={`h-2 w-2 rounded-full ${currentCustomer.status === 'lost' ? 'bg-white' : 'bg-border-color'}`} />
-                        Mark as Lost
-                      </button>
+                      <p className="mt-2 text-xs text-text-secondary">Use the pipeline board on the Leads page to move leads between stages.</p>
                     </section>
 
                     {/* Quick metrics row */}
@@ -941,25 +865,6 @@ export default function CustomerProfilePage() {
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-text-secondary">Status</label>
-                          <select
-                            value={editData.status || 'new'}
-                            onChange={(e) =>
-                              setEditData({
-                                ...editData,
-                                status: e.target.value as 'new' | 'contacted' | 'qualified' | 'won' | 'lost',
-                              })
-                            }
-                            className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                          >
-                            <option value="new">New</option>
-                            <option value="contacted">Contacted</option>
-                            <option value="qualified">Qualified</option>
-                            <option value="won">Won</option>
-                            <option value="lost">Lost</option>
-                          </select>
-                        </div>
-                        <div>
                           <label className="mb-1 block text-sm font-medium text-text-secondary">Priority</label>
                           <select
                             value={editData.priority || 'medium'}
@@ -1025,8 +930,8 @@ export default function CustomerProfilePage() {
                           <h2 className="mb-2 text-sm font-semibold text-text-secondary">Lead information</h2>
                           <dl className="space-y-1.5 text-base">
                             <div className="flex justify-between gap-2">
-                              <dt className="text-text-secondary">Status</dt>
-                              <dd className="text-text-primary">{currentCustomer.status ? currentCustomer.status.charAt(0).toUpperCase() + currentCustomer.status.slice(1) : 'New'}</dd>
+                              <dt className="text-text-secondary">Stage</dt>
+                              <dd className="text-text-primary">{currentCustomer.pipelineStageName || 'None'}</dd>
                             </div>
                             <div className="flex justify-between gap-2">
                               <dt className="text-text-secondary">Priority</dt>
@@ -1057,7 +962,6 @@ export default function CustomerProfilePage() {
                                   name: currentCustomer.name || '',
                                   phone: currentCustomer.phone || '',
                                   email: currentCustomer.email || '',
-                                  status: currentCustomer.status as LeadUpdate['status'],
                                   priority: currentCustomer.priority as LeadUpdate['priority'],
                                   source: currentCustomer.source || '',
                                 });
@@ -1098,7 +1002,6 @@ export default function CustomerProfilePage() {
                                   name: currentCustomer.name || '',
                                   phone: currentCustomer.phone || '',
                                   email: currentCustomer.email || '',
-                                  status: currentCustomer.status as LeadUpdate['status'],
                                   priority: currentCustomer.priority as LeadUpdate['priority'],
                                   source: currentCustomer.source || '',
                                 });

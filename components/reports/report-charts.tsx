@@ -36,9 +36,9 @@ function objToChartData(obj: Record<string, number>, labelKey: string = 'name', 
 }
 
 export function LeadsCharts({ data }: { data: ReportsDashboard['leads'] }) {
-  const statusData = objToChartData(data.by_status);
+  const stageData = objToChartData(data.by_stage ?? {});
   const sourceData = objToChartData(data.by_source);
-  const hasAny = data.total_leads > 0 || statusData.length > 0 || sourceData.length > 0 || data.over_time.some((p) => p.count > 0);
+  const hasAny = data.total_leads > 0 || stageData.length > 0 || sourceData.length > 0 || data.over_time.some((p) => p.count > 0);
   if (!hasAny) {
     return (
       <section id="leads" className="rounded-xl border border-border-color bg-card-bg p-5">
@@ -58,13 +58,13 @@ export function LeadsCharts({ data }: { data: ReportsDashboard['leads'] }) {
           <p className="text-sm text-text-secondary mb-2">Total leads</p>
           <p className="text-2xl font-bold text-text-primary">{data.total_leads}</p>
         </div>
-        {statusData.length > 0 && (
+        {stageData.length > 0 && (
           <div className="rounded-xl border border-border-color bg-card-bg p-4 min-h-[240px]">
-            <p className="text-sm text-text-secondary mb-2">By status</p>
+            <p className="text-sm text-text-secondary mb-2">By stage</p>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie
-                  data={statusData}
+                  data={stageData}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
@@ -72,7 +72,7 @@ export function LeadsCharts({ data }: { data: ReportsDashboard['leads'] }) {
                   outerRadius={70}
                   label={({ name, value }) => `${name}: ${value}`}
                 >
-                  {statusData.map((_, i) => (
+                  {stageData.map((_, i) => (
                     <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
                 </Pie>

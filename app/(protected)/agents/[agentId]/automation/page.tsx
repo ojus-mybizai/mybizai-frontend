@@ -73,7 +73,7 @@ const BASE_EVENTS: Array<{ event: string; label: string; group: string }> = [
   { event: 'conversation.turn_completed', label: 'Conversation turn completed', group: 'Conversation' },
   { event: 'lead.created', label: 'New lead created', group: 'Lead' },
   { event: 'lead.assigned', label: 'Lead assigned', group: 'Lead' },
-  { event: 'lead.status_changed', label: 'Lead status changed', group: 'Lead' },
+  { event: 'lead.pipeline_stage_changed', label: 'Lead pipeline stage changed', group: 'Lead' },
   { event: 'work.created', label: 'Task created', group: 'Work' },
   { event: 'work.completed', label: 'Task completed', group: 'Work' },
 ];

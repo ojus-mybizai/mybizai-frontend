@@ -286,7 +286,6 @@ export function CreateLeadModal({ isOpen, onClose, fieldConfigs }: CreateLeadMod
           name: pendingData.name || undefined,
           phone: pendingData.phone || undefined,
           email: pendingData.email || undefined,
-          status: pendingData.status || undefined,
           priority: pendingData.priority || undefined,
           source: pendingData.source || undefined,
           notes: pendingData.notes || undefined,

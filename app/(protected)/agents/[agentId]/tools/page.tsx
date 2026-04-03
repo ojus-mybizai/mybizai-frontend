@@ -7,7 +7,7 @@ import { useToolStore } from '@/lib/tool-store';
 import { useDataSheetToolStore } from '@/lib/datasheet-tool-store';
 import { CreateDataSheetToolModal } from '@/components/agents/create-datasheet-tool-modal';
 import type { BindToolConfigInput } from '@/services/agents';
-import { Save, Loader2, Plus, Search } from 'lucide-react';
+import { Save, Loader2, Plus, Search, Pencil, Trash2 } from 'lucide-react';
 
 export default function ToolsPage() {
   const { current, saveTools } = useAgentStore(useShallow((s) => ({
@@ -138,17 +138,36 @@ export default function ToolsPage() {
                       </div>
                       <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">{tool.description}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleTool(tool.id)}
-                      className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition ${
-                        on
-                          ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                          : 'bg-bg-primary border-border-color text-text-secondary hover:border-text-secondary'
-                      }`}
-                    >
-                      {on ? 'Enabled' : 'Disabled'}
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {tool.category === 'datasheet' && (
+                        <>
+                          <button
+                            type="button"
+                            title="Delete datasheet tool"
+                            onClick={() => {
+                              if (confirm(`Delete datasheet tool "${tool.name}"?`)) {
+                                removeDSTool(Number(tool.id));
+                                setEnabledIds((prev) => { const n = new Set(prev); n.delete(tool.id); return n; });
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleTool(tool.id)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
+                          on
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                            : 'bg-bg-primary border-border-color text-text-secondary hover:border-text-secondary'
+                        }`}
+                      >
+                        {on ? 'Enabled' : 'Disabled'}
+                      </button>
+                    </div>
                   </div>
                   {on && (
                     <input

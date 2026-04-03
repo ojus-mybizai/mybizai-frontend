@@ -55,6 +55,26 @@ export function MetaConnectButton({ channel, onConnected }: MetaConnectButtonPro
       );
     }, 30000);
 
+    // Build login options based on channel type
+    const isWhatsApp = channel === 'whatsapp';
+    const whatsappConfigId = process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID?.trim();
+
+    // WhatsApp uses Embedded Signup (config_id + code flow) so Meta registers the
+    // phone number on the Cloud API automatically.
+    // Instagram/Messenger use regular FB Login with scopes.
+    const loginOptions: Record<string, unknown> = isWhatsApp && whatsappConfigId
+      ? {
+          config_id: whatsappConfigId,
+          response_type: 'code',
+          override_default_response_type: true,
+          extras: {
+            setup: {},
+            featureType: '',
+            sessionInfoVersion: '2',
+          },
+        }
+      : { scope: getScope(channel) };
+
     try {
       window.FB.login((response) => {
         clearTimeout(timeoutId);
@@ -65,12 +85,18 @@ export function MetaConnectButton({ channel, onConnected }: MetaConnectButtonPro
               return;
             }
 
-            const accessToken = response.authResponse.accessToken;
+            const { accessToken, code } = response.authResponse;
+
+            if (!accessToken && !code) {
+              setError('No credentials received from Meta. Please try again.');
+              return;
+            }
 
             await apiFetch('/auth/facebook/exchange', {
               method: 'POST',
               body: JSON.stringify({
-                accessToken,
+                accessToken: accessToken || null,
+                code: code || null,
                 state: { channel },
               }),
             });
@@ -86,7 +112,7 @@ export function MetaConnectButton({ channel, onConnected }: MetaConnectButtonPro
             setLoading(false);
           }
         })();
-      }, { scope: getScope(channel) });
+      }, loginOptions);
     } catch (err) {
       clearTimeout(timeoutId);
       setLoading(false);
@@ -117,4 +143,3 @@ export function MetaConnectButton({ channel, onConnected }: MetaConnectButtonPro
 }
 
 export default MetaConnectButton;
-

@@ -1,7 +1,8 @@
 'use client';
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, memo, useCallback, useEffect, useRef, useState } from 'react';
 import { LayoutGrid, MessageCircle } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { AIStatusBadge } from '@/components/customers/ai-status-badge';
 import { MessageBubble } from '@/components/customers/message-bubble';
 import { ConversationRowSkeleton } from '@/components/conversations/ConversationRowSkeleton';
@@ -60,6 +61,80 @@ function formatDuration(seconds: number | null | undefined): string {
   return `${mins}m ${secs}s`;
 }
 
+const ConversationRow = memo(function ConversationRow({
+  conv,
+  isSelected,
+  onSelect,
+}: {
+  conv: InboxConversation;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const displayName = conv.leadName || conv.customerId || 'Unknown';
+  const initials = getInitials(conv.leadName ?? conv.customerId, 'Unknown');
+  const hasUnread = (conv.unreadCount ?? 0) > 0;
+  return (
+    <li className="py-1">
+      <button
+        type="button"
+        onClick={() => onSelect(conv.id)}
+        aria-pressed={isSelected}
+        className={`flex w-full items-start gap-3 rounded-lg px-4 py-3 text-left transition-colors min-h-[60px] ${
+          isSelected
+            ? 'border-l-4 border-l-(--accent) bg-(--accent-soft)'
+            : 'border-l-4 border-l-transparent hover:bg-bg-secondary/50'
+        }`}
+      >
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-secondary text-sm font-semibold text-text-secondary"
+          aria-hidden
+        >
+          {initials}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm font-semibold text-text-primary">
+              {displayName}
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5">
+              {hasUnread && (
+                <span className="h-2 w-2 rounded-full bg-(--accent)" aria-label="Unread" />
+              )}
+              <span className="text-xs text-text-secondary" title={formatTime(conv.updatedAt)}>
+                {formatRelativeTime(conv.updatedAt)}
+              </span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {conv.channelType && (
+              <span className="text-xs font-medium capitalize text-text-secondary">
+                {conv.channelType}
+              </span>
+            )}
+            {conv.channelName && (
+              <span className="text-xs text-text-secondary truncate max-w-[120px]">
+                {conv.channelName}
+              </span>
+            )}
+            <AIStatusBadge mode={conv.status} />
+            {conv.agentName && conv.agentName !== '—' && (
+              <span
+                className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                title={`Agent: ${conv.agentName}`}
+              >
+                {conv.agentName}
+              </span>
+            )}
+          </div>
+          <p className="line-clamp-2 text-sm text-text-secondary mt-1">
+            {conv.lastMessagePreview || '—'}
+          </p>
+        </div>
+      </button>
+    </li>
+  );
+});
+
 const CHANNEL_OPTIONS: { value: string; label: string; icon: typeof LayoutGrid; color: string }[] = [
   { value: '', label: 'All', icon: LayoutGrid, color: 'bg-accent text-white' },
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, color: 'bg-emerald-600/90 text-white hover:bg-emerald-600' },
@@ -73,14 +148,6 @@ const MODE_OPTIONS: { value: string; label: string }[] = [
   { value: 'manual', label: 'Manual' },
 ];
 
-const LEAD_STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: 'All' },
-  { value: 'new', label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'qualified', label: 'Qualified' },
-  { value: 'lost', label: 'Lost' },
-  { value: 'won', label: 'Won' },
-];
 
 export function ConversationsView({ initialConversationId, agentFilter }: { initialConversationId?: string; agentFilter?: string }) {
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
@@ -97,14 +164,18 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
   const [input, setInput] = useState('');
   const [channelFilter, setChannelFilter] = useState('');
   const [modeFilter, setModeFilter] = useState('');
-  const [leadStatusFilter, setLeadStatusFilter] = useState('');
   const [intentFilter, setIntentFilter] = useState('');
   const debouncedIntent = useDebounce(intentFilter, 300);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(!!initialConversationId);
   const [detailTab, setDetailTab] = useState<'chat' | 'analytics'>('chat');
-  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const { data: agentsData } = useQuery({
+    queryKey: ['agents-summary'],
+    queryFn: () => listAgentsForBusiness(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const agents = agentsData ?? ([] as AgentSummary[]);
   const [switchingAgent, setSwitchingAgent] = useState(false);
   const [agentSwitchOpen, setAgentSwitchOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -126,7 +197,6 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
     const filters: ConversationListFilters = {
       channel_type: channelFilter || undefined,
       mode: modeFilter || undefined,
-      lead_status: leadStatusFilter || undefined,
       intent: debouncedIntent.trim() || undefined,
       unread_only: unreadOnly || undefined,
       agent_name: agentFilter || undefined,
@@ -141,7 +211,7 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
     return () => {
       cancelled = true;
     };
-  }, [channelFilter, modeFilter, leadStatusFilter, debouncedIntent, unreadOnly, agentFilter]);
+  }, [channelFilter, modeFilter, debouncedIntent, unreadOnly, agentFilter]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -207,12 +277,7 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Load agents for agent-switch dropdown
-  useEffect(() => {
-    listAgentsForBusiness()
-      .then(setAgents)
-      .catch(() => setAgents([]));
-  }, []);
+  // Agents for agent-switch dropdown loaded via React Query above
 
   // Close agent dropdown when clicking outside
   useEffect(() => {
@@ -343,18 +408,6 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
                       </option>
                     ))}
                   </select>
-                  <select
-                    value={leadStatusFilter}
-                    onChange={(e) => setLeadStatusFilter(e.target.value)}
-                    aria-label="Filter by lead status"
-                    className="rounded-md border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-                  >
-                    {LEAD_STATUS_OPTIONS.map(({ value, label }) => (
-                      <option key={value || 'all'} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
                   <label className="flex items-center text-sm text-text-secondary">
                     <input
                       type="checkbox"
@@ -393,76 +446,18 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
                 </div>
               ) : (
                 <ul className="divide-y divide-border-color px-2 pb-2" role="list">
-                  {sortedConversations.map((conv) => {
-                    const displayName = conv.leadName || conv.customerId || 'Unknown';
-                    const initials = getInitials(conv.leadName ?? conv.customerId, 'Unknown');
-                    const hasUnread = (conv.unreadCount ?? 0) > 0;
-                    const isSelected = selectedId === conv.id;
-                    return (
-                      <li key={conv.id} className="py-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedId(conv.id);
-                            setShowChatPanel(true);
-                            setTimeout(() => chatHeaderRef.current?.focus({ preventScroll: true }), 0);
-                          }}
-                          aria-pressed={isSelected}
-                          className={`flex w-full items-start gap-3 rounded-lg px-4 py-3 text-left transition-colors min-h-[60px] ${
-                            isSelected
-                              ? 'border-l-4 border-l-(--accent) bg-(--accent-soft)'
-                              : 'border-l-4 border-l-transparent hover:bg-bg-secondary/50'
-                          }`}
-                        >
-                          <div
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-secondary text-sm font-semibold text-text-secondary"
-                            aria-hidden
-                          >
-                            {initials}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="truncate text-sm font-semibold text-text-primary">
-                                {displayName}
-                              </span>
-                              <span className="flex shrink-0 items-center gap-1.5">
-                                {hasUnread && (
-                                  <span className="h-2 w-2 rounded-full bg-(--accent)" aria-label="Unread" />
-                                )}
-                                <span className="text-xs text-text-secondary" title={formatTime(conv.updatedAt)}>
-                                  {formatRelativeTime(conv.updatedAt)}
-                                </span>
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              {conv.channelType && (
-                                <span className="text-xs font-medium capitalize text-text-secondary">
-                                  {conv.channelType}
-                                </span>
-                              )}
-                              {conv.channelName && (
-                                <span className="text-xs text-text-secondary truncate max-w-[120px]">
-                                  {conv.channelName}
-                                </span>
-                              )}
-                              <AIStatusBadge mode={conv.status} />
-                              {conv.agentName && conv.agentName !== '—' && (
-                                <span
-                                  className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-                                  title={`Agent: ${conv.agentName}`}
-                                >
-                                  {conv.agentName}
-                                </span>
-                              )}
-                            </div>
-                            <p className="line-clamp-2 text-sm text-text-secondary mt-1">
-                              {conv.lastMessagePreview || '—'}
-                            </p>
-                          </div>
-                        </button>
-                      </li>
-                    );
-                  })}
+                  {sortedConversations.map((conv) => (
+                    <ConversationRow
+                      key={conv.id}
+                      conv={conv}
+                      isSelected={selectedId === conv.id}
+                      onSelect={(id) => {
+                        setSelectedId(id);
+                        setShowChatPanel(true);
+                        setTimeout(() => chatHeaderRef.current?.focus({ preventScroll: true }), 0);
+                      }}
+                    />
+                  ))}
                 </ul>
               )}
             </div>

@@ -67,6 +67,132 @@ export function FieldConfigPanel({
     ? models.filter((m) => m.id !== excludeModelId)
     : models;
 
+  // ── Multi-select: same options editor as enum ──
+  if (fieldType === 'multi_select') {
+    const options = (config.options as string[]) ?? [];
+    const addOption = () => onConfigChange({ ...config, options: [...options, ''] });
+    const setOption = (index: number, value: string) => {
+      const next = [...options]; next[index] = value;
+      onConfigChange({ ...config, options: next });
+    };
+    const removeOption = (index: number) => onConfigChange({ ...config, options: options.filter((_, i) => i !== index) });
+    return (
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-text-secondary">Multi-select options</label>
+        <div className="flex flex-wrap gap-2">
+          {options.map((opt, i) => (
+            <span key={i} className="flex items-center gap-1 rounded-md border border-border-color bg-bg-primary px-2 py-1">
+              <input type="text" value={opt} onChange={(e) => setOption(i, e.target.value)}
+                placeholder="Option" className="min-w-[120px] w-40 rounded border-0 bg-transparent text-sm text-text-primary focus:ring-0" />
+              <button type="button" onClick={() => removeOption(i)} className="text-text-secondary hover:text-text-primary" aria-label="Remove option">×</button>
+            </span>
+          ))}
+          <button type="button" onClick={addOption}
+            className="rounded-md border border-dashed border-border-color px-2 py-1 text-sm text-text-secondary hover:border-accent hover:text-text-primary">
+            + Add option
+          </button>
+        </div>
+        <p className="text-xs text-text-secondary">Users can select multiple values from this list.</p>
+      </div>
+    );
+  }
+
+  // ── Phone: default country code ──
+  if (fieldType === 'phone') {
+    const PHONE_COUNTRIES = [
+      { code: 'IN', dial: '+91', name: 'India' },
+      { code: 'US', dial: '+1', name: 'United States' },
+      { code: 'GB', dial: '+44', name: 'United Kingdom' },
+      { code: 'AE', dial: '+971', name: 'UAE' },
+      { code: 'SG', dial: '+65', name: 'Singapore' },
+      { code: 'AU', dial: '+61', name: 'Australia' },
+      { code: 'CA', dial: '+1', name: 'Canada' },
+      { code: 'SA', dial: '+966', name: 'Saudi Arabia' },
+    ];
+    return (
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-text-secondary">Default country</label>
+          <select
+            value={(config.default_country as string) ?? 'IN'}
+            onChange={(e) => {
+              const c = PHONE_COUNTRIES.find((p) => p.code === e.target.value);
+              onConfigChange({ ...config, default_country: e.target.value, default_country_code: c?.dial ?? '+91' });
+            }}
+            className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+          >
+            {PHONE_COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>{c.name} ({c.dial})</option>
+            ))}
+          </select>
+        </div>
+        <p className="text-xs text-text-secondary">
+          Numbers without a country code will automatically use {(config.default_country_code as string) ?? '+91'} as prefix.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Time: display format ──
+  if (fieldType === 'time') {
+    return (
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-text-secondary">Display format</label>
+          <select
+            value={(config.format as string) ?? '24h'}
+            onChange={(e) => onConfigChange({ ...config, format: e.target.value })}
+            className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+          >
+            <option value="24h">24-hour (14:30)</option>
+            <option value="12h">12-hour (2:30 PM)</option>
+          </select>
+        </div>
+        <p className="text-xs text-text-secondary">Time is always stored in 24-hour format internally.</p>
+      </div>
+    );
+  }
+
+  // ── Computed: formula editor ──
+  if (fieldType === 'computed') {
+    return (
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-text-secondary">Formula</label>
+          <textarea
+            value={(config.formula as string) ?? ''}
+            onChange={(e) => onConfigChange({ ...config, formula: e.target.value })}
+            placeholder="fields.price * fields.quantity"
+            rows={3}
+            className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 font-mono text-sm text-text-primary focus:border-accent focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-text-secondary">
+            Use <code className="rounded bg-bg-secondary px-1">fields.field_name</code> to reference other fields.
+          </p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-text-secondary">Result type</label>
+          <select
+            value={(config.result_type as string) ?? 'number'}
+            onChange={(e) => onConfigChange({ ...config, result_type: e.target.value })}
+            className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+          >
+            <option value="number">Number</option>
+            <option value="text">Text</option>
+          </select>
+        </div>
+        <div className="rounded bg-bg-secondary p-3 text-xs text-text-secondary">
+          <p className="font-medium text-text-primary">Available functions:</p>
+          <p className="mt-1">ROUND(x, decimals), ABS(x), MIN(a, b), MAX(a, b), IF(condition, true_val, false_val), CONCAT(a, b, ...), SUM(a, b, ...), UPPER(text), LOWER(text), COALESCE(a, b, ...)</p>
+          <p className="mt-2 font-medium text-text-primary">Examples:</p>
+          <p className="mt-1 font-mono">fields.price * fields.quantity</p>
+          <p className="font-mono">ROUND(fields.total * 0.18, 2)</p>
+          <p className="font-mono">IF(fields.amount &gt; 1000, &quot;Premium&quot;, &quot;Standard&quot;)</p>
+        </div>
+      </div>
+    );
+  }
+
   if (fieldType === 'enum') {
     const options = (config.options as string[]) ?? [];
     const addOption = () => {

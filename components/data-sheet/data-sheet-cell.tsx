@@ -377,8 +377,12 @@ export function DataSheetCell({
       } else if (field.field_type === 'boolean') {
         if (draft === '' || draft === '—') parsed = null;
         else parsed = draft === 'Yes' || /^(true|1|yes)$/i.test(draft);
-      } else if (field.field_type === 'date') {
+      } else if (field.field_type === 'date' || field.field_type === 'time') {
         parsed = draft === '' ? null : draft;
+      } else if (field.field_type === 'phone') {
+        parsed = draft === '' ? null : draft;
+      } else if (field.field_type === 'multi_select') {
+        try { parsed = JSON.parse(draft); } catch { parsed = draft === '' ? [] : draft.split(',').map((s: string) => s.trim()).filter(Boolean); }
       } else if (field.field_type === 'relation') {
         parsed = draft === '' ? null : Number(draft);
       }
@@ -413,12 +417,26 @@ export function DataSheetCell({
     );
   }
 
-  if (readOnly || !field.is_editable) {
+  if (readOnly || !field.is_editable || field.field_type === 'computed') {
+    // Multi-select: render as colored chips
+    if (field.field_type === 'multi_select' && Array.isArray(value)) {
+      return (
+        <td className="px-4 py-3">
+          <div className="flex flex-wrap gap-1">
+            {(value as string[]).map((v, i) => (
+              <span key={i} className="rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">{v}</span>
+            ))}
+            {value.length === 0 && <span className="text-text-secondary">—</span>}
+          </div>
+        </td>
+      );
+    }
     return (
       <td
         className="max-w-[200px] truncate px-4 py-3 text-text-primary"
         title={formatDisplay(value, field.field_type)}
       >
+        {field.field_type === 'computed' && <span className="mr-1 inline-block text-xs font-medium text-blue-500">fx</span>}
         {formatDisplayWithField(field, value)}
       </td>
     );
@@ -494,6 +512,65 @@ export function DataSheetCell({
             fetchRelatedRecords={fetchRelatedRecords}
             className={inputClass}
           />
+        ) : field.field_type === 'time' ? (
+          <input
+            ref={inputRef as React.RefObject<HTMLInputElement>}
+            type="time"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            disabled={saving}
+            className={inputClass}
+          />
+        ) : field.field_type === 'phone' ? (
+          <input
+            ref={inputRef as React.RefObject<HTMLInputElement>}
+            type="tel"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            disabled={saving}
+            placeholder={((field.config?.default_country as string) === 'IN' || !field.config?.default_country) ? '+91 98765 43210' : '+1 201 555 0123'}
+            className={inputClass}
+          />
+        ) : field.field_type === 'multi_select' ? (
+          <div className="relative">
+            <div className={`${inputClass} flex min-h-[36px] flex-wrap gap-1`}>
+              {(() => {
+                let selected: string[] = [];
+                try { selected = JSON.parse(draft || '[]'); } catch { selected = []; }
+                return (
+                  <>
+                    {selected.map((v: string, i: number) => (
+                      <span key={i} className="flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
+                        {v}
+                        <button type="button" className="ml-0.5 text-accent/60 hover:text-accent" onClick={() => {
+                          const next = selected.filter((_, j) => j !== i);
+                          setDraft(JSON.stringify(next));
+                        }}>&times;</button>
+                      </span>
+                    ))}
+                    <select
+                      className="min-w-[60px] flex-1 border-none bg-transparent text-sm outline-none"
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value && !selected.includes(e.target.value)) {
+                          setDraft(JSON.stringify([...selected, e.target.value]));
+                        }
+                      }}
+                    >
+                      <option value="">+ Add...</option>
+                      {((field.config?.options as string[]) ?? [])
+                        .filter((opt) => !selected.includes(opt))
+                        .map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
         ) : field.field_type === 'long_text' ? (
           <textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -518,7 +595,9 @@ export function DataSheetCell({
           />
         )}
         {(error || numberError) && (
-          <div className="mt-1 text-xs text-red-600">{numberError ?? error}</div>
+          <div className="mt-1 max-w-[280px] rounded bg-red-50 px-2 py-1 text-xs text-red-600 dark:bg-red-950/30 dark:text-red-400">
+            {numberError ?? error}
+          </div>
         )}
       </td>
     );
@@ -542,7 +621,11 @@ export function DataSheetCell({
           </svg>
         </span>
       </span>
-      {error && <div className="text-xs text-red-600">{error}</div>}
+      {error && (
+        <div className="mt-0.5 max-w-[280px] rounded bg-red-50 px-2 py-1 text-xs text-red-600 dark:bg-red-950/30 dark:text-red-400">
+          {error}
+        </div>
+      )}
     </td>
   );
 }

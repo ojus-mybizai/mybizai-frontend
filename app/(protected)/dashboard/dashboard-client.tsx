@@ -49,12 +49,12 @@ export default function DashboardClient() {
   );
   const lmsEnabled = user?.businesses?.[0]?.lms_enabled !== false;
 
-  const { stats, recentActivity, insights, leadStatsError, loading: statsLoading } =
-    useDashboardStats({ lmsEnabled });
-  const { data: reportsDashboard, loading: reportsLoading, error: reportsError } =
-    useReportsDashboard(30);
-
   const [activeTab, setActiveTab]           = useState<Tab>('chat');
+
+  const { stats, recentActivity, insights, leadStatsError, loading: statsLoading } =
+    useDashboardStats({ lmsEnabled, enabled: activeTab === 'metrics' });
+  const { data: reportsDashboard, loading: reportsLoading, error: reportsError } =
+    useReportsDashboard(30, activeTab === 'metrics');
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [managerStatus, setManagerStatus]   = useState<ManagerStatus | null>(null);
   const [managerLoading, setManagerLoading] = useState(true);
@@ -66,7 +66,9 @@ export default function DashboardClient() {
     finally { setManagerLoading(false); }
   }, []);
 
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+  useEffect(() => {
+    if (activeTab === 'chat') fetchStatus();
+  }, [fetchStatus, activeTab]);
 
   const handleConnect = async () => {
     setManagerLoading(true);

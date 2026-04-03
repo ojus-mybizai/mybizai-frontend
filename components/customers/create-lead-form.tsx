@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from 'react';
 import { DynamicLeadFieldsInput } from './dynamic-lead-fields-input';
+import { PhoneInput, validatePhone } from '@/components/ui/phone-input';
 import type { LeadCreate } from '@/services/customers';
 import type { LeadFieldConfig } from '@/services/lead-fields';
 
@@ -11,14 +12,6 @@ interface CreateLeadFormProps {
   isLoading?: boolean;
   fieldConfigs?: LeadFieldConfig[];
 }
-
-const STATUS_OPTIONS = [
-  { value: 'new',       label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'qualified', label: 'Qualified' },
-  { value: 'lost',      label: 'Lost' },
-  { value: 'won',       label: 'Won' },
-];
 
 const PRIORITY_OPTIONS = [
   { value: 'low',    label: 'Low' },
@@ -34,14 +27,6 @@ const SOURCE_OPTIONS = [
   { value: 'ad_campaign',label: 'Ad Campaign' },
   { value: 'other',      label: 'Other' },
 ];
-
-const STATUS_COLORS: Record<string, string> = {
-  new:       'bg-gray-100 text-gray-700 dark:bg-gray-700/40 dark:text-gray-300',
-  contacted: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  qualified: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-  lost:      'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  won:       'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-};
 
 const PRIORITY_COLORS: Record<string, string> = {
   low:    'bg-gray-100 text-gray-700 dark:bg-gray-700/40 dark:text-gray-300',
@@ -80,7 +65,6 @@ export function CreateLeadForm({ onSubmit, onCancel, isLoading = false, fieldCon
     name: '',
     phone: '',
     email: '',
-    status: 'new',
     priority: 'medium',
     source: 'whatsapp',
     notes: '',
@@ -93,8 +77,9 @@ export function CreateLeadForm({ onSubmit, onCancel, isLoading = false, fieldCon
     if (!formData.name.trim()) e.name = 'Name is required';
     if (!formData.phone.trim()) {
       e.phone = 'Phone is required';
-    } else if (formData.phone.length < 10 || formData.phone.length > 20) {
-      e.phone = 'Must be 10–20 characters';
+    } else {
+      const phoneResult = validatePhone(formData.phone, 'IN');
+      if (!phoneResult.valid) e.phone = phoneResult.error ?? 'Invalid phone number';
     }
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       e.email = 'Invalid email address';
@@ -144,15 +129,14 @@ export function CreateLeadForm({ onSubmit, onCancel, isLoading = false, fieldCon
 
           {/* Phone */}
           <div>
-            <FieldLabel label="Phone" required />
-            <input
-              type="tel"
+            <PhoneInput
+              label="Phone"
+              required
               value={formData.phone}
-              onChange={(e) => set('phone', e.target.value)}
-              placeholder="+91 9999999999"
-              className={errors.phone ? INPUT_ERROR_CLS : INPUT_CLS}
+              onChange={(v) => set('phone', v)}
+              defaultCountry="IN"
+              error={errors.phone}
             />
-            {errors.phone && <p className="mt-1 text-xs text-red-500">{errors.phone}</p>}
           </div>
 
           {/* Email */}
@@ -172,28 +156,7 @@ export function CreateLeadForm({ onSubmit, onCancel, isLoading = false, fieldCon
 
       {/* ── Lead classification ── */}
       <SectionCard title="Classification" icon="🏷">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-          {/* Status pill selector */}
-          <div>
-            <FieldLabel label="Status" />
-            <div className="flex flex-wrap gap-1.5">
-              {STATUS_OPTIONS.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => set('status', o.value)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold border transition-all ${
-                    formData.status === o.value
-                      ? `${STATUS_COLORS[o.value]} border-transparent ring-2 ring-offset-1 ring-current/30`
-                      : 'border-border-color bg-bg-secondary text-text-secondary hover:border-accent/40'
-                  }`}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
           {/* Priority pill selector */}
           <div>

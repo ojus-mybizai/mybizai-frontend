@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { broadcastAuthEvent } from "./auth-events";
 
 const ACCESS_TOKEN_KEY = "access_token";
+const USER_CACHE_KEY = "cached_user";
 
 function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -19,6 +20,31 @@ function persistAccessToken(token: string | null): void {
       sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
     } else {
       sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function getStoredUser(): User {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistUser(user: User): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (user) {
+      sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+    } else {
+      sessionStorage.removeItem(USER_CACHE_KEY);
     }
   } catch {
     // ignore storage errors
@@ -68,7 +94,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     persistAccessToken(token);
     set({ accessToken: token });
   },
-  setUser: (user: User) => set({ user }),
+  setUser: (user: User) => {
+    persistUser(user);
+    set({ user });
+  },
   setOnboardingRequired: (value: boolean) => set({ onboardingRequired: value }),
   setDefaultBusinessId: (value: number | null) => set({ defaultBusinessId: value }),
   setDefaultRole: (value: DefaultRole) => set({ defaultRole: value }),
@@ -83,6 +112,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   logout: (broadcast: boolean = true) => {
     persistAccessToken(null);
+    persistUser(null);
     set({
       accessToken: null,
       user: null,

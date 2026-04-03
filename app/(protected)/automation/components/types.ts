@@ -96,10 +96,10 @@ const TRIGGER_FIELDS: Record<string, FieldGroup[]> = {
       ],
     },
     {
-      group: 'Lead Status',
+      group: 'Lead Stage',
       fields: [
-        { value: 'lead.status', label: 'Status', knownValues: ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'junk'] },
         { value: 'lead.pipeline_stage', label: 'Pipeline Stage' },
+        { value: 'lead.stage_type', label: 'Stage Type', knownValues: ['open', 'won', 'lost'] },
         { value: 'lead.assigned_to', label: 'Assigned To' },
       ],
     },

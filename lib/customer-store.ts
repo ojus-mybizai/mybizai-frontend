@@ -55,6 +55,7 @@ interface CustomerState {
   createLead(data: LeadCreate): Promise<Customer>;
   updateLead(id: string, data: LeadUpdate): Promise<void>;
   deleteLead(id: string): Promise<void>;
+  listAppend(filters?: CustomerFilters): Promise<void>;
   loadLeadStats(): Promise<void>;
   resetError(): void;
 }
@@ -96,6 +97,23 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
       });
     } catch (err) {
       set({ error: (err as Error).message, loading: false, loadingList: false });
+    }
+  },
+
+  async listAppend(filters) {
+    set({ loadingList: true, error: null, lastListFilters: filters });
+    try {
+      const data = await listCustomers(filters);
+      set((state) => ({
+        customers: [...state.customers, ...data.items],
+        total: data.total,
+        page: data.page,
+        perPage: data.perPage,
+        totalPages: data.totalPages,
+        loadingList: false,
+      }));
+    } catch (err) {
+      set({ error: (err as Error).message, loadingList: false });
     }
   },
 

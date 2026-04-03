@@ -417,20 +417,6 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
     }
   };
 
-  const handleStageUpdate = async (status: 'new' | 'contacted' | 'qualified' | 'won' | 'lost') => {
-    if (!id) return;
-    setSaving(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await updateLead(id, { status });
-      setNotice(`Stage updated to ${capitalize(status)}.`);
-    } catch {
-      setError('Failed to update stage.');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handlePipelineMove = async (stageId: number) => {
     if (!id) return;
@@ -639,7 +625,6 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
                           name: currentCustomer.name || '',
                           phone: currentCustomer.phone || '',
                           email: currentCustomer.email || '',
-                          status: currentCustomer.status as LeadUpdate['status'],
                           priority: currentCustomer.priority as LeadUpdate['priority'],
                           source: currentCustomer.source || '',
                         });
@@ -709,12 +694,6 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
                   </div>
                 ))}
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">Status</label>
-                    <select value={editData.status || 'new'} onChange={(e) => setEditData({ ...editData, status: e.target.value as LeadUpdate['status'] })} className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none">
-                      {['new', 'contacted', 'qualified', 'won', 'lost'].map((s) => <option key={s} value={s}>{capitalize(s)}</option>)}
-                    </select>
-                  </div>
                   <div>
                     <label className="block text-sm font-medium text-text-secondary mb-1">Priority</label>
                     <select value={editData.priority || 'medium'} onChange={(e) => setEditData({ ...editData, priority: e.target.value as LeadUpdate['priority'] })} className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none">
@@ -1292,26 +1271,7 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
                     })}
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {(['new', 'contacted', 'qualified', 'won', 'lost'] as const).map((stage) => {
-                      const isActive = currentCustomer.status === stage;
-                      return (
-                        <button
-                          key={stage}
-                          type="button"
-                          disabled={saving || isActive}
-                          onClick={() => handleStageUpdate(stage)}
-                          className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
-                            isActive
-                              ? `text-white shadow-md ${stage === 'won' ? 'bg-emerald-500' : stage === 'lost' ? 'bg-red-500' : stage === 'qualified' ? 'bg-blue-500' : stage === 'contacted' ? 'bg-amber-500' : 'bg-gray-500'}`
-                              : 'border border-border-color text-text-secondary hover:border-accent hover:text-text-primary'
-                          }`}
-                        >
-                          {capitalize(stage)}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <p className="text-xs text-text-secondary">No pipeline stages configured.</p>
                 )}
               </section>
 
@@ -1320,9 +1280,12 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">Details</h3>
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-text-secondary">Status</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[currentCustomer.status ?? 'new']}`}>
-                      {capitalize(currentCustomer.status)}
+                    <span className="text-xs text-text-secondary">Stage</span>
+                    <span
+                      className="rounded-full px-2 py-0.5 text-xs font-medium"
+                      style={currentCustomer.pipelineStageColor ? { backgroundColor: currentCustomer.pipelineStageColor + '22', color: currentCustomer.pipelineStageColor } : undefined}
+                    >
+                      {currentCustomer.pipelineStageName ?? 'Unassigned'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1462,8 +1425,9 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
                       <span
                         key={`${lc.channel_id}-${lc.channel_identifier}`}
                         className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                        title={lc.display_name || lc.channel_identifier}
                       >
-                        {channelLabel(lc.channel_type)}
+                        {channelLabel(lc.channel_type)}{lc.display_name ? ` · ${lc.display_name}` : ''}
                       </span>
                     ))}
                   </div>

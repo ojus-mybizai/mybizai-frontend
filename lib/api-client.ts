@@ -105,16 +105,24 @@ async function buildError(response: Response): Promise<ApiError> {
         if (Array.isArray(detail.errors) && detail.errors.length > 0) {
           const fieldErrors = (detail.errors as Array<Record<string, string>>)
             .map((e) => {
-              const field = e.field || "unknown";
-              const err = e.error || e.message || "invalid";
-              const errLabel = err === "not_unique" ? "already exists"
+              // Prefer the human-readable message from the backend
+              if (e.message && e.message !== e.error) {
+                return e.message;
+              }
+              // Fallback: build a message from field name + error code
+              const fieldLabel = e.display_name || e.field || "Field";
+              const err = e.error || "invalid";
+              const errLabel =
+                err === "not_unique" ? "must be unique — this value already exists"
                 : err === "required" ? "is required"
-                : err === "invalid_type" ? "has invalid type"
+                : err === "invalid_type" ? "has an invalid type"
+                : err === "invalid_value" ? "has an invalid value"
+                : err === "invalid_relation" ? "has an invalid linked record"
                 : err;
-              return `${field}: ${errLabel}`;
+              return `${fieldLabel}: ${errLabel}`;
             })
-            .join(", ");
-          message = message ? `${message} — ${fieldErrors}` : fieldErrors;
+            .join("\n");
+          message = fieldErrors;
         }
       }
       // Case 3: FastAPI Pydantic validation errors (array of {loc, msg, type})

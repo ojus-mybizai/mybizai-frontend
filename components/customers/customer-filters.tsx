@@ -33,7 +33,6 @@ export function CustomerFilters({ initial, onApply }: Props) {
 
   const activeCount = [
     draft.search,
-    draft.status,
     draft.priority,
     draft.source,
     draft.channelId,
@@ -78,21 +77,6 @@ export function CustomerFilters({ initial, onApply }: Props) {
               placeholder="Name, phone, or email"
               className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
             />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-text-secondary">Status</label>
-            <select
-              value={draft.status ?? ''}
-              onChange={(e) => setDraft((d) => ({ ...d, status: (e.target.value as 'new' | 'contacted' | 'qualified' | 'lost' | 'won') || undefined }))}
-              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-base text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">All</option>
-              <option value="new">New</option>
-              <option value="contacted">Contacted</option>
-              <option value="qualified">Qualified</option>
-              <option value="won">Won</option>
-              <option value="lost">Lost</option>
-            </select>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-medium text-text-secondary">Priority</label>

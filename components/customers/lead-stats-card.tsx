@@ -62,13 +62,7 @@ export function LeadStatsCard({ stats, onSegmentClick, className = '' }: LeadSta
   }
 
   const total = stats.total_leads;
-  const statusColors: Record<string, string> = {
-    new: 'bg-gray-100 text-gray-800 dark:bg-gray-700/50 dark:text-gray-200',
-    contacted: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
-    qualified: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200',
-    won: 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200',
-    lost: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200',
-  };
+  const stageColorClass = 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200';
 
   const priorityColors: Record<string, string> = {
     low: 'bg-gray-100 text-gray-800 dark:bg-gray-700/50 dark:text-gray-200',
@@ -77,7 +71,7 @@ export function LeadStatsCard({ stats, onSegmentClick, className = '' }: LeadSta
   };
 
   const sourceEntries = Object.entries(stats.by_source).filter(([, c]) => c > 0);
-  const statusEntries = Object.entries(stats.by_status).filter(([, c]) => c > 0);
+  const stageEntries = Object.entries(stats.by_stage ?? {}).filter(([, c]) => c > 0);
   const priorityEntries = Object.entries(stats.by_priority).filter(([, c]) => c > 0);
 
   return (
@@ -93,25 +87,20 @@ export function LeadStatsCard({ stats, onSegmentClick, className = '' }: LeadSta
 
       {/* Table-style stats */}
       <div className="grid gap-0 md:grid-cols-2">
-        {/* By Status */}
+        {/* By Stage */}
         <div className="border-b md:border-b-0 md:border-r border-border-color">
           <div className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-            By status
+            By stage
           </div>
           <div className="divide-y divide-border-color/60 px-2 pb-2">
-            {statusEntries.length > 0 ? (
-              statusEntries.map(([status, count]) => (
+            {stageEntries.length > 0 ? (
+              stageEntries.map(([stage, count]) => (
                 <StatRow
-                  key={status}
-                  label={status}
+                  key={stage}
+                  label={stage}
                   count={count}
                   total={total}
-                  colorClass={statusColors[status] ?? 'bg-gray-100 text-gray-800'}
-                  onClick={
-                    onSegmentClick
-                      ? () => onSegmentClick({ status: status as CustomerFilters['status'], page: 1 })
-                      : undefined
-                  }
+                  colorClass={stageColorClass}
                 />
               ))
             ) : (

@@ -2,7 +2,7 @@ import { apiFetch } from '@/lib/api-client';
 
 export interface LeadsReport {
   total_leads: number;
-  by_status: Record<string, number>;
+  by_stage: Record<string, number>;
   by_priority: Record<string, number>;
   by_source: Record<string, number>;
   over_time: { date: string; count: number }[];

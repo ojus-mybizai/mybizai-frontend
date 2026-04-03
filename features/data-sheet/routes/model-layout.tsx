@@ -1,24 +1,29 @@
 'use client';
 
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import ModuleGuard from '@/components/module-guard';
 import { getModel, listFields, type DynamicModel, type DynamicField } from '@/features/data-sheet/api';
 import { DataSheetProvider, type DataSheetContextValue } from '@/features/data-sheet/context/data-sheet-context';
 
 export function ModelLayout({ children }: { children: ReactNode }) {
   const params = useParams<{ modelId: string }>();
+  const router = useRouter();
   const modelId = params?.modelId as string | undefined;
 
   const [model, setModel] = useState<DynamicModel | null>(null);
   const [fields, setFields] = useState<DynamicField[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const initialLoadDone = useRef(false);
 
   const loadModel = useCallback(async () => {
     if (!modelId) return;
-    setLoading(true);
+    // Only show skeleton on first load — subsequent refetches update in-place
+    if (!initialLoadDone.current) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [modelData, fieldsData] = await Promise.all([
@@ -27,6 +32,7 @@ export function ModelLayout({ children }: { children: ReactNode }) {
       ]);
       setModel(modelData);
       setFields(fieldsData.sort((a, b) => a.order_index - b.order_index));
+      initialLoadDone.current = true;
     } catch (e) {
       setError((e as Error).message ?? 'Failed to load model');
       setModel(null);
@@ -37,6 +43,7 @@ export function ModelLayout({ children }: { children: ReactNode }) {
   }, [modelId]);
 
   useEffect(() => {
+    initialLoadDone.current = false;
     void loadModel();
   }, [loadModel]);
 
@@ -87,15 +94,16 @@ export function ModelLayout({ children }: { children: ReactNode }) {
         <div className="flex w-full max-w-full flex-1 flex-col gap-3 min-h-0">
           {/* Compact header: back arrow + title */}
           <div className="flex shrink-0 items-center gap-3">
-            <Link
-              href="/data-sheet"
+            <button
+              type="button"
+              onClick={() => router.back()}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-color bg-card-bg text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-              title="All data sheets"
+              title="Go back"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
               </svg>
-            </Link>
+            </button>
             <h1 className="text-lg font-semibold text-text-primary truncate">
               {model.display_name}
             </h1>

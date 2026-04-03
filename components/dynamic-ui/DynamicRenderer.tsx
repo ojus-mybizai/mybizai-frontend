@@ -3,7 +3,8 @@
 import type { UIBlock } from '@/types/ui-protocol';
 import TableRenderer from './TableRenderer';
 import FormRenderer from './FormRenderer';
-import ChartRenderer from './ChartRenderer';
+import dynamic from 'next/dynamic';
+const ChartRenderer = dynamic(() => import('./ChartRenderer'), { ssr: false });
 import CardRenderer from './CardRenderer';
 import ModalRenderer from './ModalRenderer';
 import ConfirmationRenderer from './ConfirmationRenderer';

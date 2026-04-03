@@ -9,13 +9,10 @@ import { getLeadStats, getLeadStatsOverTime, type LeadStats, type LeadStatsOverT
 
 // ─── Colour palette (theme-safe) ──────────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
-  new: '#6366f1',
-  contacted: '#f59e0b',
-  qualified: '#3b82f6',
-  won: '#10b981',
-  lost: '#ef4444',
-};
+const STAGE_COLORS: string[] = [
+  '#6366f1', '#3b82f6', '#f59e0b', '#10b981', '#ef4444',
+  '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6b7280',
+];
 const PRIORITY_COLORS: Record<string, string> = {
   high: '#ef4444',
   medium: '#f59e0b',
@@ -65,12 +62,7 @@ function ChartSection({ title, children }: { title: string; children: React.Reac
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-interface Props {
-  /** Quick-filter: undefined = all, 'open' = new+contacted+qualified, 'closed' = won+lost */
-  closedFilter?: 'open' | 'closed';
-}
-
-export function LeadAnalyticsDashboard({ closedFilter }: Props) {
+export function LeadAnalyticsDashboard() {
   const [stats, setStats] = useState<LeadStats | null>(null);
   const [timeSeries, setTimeSeries] = useState<LeadStatsOverTime['series']>([]);
   const [loading, setLoading] = useState(true);
@@ -100,23 +92,13 @@ export function LeadAnalyticsDashboard({ closedFilter }: Props) {
   if (!stats) return null;
 
   // ── Derived numbers ──────────────────────────────────────────────────────────
-  const byStatus = stats.by_status ?? {};
+  const byStage = stats.by_stage ?? {};
   const byPriority = stats.by_priority ?? {};
   const bySource = stats.by_source ?? {};
 
   const total = stats.total_leads ?? 0;
-  const won = byStatus.won ?? 0;
-  const lost = byStatus.lost ?? 0;
-  const open = (byStatus.new ?? 0) + (byStatus.contacted ?? 0) + (byStatus.qualified ?? 0);
-  const conversionRate = total > 0 ? Math.round((won / total) * 100) : 0;
 
-  // Filter status pie by closedFilter
-  const statusEntries = Object.entries(byStatus).filter(([key]) => {
-    if (closedFilter === 'open') return ['new', 'contacted', 'qualified'].includes(key);
-    if (closedFilter === 'closed') return ['won', 'lost'].includes(key);
-    return true;
-  });
-  const statusPieData = statusEntries.map(([name, value]) => ({ name, value }));
+  const stagePieData = Object.entries(byStage).map(([name, value]) => ({ name, value }));
 
   const sourceData = Object.entries(bySource)
     .sort((a, b) => b[1] - a[1])
@@ -136,9 +118,9 @@ export function LeadAnalyticsDashboard({ closedFilter }: Props) {
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Total Leads" value={total} />
-        <KpiCard label="Open" value={open} sub="New · Contacted · Qualified" color="text-blue-500" />
-        <KpiCard label="Won" value={won} color="text-emerald-500" />
-        <KpiCard label="Conversion Rate" value={`${conversionRate}%`} sub={`${won} won of ${total} total`} color={conversionRate >= 30 ? 'text-emerald-500' : 'text-amber-500'} />
+        {stagePieData.slice(0, 3).map((s) => (
+          <KpiCard key={s.name} label={s.name} value={s.value} />
+        ))}
       </div>
 
       {/* Time-range selector + area chart */}
@@ -175,15 +157,15 @@ export function LeadAnalyticsDashboard({ closedFilter }: Props) {
       </ChartSection>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Status pie */}
-        <ChartSection title="Leads by status">
-          {statusPieData.length === 0 ? (
+        {/* Stage pie */}
+        <ChartSection title="Leads by stage">
+          {stagePieData.length === 0 ? (
             <p className="text-sm text-text-secondary text-center py-8">No data</p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
-                  data={statusPieData}
+                  data={stagePieData}
                   cx="50%"
                   cy="50%"
                   innerRadius={55}
@@ -191,8 +173,8 @@ export function LeadAnalyticsDashboard({ closedFilter }: Props) {
                   paddingAngle={3}
                   dataKey="value"
                 >
-                  {statusPieData.map((entry) => (
-                    <Cell key={entry.name} fill={STATUS_COLORS[entry.name] ?? '#6b7280'} />
+                  {stagePieData.map((entry, idx) => (
+                    <Cell key={entry.name} fill={STAGE_COLORS[idx % STAGE_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip content={<ChartTooltip />} />

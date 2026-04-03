@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { listAgents } from '@/services/agents';
 import { listEmployees } from '@/services/employees';
 import { getLeadTemplate } from '@/services/lead-templates';
+import { getLeadStats, type LeadStats } from '@/services/customers';
 import { listModels } from '@/services/dynamic-data';
 import { listChannels } from '@/services/channels';
 import { queryKeys } from '@/lib/query-client';
@@ -69,6 +70,20 @@ export function useDatasheetModels(options?: { enabled?: boolean }) {
     queryKey: queryKeys.datasheetModels(),
     queryFn: () => listModels(),
     staleTime: 5 * 60 * 1000,
+    enabled: options?.enabled !== false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Lead stats — stale after 2 minutes
+// Used by dashboard metrics tab, leads page, and analytics dashboard.
+// Sharing via React Query prevents duplicate /lead-stats calls across pages.
+// ---------------------------------------------------------------------------
+export function useLeadStats(options?: { enabled?: boolean }) {
+  return useQuery<LeadStats>({
+    queryKey: queryKeys.leadStats(),
+    queryFn: () => getLeadStats(),
+    staleTime: 2 * 60 * 1000, // 2 minutes
     enabled: options?.enabled !== false,
   });
 }

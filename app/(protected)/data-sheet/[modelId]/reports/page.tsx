@@ -4,7 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getDatasheetReport, getReportLayout, type DatasheetReport, type ReportLayout } from '@/services/reports';
-import { DatasheetReportView } from '@/features/data-sheet/components/datasheet-report-view';
+import dynamic from 'next/dynamic';
+const DatasheetReportView = dynamic(
+  () => import('@/features/data-sheet/components/datasheet-report-view').then(m => m.DatasheetReportView),
+  { ssr: false, loading: () => <div className="h-64 animate-pulse bg-bg-secondary rounded-lg" /> }
+);
 
 export default function DatasheetReportsPage() {
   const params = useParams<{ modelId: string }>();

@@ -1664,7 +1664,7 @@ export default function SettingsPage() {
 
 const EVENT_TYPE_CONFIG: Record<string, { label: string; desc: string }> = {
   lead_assigned: { label: 'Lead Assigned', desc: 'When a lead is assigned to you' },
-  lead_status_changed: { label: 'Lead Status Changed', desc: 'When your assigned lead status changes' },
+  lead_stage_changed: { label: 'Lead Stage Changed', desc: 'When your assigned lead stage changes' },
   work_assigned: { label: 'Work Assigned', desc: 'When new work is assigned to you' },
   work_completed: { label: 'Work Completed', desc: 'When work you created is completed' },
   work_overdue: { label: 'Work Overdue', desc: 'Reminder when work passes its due date' },

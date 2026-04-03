@@ -197,7 +197,7 @@ export default function ReportsPage() {
                   <div className="rounded-lg border border-border-color bg-bg-primary p-3">
                     <div className="text-xs text-text-secondary">Action: follow up new leads</div>
                     <div className="mt-1 text-lg font-semibold text-text-primary">
-                      {dashboard.leads.by_status.new ?? 0}
+                      {dashboard.leads.by_stage?.open ?? 0}
                     </div>
                   </div>
                   <div className="rounded-lg border border-border-color bg-bg-primary p-3">

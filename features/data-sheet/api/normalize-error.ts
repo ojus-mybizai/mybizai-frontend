@@ -16,13 +16,41 @@ export function normalizeApiError(e: unknown): NormalizedApiError {
 
   if (err?.data && typeof err.data === 'object') {
     const d = err.data as BackendValidationError;
-    if (typeof d.detail === 'string') message = d.detail;
-    else if (d.detail && typeof d.detail === 'object' && typeof (d.detail as { message?: string }).message === 'string')
-      message = (d.detail as { message: string }).message;
-    if (d.detail && typeof d.detail === 'object' && Array.isArray((d.detail as { errors?: unknown }).errors))
-      details = (d.detail as { errors: unknown }).errors;
-    if (d.detail && typeof d.detail === 'object' && Array.isArray((d.detail as { linked_tool_names?: string[] }).linked_tool_names))
-      linked_tool_names = (d.detail as { linked_tool_names: string[] }).linked_tool_names;
+
+    if (typeof d.detail === 'string') {
+      message = d.detail;
+    } else if (d.detail && typeof d.detail === 'object') {
+      const detail = d.detail as { message?: string; errors?: Array<{ field?: string; display_name?: string; error?: string; message?: string }>; linked_tool_names?: string[] };
+
+      // Extract field-level errors with human-readable messages
+      if (Array.isArray(detail.errors) && detail.errors.length > 0) {
+        details = detail.errors;
+        // Build user-friendly message from field errors
+        const fieldMessages = detail.errors
+          .map((fe) => {
+            // Prefer the backend's human-readable message
+            if (fe.message) return fe.message;
+            // Fallback: build from display_name + error code
+            const label = fe.display_name || fe.field || 'Field';
+            const code = fe.error || 'invalid';
+            if (code === 'required') return `"${label}" is required.`;
+            if (code === 'not_unique') return `"${label}" must be unique — this value already exists.`;
+            if (code === 'invalid_relation') return `"${label}": could not find the linked record.`;
+            return `"${label}": ${code}`;
+          })
+          .filter(Boolean);
+        if (fieldMessages.length > 0) {
+          message = fieldMessages.join('\n');
+        }
+      } else if (typeof detail.message === 'string') {
+        // No field errors — use the top-level detail message
+        message = detail.message;
+      }
+
+      if (Array.isArray(detail.linked_tool_names)) {
+        linked_tool_names = detail.linked_tool_names;
+      }
+    }
   }
 
   return {
