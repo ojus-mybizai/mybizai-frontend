@@ -132,7 +132,7 @@ export default function SetupPage() {
               <p className="text-text-secondary">No industry templates available yet.</p>
               <button
                 type="button"
-                onClick={() => router.push('/dashboard')}
+                onClick={() => router.push('/home')}
                 className="mt-4 rounded-lg bg-accent px-6 py-2 text-sm font-medium text-white hover:opacity-90"
               >
                 Go to Dashboard
@@ -172,7 +172,7 @@ export default function SetupPage() {
           <div className="mt-6 text-center">
             <button
               type="button"
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push('/home')}
               className="text-sm text-text-secondary hover:text-text-primary"
             >
               Skip for now — I&apos;ll set things up manually
@@ -325,7 +325,7 @@ export default function SetupPage() {
               type="button"
               onClick={() => {
                 // Force refresh to reload sidebar with new nav config
-                window.location.href = '/dashboard';
+                window.location.href = '/home';
               }}
               className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90"
             >

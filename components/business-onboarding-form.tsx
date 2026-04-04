@@ -17,7 +17,7 @@ type DeliveryOptionRow = { key: string; value: boolean };
 export default function BusinessOnboardingForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/dashboard';
+  const next = searchParams.get('next') || '/home';
 
   const setOnboardingRequired = useAuthStore((s) => s.setOnboardingRequired);
 
@@ -166,7 +166,7 @@ export default function BusinessOnboardingForm() {
       if (data.business_onboarded) {
         setOnboardingRequired(false);
         setSuccessMessage(data.message || 'Onboarding complete');
-        router.replace(next || '/dashboard');
+        router.replace(next || '/home');
         return;
       }
 

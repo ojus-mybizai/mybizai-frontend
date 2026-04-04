@@ -87,7 +87,7 @@ function buildNavItems(
   _hasPermission: (key: string) => boolean,
 ): NavEntry[] {
   return [
-    { label: 'Dashboard',     href: '/dashboard',     icon: LayoutDashboard },
+    { label: 'Home',           href: '/home',           icon: Home },
     { label: 'Leads',         href: '/leads',         icon: Users },
     { label: 'AI Agent',      href: '/agents',        icon: Bot },
     { label: 'Conversations', href: '/conversations', icon: MessageSquare },
@@ -137,7 +137,7 @@ function resolveIcon(iconName?: string): LucideIcon {
 /* ─── Builtin target → URL mapping ──────────────────────────────────────── */
 
 const BUILTIN_TARGETS: Record<string, string> = {
-  dashboard: '/dashboard',
+  dashboard: '/home',
   leads: '/leads',
   customers: '/leads',
   conversations: '/conversations',
@@ -176,7 +176,7 @@ function buildCustomNavItems(
   const items: NavEntry[] = [];
 
   // Always show dashboard first
-  items.push({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard });
+  items.push({ label: 'Home', href: '/home', icon: Home });
 
   for (const group of navConfig) {
     const groupItems: NavEntry[] = [];
@@ -258,7 +258,7 @@ function buildCustomNavItems(
 /* ─── Page title resolver ────────────────────────────────────────────────── */
 
 const TITLE_MAP: Record<string, string> = {
-  '/dashboard':          'Dashboard',
+  '/home':               'Home',
   '/employee-dashboard': 'My Workstation',
   '/work':               'Work & Tasks',
   '/chats':              'Team Chats',
@@ -315,7 +315,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   const isActive = (href: string) => {
     if (!pathname) return false;
-    if (href === '/dashboard') return pathname === '/dashboard';
+    if (href === '/home') return pathname === '/home';
     return pathname.startsWith(href);
   };
 
@@ -514,7 +514,7 @@ export default function AppShell({ children }: AppShellProps) {
         <main
           key={pathname}
           className={`${mounted ? 'animate-page-in' : ''} ${
-            pathname?.startsWith('/conversations') || pathname?.startsWith('/chats') || pathname === '/dashboard'
+            pathname?.startsWith('/conversations') || pathname?.startsWith('/chats') || pathname === '/home'
               ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-2 md:p-3'
               : pathname?.match(/^\/data-sheet\/[^/]+(\/)?$/)
                 ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-2 md:px-3 py-4 md:py-5'

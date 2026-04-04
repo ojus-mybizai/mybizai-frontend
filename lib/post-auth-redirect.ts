@@ -22,5 +22,5 @@ export function resolvePostAuthRedirect({
   const normalized = normalizePath(next);
   if (normalized) return normalized;
   if (!isOwner) return '/employee-dashboard';
-  return '/dashboard';
+  return '/home';
 }

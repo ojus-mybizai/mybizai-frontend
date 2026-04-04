@@ -14,7 +14,7 @@ interface SignupResponse {
 function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/dashboard';
+  const next = searchParams.get('next') || '/home';
 
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');

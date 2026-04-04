@@ -35,7 +35,7 @@ export default function ModuleGuard({ module, children }: Props) {
         <h2 className="text-lg font-semibold text-text-primary mb-2">{moduleLabel} is not enabled</h2>
         <p className="text-sm text-text-secondary mb-6">{copy}</p>
         <Link
-          href="/dashboard"
+          href="/home"
           className="inline-flex items-center justify-center rounded-md border border-border-color bg-bg-secondary px-4 py-2 text-sm font-medium text-text-primary hover:bg-accent-soft transition-colors"
         >
           Back to Dashboard

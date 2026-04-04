@@ -449,7 +449,7 @@ export default function TemplatesPage() {
                     }, 1000);
                   }
                 } catch {}
-                router.push('/dashboard');
+                router.push('/home');
               }}
               className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary/90 transition-colors flex items-center gap-2"
             >
