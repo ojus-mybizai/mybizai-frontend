@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import PermissionGuard from '@/components/permission-guard';
 import { listAgents } from '@/services/agents';
+import { getLeadLinkedModels, type LeadLinkedModel } from '@/services/customers';
+import { listFields, type DynamicField } from '@/services/dynamic-data';
 import {
   listMessageTemplates,
   createMessageTemplate,
@@ -42,6 +44,25 @@ import {
   Smartphone,
   ArrowLeft,
 } from 'lucide-react';
+
+// ─── Source options for parameter mapping ──
+
+const SOURCE_OPTIONS: { value: string; label: string; group: string }[] = [
+  // Lead Info
+  { value: 'lead.name',       label: 'Lead Name',    group: 'Lead Info' },
+  { value: 'lead.email',      label: 'Lead Email',   group: 'Lead Info' },
+  { value: 'lead.phone',      label: 'Lead Phone',   group: 'Lead Info' },
+  { value: 'lead.source',     label: 'Lead Source',   group: 'Lead Info' },
+  { value: 'lead.priority',   label: 'Priority',      group: 'Lead Info' },
+  { value: 'lead.notes',      label: 'Notes',         group: 'Lead Info' },
+  { value: 'lead.created_at', label: 'Created Date',  group: 'Lead Info' },
+  // Business Info
+  { value: 'business.name',   label: 'Business Name',  group: 'Business Info' },
+  { value: 'business.phone',  label: 'Business Phone', group: 'Business Info' },
+  { value: 'business.email',  label: 'Business Email', group: 'Business Info' },
+];
+
+const SOURCE_GROUPS = [...new Set(SOURCE_OPTIONS.map((o) => o.group))];
 
 // ─── Types ──
 
@@ -391,6 +412,8 @@ export default function AgentMessageTemplatesPage() {
 
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
 
+  // Datasheet source options for parameter mapping dropdown
+  const [dsFieldOptions, setDsFieldOptions] = useState<{ value: string; label: string; group: string }[]>([]);
 
   // ─── Load data ──
 
@@ -414,6 +437,38 @@ export default function AgentMessageTemplatesPage() {
   useEffect(() => {
     void loadTemplates();
   }, [loadTemplates]);
+
+  // Load datasheet fields for parameter mapping
+  useEffect(() => {
+    (async () => {
+      try {
+        const linkedModels = await getLeadLinkedModels();
+        if (!linkedModels.length) return;
+        const results = await Promise.all(
+          linkedModels.map(async (lm) => {
+            const fields = await listFields(lm.model_id);
+            return { model: lm, fields };
+          }),
+        );
+        const options: { value: string; label: string; group: string }[] = [];
+        for (const { model, fields } of results) {
+          const group = model.display_name;
+          for (const f of fields) {
+            // Skip relation fields and system fields
+            if (f.field_type === 'relation' || f.field_type === 'auto_increment') continue;
+            options.push({
+              value: `datasheet.${model.model_id}.${f.name}`,
+              label: f.display_name,
+              group,
+            });
+          }
+        }
+        setDsFieldOptions(options);
+      } catch {
+        // silently ignore — datasheet options just won't appear
+      }
+    })();
+  }, []);
 
   // ─── Auto-clear success ──
 
@@ -439,6 +494,10 @@ export default function AgentMessageTemplatesPage() {
     }
     return c;
   }, [templates]);
+
+  // Combined source options (static + datasheet)
+  const allSourceOptions = useMemo(() => [...SOURCE_OPTIONS, ...dsFieldOptions], [dsFieldOptions]);
+  const allSourceGroups = useMemo(() => [...new Set(allSourceOptions.map((o) => o.group))], [allSourceOptions]);
 
   // ─── Extract parameters from form ──
 
@@ -669,8 +728,7 @@ export default function AgentMessageTemplatesPage() {
   // ─── Render ──
 
   return (
-    <PermissionGuard permission="manage_agents" module="agents">
-      <div className="mx-auto max-w-7xl space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
         {/* Page header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -968,12 +1026,25 @@ export default function AgentMessageTemplatesPage() {
                       return (
                         <div key={`header-${p}`} className="grid grid-cols-[80px_1fr_1fr] gap-2 items-center">
                           <span className="text-[11px] font-mono text-accent">{`Header {{${p}}}`}</span>
-                          <input
+                          <select
                             value={mapping?.source ?? ''}
-                            onChange={(e) => updateParamMapping(p, 'header', 'source', e.target.value)}
-                            placeholder="e.g. lead.name"
-                            className="rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
-                          />
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateParamMapping(p, 'header', 'source', val);
+                              const opt = allSourceOptions.find((o) => o.value === val);
+                              if (opt) updateParamMapping(p, 'header', 'label', opt.label);
+                            }}
+                            className="rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent/50"
+                          >
+                            <option value="">Select source...</option>
+                            {allSourceGroups.map((group) => (
+                              <optgroup key={group} label={group}>
+                                {allSourceOptions.filter((o) => o.group === group).map((o) => (
+                                  <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
                           <input
                             value={mapping?.label ?? ''}
                             onChange={(e) => updateParamMapping(p, 'header', 'label', e.target.value)}
@@ -990,12 +1061,25 @@ export default function AgentMessageTemplatesPage() {
                       return (
                         <div key={`body-${p}`} className="grid grid-cols-[80px_1fr_1fr] gap-2 items-center">
                           <span className="text-[11px] font-mono text-accent">{`Body {{${p}}}`}</span>
-                          <input
+                          <select
                             value={mapping?.source ?? ''}
-                            onChange={(e) => updateParamMapping(p, 'body', 'source', e.target.value)}
-                            placeholder="e.g. record.order_id"
-                            className="rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
-                          />
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateParamMapping(p, 'body', 'source', val);
+                              const opt = allSourceOptions.find((o) => o.value === val);
+                              if (opt) updateParamMapping(p, 'body', 'label', opt.label);
+                            }}
+                            className="rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent/50"
+                          >
+                            <option value="">Select source...</option>
+                            {allSourceGroups.map((group) => (
+                              <optgroup key={group} label={group}>
+                                {allSourceOptions.filter((o) => o.group === group).map((o) => (
+                                  <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
                           <input
                             value={mapping?.label ?? ''}
                             onChange={(e) => updateParamMapping(p, 'body', 'label', e.target.value)}
@@ -1153,6 +1237,5 @@ export default function AgentMessageTemplatesPage() {
           </div>
         )}
       </div>
-    </PermissionGuard>
   );
 }

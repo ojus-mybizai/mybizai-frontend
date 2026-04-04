@@ -82,80 +82,18 @@ function isDataSheetSlot(e: NavEntry): e is DataSheetSlot {
 /* ─── Nav builder ────────────────────────────────────────────────────────── */
 
 function buildNavItems(
-  lmsEnabled: boolean,
-  agentsEnabled: boolean,
-  hasPermission: (key: string) => boolean,
+  _lmsEnabled: boolean,
+  _agentsEnabled: boolean,
+  _hasPermission: (key: string) => boolean,
 ): NavEntry[] {
-  const items: NavEntry[] = [];
-
-  // ── Dashboard (always, no section header) ────────────────────────────────
-  items.push({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard });
-  if (hasPermission('manage_settings')) {
-    items.push({ label: 'Business Builder', href: '/builder', icon: Sparkles });
-  }
-
-  // ── Work (daily employee flow) ────────────────────────────────────────────
-  if (lmsEnabled) {
-    items.push({ kind: 'section', label: 'Work' });
-    items.push({ label: 'My Workstation', href: '/employee-dashboard', icon: Briefcase });
-    items.push({ label: 'Workstation',    href: '/workstation',        icon: CheckSquare });
-    if (hasPermission('manage_work')) {
-      items.push({ label: 'Work & Tasks',   href: '/work',               icon: ClipboardList });
-      items.push({ label: 'Processes',      href: '/processes',          icon: ClipboardList });
-    }
-    items.push({ label: 'Team Chats',     href: '/chats',              icon: MessagesSquare });
-    items.push({ label: 'AI Assistants',   href: '/agent-chat',         icon: Bot });
-  }
-
-  // ── CRM (customer-facing) ─────────────────────────────────────────────────
-  if (lmsEnabled) {
-    items.push({ kind: 'section', label: 'CRM' });
-    if (hasPermission('manage_leads')) {
-      items.push({ label: 'Leads',          href: '/leads',          icon: Users });
-    }
-    items.push({ label: 'Conversations', href: '/conversations', icon: MessageSquare });
-    if (hasPermission('manage_channels')) {
-      items.push({ label: 'Lead Sources',  href: '/lead-sources',  icon: Target });
-    }
-  }
-
-  // ── Data & Insights ───────────────────────────────────────────────────────
-  items.push({ kind: 'section', label: 'Data & Insights' });
-  items.push({ kind: 'datasheet' }); // DataSheetNav dropdown renders here
-  if (hasPermission('view_reports')) {
-    items.push({ label: 'Reports', href: '/reports', icon: BarChart2 });
-  }
-
-  // ── People ────────────────────────────────────────────────────────────────
-  if (lmsEnabled && hasPermission('manage_employees')) {
-    items.push({ kind: 'section', label: 'People' });
-    items.push({ label: 'Employees', href: '/employees', icon: UserCog });
-  }
-
-  // ── Automation ────────────────────────────────────────────────────────────
-  if (lmsEnabled && hasPermission('manage_settings')) {
-    items.push({ label: 'Automation', href: '/automation', icon: Zap });
-  }
-
-  // ── Modules ───────────────────────────────────────────────────────────────
-  if (agentsEnabled && hasPermission('manage_agents')) {
-    items.push({ kind: 'section', label: 'Modules' });
-    items.push({
-      label: 'AI Agents',
-      href: '/agents',
-      icon: Bot,
-      children: [
-        { label: 'All Agents',          href: '/agents',            group: 'manage' },
-        { label: 'New Agent',           href: '/agents/new',        group: 'manage' },
-        { label: 'Last Opened Agent',   href: '/agents',            group: 'workspace', isLastAgent: true },
-        { label: 'Lead Templates',      href: '/lead-templates',    group: 'analytics' },
-        { label: 'Agent Analytics',     href: '/analytics',         group: 'analytics' },
-        { label: 'Message Templates',   href: '/agents/templates',  group: 'analytics' },
-      ],
-    });
-  }
-
-  return items;
+  return [
+    { label: 'Dashboard',     href: '/dashboard',     icon: LayoutDashboard },
+    { label: 'Leads',         href: '/leads',         icon: Users },
+    { label: 'AI Agent',      href: '/agents',        icon: Bot },
+    { label: 'Conversations', href: '/conversations', icon: MessageSquare },
+    { label: 'Channels',       href: '/channels',      icon: Radio },
+    { kind: 'datasheet' as const },
+  ];
 }
 
 /* ─── Icon resolver for blueprint nav ───────────────────────────────────── */
@@ -355,28 +293,14 @@ export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user as any);
   const business = user?.businesses?.[0];
-  const lmsEnabled  = business?.lms_enabled  !== false;
-  const agentsEnabled = business?.agents_enabled !== false;
   const hasPermission = useAuthStore((s) => s.hasPermission);
-  const navConfig = business?.extra_data?.navigation_config as NavConfigGroup[] | undefined;
-  const navItems = navConfig && navConfig.length > 0
-    ? buildCustomNavItems(navConfig, hasPermission, agentsEnabled)
-    : buildNavItems(lmsEnabled, agentsEnabled, hasPermission);
-
-  const isInitialized = useAuthStore((s) => s.isInitialized);
-  // Only check loading AFTER mount to avoid SSR/client hydration mismatch
-  // During SSR and first client render, always show skeleton (consistent on both sides)
+  const navItems = buildNavItems(false, false, hasPermission);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [openNavHref, setOpenNavHref] = useState<string | null>(
-    pathname?.startsWith('/agents') ? '/agents' : null,
-  );
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
-  const navLoading = !mounted || !isInitialized || !user;
   const theme     = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
-  const lastAgentId = useAgentStore((s) => s.lastAgentId);
 
   const handleNavigate = (href: string) => {
     setSidebarOpen(false);
@@ -406,86 +330,28 @@ export default function AppShell({ children }: AppShellProps) {
   /* ── Sidebar nav item render ─────────────────────────────────────────── */
   const renderNavItem = (item: NavItem) => {
     const active = isActive(item.href);
-    const isAgents = item.href === '/agents';
-    const isOpen = !!item.children && openNavHref === item.href;
-
-    const handleAgentSubClick = (child: NavChild) => {
-      if (child.isLastAgent) {
-        handleNavigate(lastAgentId ? `/agents/${lastAgentId}/overview` : '/agents');
-      } else {
-        handleNavigate(child.href);
-      }
-    };
-
-    // Generate a data-tour attribute from the href for the tour system
     const tourId = item.href.replace(/^\//, '').replace(/\//g, '-') || 'home';
 
     return (
-      <div key={item.href || item.label}>
-        <button
-          type="button"
-          data-tour={`nav-${tourId}`}
-          onClick={() => {
-            if (isAgents && item.children) {
-              setOpenNavHref(isOpen ? null : item.href);
-              handleNavigate(item.href);
-            } else {
-              setOpenNavHref(null);
-              handleNavigate(item.href);
-            }
-          }}
-          className={`group flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm text-left transition-all ${
-            active
-              ? 'bg-accent/10 text-accent font-medium'
-              : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+      <button
+        key={item.href || item.label}
+        type="button"
+        data-tour={`nav-${tourId}`}
+        onClick={() => handleNavigate(item.href)}
+        className={`group flex w-full items-center rounded-lg px-2.5 py-2 text-sm text-left transition-all ${
+          active
+            ? 'bg-accent/10 text-accent font-medium'
+            : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+        }`}
+      >
+        <item.icon
+          className={`h-4 w-4 shrink-0 transition-colors mr-2.5 ${
+            active ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'
           }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <item.icon
-              className={`h-4 w-4 shrink-0 transition-colors ${
-                active ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'
-              }`}
-              aria-hidden
-            />
-            <span className="truncate">{item.label}</span>
-          </div>
-          {item.children && (
-            <span className={`text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''} ${active ? 'text-accent' : 'text-text-secondary'}`}>
-              ▸
-            </span>
-          )}
-        </button>
-
-        {/* Agent submenu */}
-        {isAgents && item.children && isOpen && (
-          <div className="ml-6 mt-0.5 border-l border-border-color pl-3 space-y-0.5">
-            {item.children.map((child) => {
-              const childActive =
-                pathname === child.href ||
-                (child.isLastAgent && !!pathname?.startsWith('/agents/'));
-              const disabled = child.isLastAgent && !lastAgentId;
-              return (
-                <button
-                  key={child.label}
-                  type="button"
-                  onClick={() => handleAgentSubClick(child)}
-                  disabled={disabled}
-                  title={disabled ? 'Open an agent to pin it here.' : undefined}
-                  className={`flex w-full items-center rounded-md px-2 py-2 text-xs text-left transition-colors ${
-                    childActive
-                      ? 'text-accent font-semibold'
-                      : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
-                  } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-                >
-                  <span className="truncate">
-                    {child.isLastAgent && !lastAgentId ? 'Last Opened (none yet)' : child.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+          aria-hidden
+        />
+        <span className="truncate">{item.label}</span>
+      </button>
     );
   };
 
@@ -508,59 +374,15 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
-        {navLoading ? (
-          /* Sidebar skeleton while auth/user data loads */
-          <div className="space-y-1 py-1">
-            {[1, 2].map((section) => (
-              <div key={section}>
-                <div className={`${section > 1 ? 'mt-4' : 'mt-1'} mb-2 ml-1`}>
-                  <div className="h-2.5 w-14 animate-pulse rounded bg-bg-secondary" />
-                </div>
-                {[1, 2, 3].map((item) => (
-                  <div key={item} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2">
-                    <div className="h-4 w-4 animate-pulse rounded bg-bg-secondary shrink-0" />
-                    <div className={`h-3 animate-pulse rounded bg-bg-secondary ${item === 1 ? 'w-20' : item === 2 ? 'w-24' : 'w-16'}`} />
-                  </div>
-                ))}
-              </div>
-            ))}
-            <div className="mt-4 mb-2 ml-1">
-              <div className="h-2.5 w-16 animate-pulse rounded bg-bg-secondary" />
-            </div>
-            {[1, 2, 3, 4].map((item) => (
-              <div key={`c-${item}`} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2">
-                <div className="h-4 w-4 animate-pulse rounded bg-bg-secondary shrink-0" />
-                <div className={`h-3 animate-pulse rounded bg-bg-secondary ${item % 2 === 0 ? 'w-24' : 'w-20'}`} />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <>
-          {navItems.map((entry, idx) => {
-            // Section divider
-            if (isSection(entry)) {
-              return (
-                <div key={`s-${entry.label}`} className={`${idx > 0 ? 'mt-4' : 'mt-2'} mb-1 flex items-center gap-2`}>
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary/60 whitespace-nowrap">
-                    {entry.label}
-                  </span>
-                  <div className="h-px flex-1 bg-border-color/60" />
-                </div>
-              );
-            }
-
-            // DataSheetNav slot
-            if (isDataSheetSlot(entry)) {
-              return (
-                <DataSheetNav key="datasheet" onNavigate={() => setSidebarOpen(false)} />
-              );
-            }
-
-            // Regular nav item
-            return renderNavItem(entry);
-          })}
-          </>
-        )}
+        {navItems.map((entry) => {
+          if (isDataSheetSlot(entry)) {
+            return (
+              <DataSheetNav key="datasheet" onNavigate={() => setSidebarOpen(false)} />
+            );
+          }
+          if (isSection(entry)) return null;
+          return renderNavItem(entry);
+        })}
       </nav>
 
       {/* Footer — user info + settings/logout */}

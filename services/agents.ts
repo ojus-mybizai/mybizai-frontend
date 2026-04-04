@@ -165,7 +165,7 @@ type ApiChatAgent = {
   total_runs?: number;
   created_at: string;
   updated_at: string | null;
-  channels?: Array<{ id: number }>;
+  channels?: Array<{ id: number }> | null;
   tools?: Array<{ id: number }>;
   tool_assignments?: Array<{
     tool_id: number;
@@ -216,7 +216,7 @@ function mapAgent(a: ApiChatAgent): Agent {
     status: a.status,
     deployed: Boolean(a.deployed),
     replyMode,
-    channelIds: (a.channels ?? []).map((c) => String(c.id)),
+    channelIds: (a.channels ?? []).map((ch) => String(ch.id)),
     toolIds:
       (a.tool_assignments ?? []).map((t) => String(t.tool_id)).length > 0
         ? (a.tool_assignments ?? [])
@@ -248,12 +248,12 @@ function mapAgent(a: ApiChatAgent): Agent {
 }
 
 export async function listAgents(): Promise<Agent[]> {
-  const data = await apiFetch<ApiChatAgent[]>('/chat_agents/', { method: 'GET' });
+  const data = await apiFetch<ApiChatAgent[]>('/agents/', { method: 'GET' });
   return data.map(mapAgent);
 }
 
 export async function getAgent(id: string): Promise<Agent | null> {
-  const data = await apiFetch<ApiChatAgent>(`/chat_agents/${id}`, { method: 'GET' });
+  const data = await apiFetch<ApiChatAgent>(`/agents/${id}`, { method: 'GET' });
   return mapAgent(data);
 }
 
@@ -277,7 +277,7 @@ export async function createAgent(input: CreateAgentInput): Promise<Agent> {
     status: 'draft' as const,
     deployed: false,
   };
-  const created = await apiFetch<ApiChatAgent>('/chat_agents/', {
+  const created = await apiFetch<ApiChatAgent>('/agents/', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -327,7 +327,7 @@ export async function updateAgent(id: string, input: UpdateAgentInput): Promise<
   if (input.maxActionsPerRun !== undefined) payload.max_actions_per_run = input.maxActionsPerRun;
   if (input.skills !== undefined) payload.skills = input.skills;
 
-  const updated = await apiFetch<ApiChatAgent>(`/chat_agents/${id}`, {
+  const updated = await apiFetch<ApiChatAgent>(`/agents/${id}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
@@ -335,26 +335,26 @@ export async function updateAgent(id: string, input: UpdateAgentInput): Promise<
 }
 
 export async function deleteAgent(id: string): Promise<void> {
-  await apiFetch<void>(`/chat_agents/${id}`, { method: 'DELETE' });
+  await apiFetch<void>(`/agents/${id}`, { method: 'DELETE' });
 }
 
 export async function toggleAgentStatus(id: string, next: AgentStatus): Promise<Agent> {
   if (next === 'active') {
-    const updated = await apiFetch<ApiChatAgent>(`/chat_agents/${id}/deploy`, { method: 'POST' });
+    const updated = await apiFetch<ApiChatAgent>(`/agents/${id}/deploy`, { method: 'POST' });
     return mapAgent(updated);
   }
   if (next === 'paused') {
-    const updated = await apiFetch<ApiChatAgent>(`/chat_agents/${id}/pause`, { method: 'POST' });
+    const updated = await apiFetch<ApiChatAgent>(`/agents/${id}/pause`, { method: 'POST' });
     return mapAgent(updated);
   }
   // fallback: update status directly
   return updateAgent(id, { });
 }
 
-export async function bindChannels(id: string, channelIds: string[]): Promise<void> {
-  await apiFetch(`/chat_agents/${id}/channels`, {
+export async function bindChannels(agentId: string, channelIds: string[]): Promise<void> {
+  await apiFetch(`/agents/${agentId}/channels`, {
     method: 'PUT',
-    body: JSON.stringify({ channel_ids: channelIds.map((v) => Number(v)) }),
+    body: JSON.stringify({ channel_ids: channelIds.map(Number) }),
   });
 }
 
@@ -363,7 +363,7 @@ export async function bindTools(
   toolIds: string[],
   toolConfigs?: Record<string, BindToolConfigInput>,
 ): Promise<void> {
-  await apiFetch(`/chat_agents/${id}/tools`, {
+  await apiFetch(`/agents/${id}/tools`, {
     method: 'PUT',
     body: JSON.stringify({
       tool_ids: toolIds.map((v) => Number(v)),
@@ -374,7 +374,7 @@ export async function bindTools(
 
 
 export async function testAgent(id: string, userMessage: string): Promise<string> {
-  const res = await apiFetch<{ response: string }>(`/chat_agents/${id}/test`, {
+  const res = await apiFetch<{ response: string }>(`/agents/${id}/test`, {
     method: 'POST',
     body: JSON.stringify({ user_message: userMessage }),
   });
@@ -393,7 +393,7 @@ export interface AIBuildResponse {
 }
 
 export async function aiBuildAgent(description: string, conversationHistory: Array<{ role: string; content: string }> = []): Promise<AIBuildResponse> {
-  return apiFetch<AIBuildResponse>('/chat_agents/ai-build', {
+  return apiFetch<AIBuildResponse>('/agents/ai-build', {
     method: 'POST',
     auth: true,
     body: JSON.stringify({ description, conversation_history: conversationHistory }),
@@ -448,7 +448,7 @@ function mapDatasheetAccess(a: ApiDatasheetAccess): AgentDatasheetAccess {
 }
 
 export async function listDatasheetAccess(agentId: string): Promise<AgentDatasheetAccess[]> {
-  const data = await apiFetch<ApiDatasheetAccess[]>(`/chat_agents/${agentId}/datasheet-access`);
+  const data = await apiFetch<ApiDatasheetAccess[]>(`/agents/${agentId}/datasheet-access`);
   return data.map(mapDatasheetAccess);
 }
 
@@ -456,7 +456,7 @@ export async function saveDatasheetAccess(
   agentId: string,
   items: DatasheetAccessInput[],
 ): Promise<AgentDatasheetAccess[]> {
-  const data = await apiFetch<ApiDatasheetAccess[]>(`/chat_agents/${agentId}/datasheet-access`, {
+  const data = await apiFetch<ApiDatasheetAccess[]>(`/agents/${agentId}/datasheet-access`, {
     method: 'PUT',
     body: JSON.stringify({ items }),
   });
@@ -489,16 +489,16 @@ export interface SkillsAndTriggersResponse {
 }
 
 export async function listAvailableSkills(): Promise<SkillDefinition[]> {
-  const res = await apiFetch<SkillsAndTriggersResponse>('/chat_agents/skills/available');
+  const res = await apiFetch<SkillsAndTriggersResponse>('/agents/skills/available');
   return res.skills ?? [];
 }
 
 export async function listAvailableSkillsAndTriggers(): Promise<SkillsAndTriggersResponse> {
-  return apiFetch<SkillsAndTriggersResponse>('/chat_agents/skills/available');
+  return apiFetch<SkillsAndTriggersResponse>('/agents/skills/available');
 }
 
 export async function runAgentManually(agentId: string, context?: Record<string, unknown>): Promise<unknown> {
-  return apiFetch(`/chat_agents/${agentId}/run`, {
+  return apiFetch(`/agents/${agentId}/run`, {
     method: 'POST',
     body: JSON.stringify(context ?? {}),
   });
@@ -521,12 +521,12 @@ export interface AgentTemplate {
 }
 
 export async function listAgentTemplates(): Promise<AgentTemplate[]> {
-  const res = await apiFetch<{ templates?: AgentTemplate[] }>('/business-agents/templates');
+  const res = await apiFetch<{ templates?: AgentTemplate[] }>('/agents/templates');
   return res.templates ?? [];
 }
 
 export async function createAgentFromTemplate(templateId: string): Promise<Agent> {
-  const data = await apiFetch<ApiChatAgent>(`/business-agents/from-template/${templateId}`, {
+  const data = await apiFetch<ApiChatAgent>(`/agents/from-template/${templateId}`, {
     method: 'POST',
   });
   return mapAgent(data);
@@ -560,7 +560,7 @@ export interface AgentRun {
 }
 
 export async function listAgentRuns(agentId: string, limit = 20): Promise<AgentRun[]> {
-  const res = await apiFetch<{ runs?: AgentRun[] }>(`/business-agents/${agentId}/runs?limit=${limit}`);
+  const res = await apiFetch<{ runs?: AgentRun[] }>(`/agents/${agentId}/runs?limit=${limit}`);
   return res.runs ?? [];
 }
 

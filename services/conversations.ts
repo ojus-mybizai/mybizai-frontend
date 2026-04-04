@@ -20,7 +20,7 @@ export interface AgentSummary {
 export async function listAgentsForBusiness(): Promise<AgentSummary[]> {
   const data = await apiFetch<
     Array<{ id: number; name: string; role: string; status: string }>
-  >('/chat_agents/?detail=false', { method: 'GET' });
+  >('/agents/?detail=false', { method: 'GET' });
   return data.map((a) => ({
     id: a.id,
     name: a.name,

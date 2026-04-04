@@ -91,7 +91,7 @@ function mapAgentSummary(a: ApiAgentSummary): AgentSummary {
 // ---------------------------------------------------------------------------
 
 export async function listAgents(): Promise<AgentSummary[]> {
-  const data = await apiFetch<ApiAgentSummary[]>('/chat_agents/?detail=false');
+  const data = await apiFetch<ApiAgentSummary[]>('/agents/?detail=false');
   return data.map(mapAgentSummary);
 }
 
@@ -104,7 +104,7 @@ export async function sendMessage(
   if (conversationId != null) body.conversation_id = conversationId;
 
   const data = await apiFetch<ApiSendMessageResponse>(
-    `/chat_agents/${agentId}/chat`,
+    `/agents/${agentId}/chat`,
     { method: 'POST', body: JSON.stringify(body) },
   );
 
@@ -117,7 +117,7 @@ export async function sendMessage(
 
 export async function getChatHistory(agentId: number): Promise<ChatHistoryResponse> {
   const data = await apiFetch<ApiChatHistoryResponse>(
-    `/chat_agents/${agentId}/chat/history`,
+    `/agents/${agentId}/chat/history`,
   );
 
   return {

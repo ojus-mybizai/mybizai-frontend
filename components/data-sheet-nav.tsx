@@ -1,22 +1,17 @@
 'use client';
 
 /**
- * DataSheetNav — Sidebar dropdown for Data Sheets.
+ * DataSheetNav — Sidebar dropdown for Data.
  *
- * Shows only STARRED datasheets in the sidebar.
- * Users star sheets from the main /data-sheet page.
- *
- * • Lazy-loads all models on first open, then filters to starred
- * • "+ New datasheet" → quick-create by name → goes to /data-sheet/{id}/settings so user can add fields
- * • "View all →" link always present at the bottom
- * • Auto-opens when on any /data-sheet/* route
+ * Shows all datasheets in a dropdown list.
+ * Top items: "View all" and "+ New datasheet"
+ * Then lists all datasheets below.
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Sheet } from 'lucide-react';
+import { Database } from 'lucide-react';
 import { listModels, createModel, type DynamicModel } from '@/features/data-sheet/api';
-import { useStarredDatasheets } from '@/lib/use-starred-datasheets';
 
 function slugify(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
@@ -37,8 +32,6 @@ export function DataSheetNav({ onNavigate }: { onNavigate?: () => void }) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const { starred, isStarred } = useStarredDatasheets();
 
   const isDataSheetRoute = !!pathname?.startsWith('/data-sheet');
 
@@ -103,7 +96,6 @@ export function DataSheetNav({ onNavigate }: { onNavigate?: () => void }) {
       setAllModels((prev) => [...prev, model]);
       setNewName('');
       setQuickCreate(false);
-      // Navigate to settings so user can add fields right away
       navigate(`/data-sheet/${model.id}/settings`);
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create datasheet.');
@@ -118,72 +110,33 @@ export function DataSheetNav({ onNavigate }: { onNavigate?: () => void }) {
     setCreateError('');
   };
 
-  // Only show starred models in the sidebar
-  const starredModels = allModels.filter((m) => isStarred(m.id));
-
   return (
     <div className="space-y-0.5">
       {/* Main toggle button */}
       <button
         type="button"
         onClick={handleToggle}
-        className={`flex w-full items-center justify-between rounded-md px-3 py-3 text-sm text-left transition-colors ${
+        className={`group flex w-full items-center rounded-lg px-2.5 py-2 text-sm text-left transition-all ${
           isDataSheetRoute
-            ? 'bg-card-bg text-text-primary'
+            ? 'bg-accent/10 text-accent font-medium'
             : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
         }`}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-text-secondary">
-            <Sheet className="h-3.5 w-3.5" aria-hidden />
-          </div>
-          <span className="truncate">Data Sheet</span>
-        </div>
-        <span className="text-xs text-text-secondary select-none">{open ? '▾' : '▸'}</span>
+        <Database
+          className={`h-4 w-4 shrink-0 transition-colors mr-2.5 ${
+            isDataSheetRoute ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'
+          }`}
+          aria-hidden
+        />
+        <span className="truncate flex-1">Data</span>
+        <span className={`text-[10px] transition-transform ${open ? 'rotate-90' : ''} ${isDataSheetRoute ? 'text-accent' : 'text-text-secondary'}`}>
+          ▸
+        </span>
       </button>
 
       {/* Dropdown */}
       {open && (
-        <div className="ml-8 border-l border-border-color pl-3 pb-1 space-y-0.5 text-xs">
-
-          {/* Starred sheet list */}
-          {loading && !loaded ? (
-            <div className="py-2 pl-2 text-text-secondary animate-pulse">Loading…</div>
-          ) : starredModels.length === 0 ? (
-            <div className="py-2 pl-2 space-y-0.5">
-              <p className="text-text-secondary italic text-[11px] leading-snug">
-                No pinned sheets yet.
-              </p>
-              <p className="text-text-secondary/70 text-[10px] leading-snug">
-                Star a sheet from the Data Sheet page to pin it here.
-              </p>
-            </div>
-          ) : (
-            starredModels.map((model) => {
-              const active =
-                pathname === `/data-sheet/${model.id}` ||
-                !!pathname?.startsWith(`/data-sheet/${model.id}/`);
-              return (
-                <button
-                  key={model.id}
-                  type="button"
-                  onClick={() => navigate(`/data-sheet/${model.id}`)}
-                  title={model.display_name}
-                  className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors ${
-                    active
-                      ? 'bg-card-bg text-text-primary font-semibold'
-                      : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
-                  }`}
-                >
-                  <span className="text-amber-400 text-[10px] leading-none">★</span>
-                  <span className="truncate">{model.display_name}</span>
-                </button>
-              );
-            })
-          )}
-
-          {/* Divider */}
-          <div className="pt-1 border-t border-border-color/50" />
+        <div className="ml-6 border-l border-border-color pl-3 pb-1 space-y-0.5 text-xs">
 
           {/* View all link */}
           <button
@@ -191,19 +144,18 @@ export function DataSheetNav({ onNavigate }: { onNavigate?: () => void }) {
             onClick={() => navigate('/data-sheet')}
             className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors ${
               pathname === '/data-sheet'
-                ? 'text-text-primary font-semibold'
+                ? 'text-accent font-semibold'
                 : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
             }`}
           >
-            <span className="text-[11px]">☰</span>
-            <span>View all sheets</span>
+            <span>View all</span>
           </button>
 
-          {/* Quick-create */}
+          {/* New datasheet */}
           {quickCreate ? (
             <form
               onSubmit={handleQuickCreate}
-              className="mt-1 rounded-lg border border-border-color bg-bg-secondary p-2 space-y-1.5"
+              className="rounded-lg border border-border-color bg-bg-secondary p-2 space-y-1.5"
             >
               <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wide">
                 New Datasheet
@@ -218,11 +170,6 @@ export function DataSheetNav({ onNavigate }: { onNavigate?: () => void }) {
                 maxLength={128}
                 className="block w-full rounded border border-border-color bg-bg-primary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent"
               />
-              {newName.trim() && (
-                <p className="text-[10px] text-text-secondary">
-                  slug: <code className="rounded bg-bg-primary px-1">{slugify(newName) || '—'}</code>
-                </p>
-              )}
               {createError && <p className="text-[10px] text-red-500">{createError}</p>}
               <div className="flex gap-1 pt-0.5">
                 <button
@@ -230,7 +177,7 @@ export function DataSheetNav({ onNavigate }: { onNavigate?: () => void }) {
                   disabled={creating || !newName.trim() || !slugify(newName)}
                   className="flex-1 rounded bg-accent px-2 py-1.5 text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
                 >
-                  {creating ? 'Creating…' : 'Create & add fields →'}
+                  {creating ? 'Creating…' : 'Create'}
                 </button>
                 <button
                   type="button"
@@ -252,6 +199,41 @@ export function DataSheetNav({ onNavigate }: { onNavigate?: () => void }) {
               </span>
               <span>New datasheet</span>
             </button>
+          )}
+
+          {/* Divider */}
+          <div className="pt-1 border-t border-border-color/50" />
+
+          {/* All datasheets list */}
+          {loading && !loaded ? (
+            <div className="py-2 pl-2 text-text-secondary animate-pulse">Loading…</div>
+          ) : allModels.length === 0 ? (
+            <div className="py-2 pl-2">
+              <p className="text-text-secondary italic text-[11px] leading-snug">
+                No datasheets yet.
+              </p>
+            </div>
+          ) : (
+            allModels.map((model) => {
+              const active =
+                pathname === `/data-sheet/${model.id}` ||
+                !!pathname?.startsWith(`/data-sheet/${model.id}/`);
+              return (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => navigate(`/data-sheet/${model.id}`)}
+                  title={model.display_name}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors ${
+                    active
+                      ? 'text-accent font-semibold'
+                      : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+                  }`}
+                >
+                  <span className="truncate">{model.display_name}</span>
+                </button>
+              );
+            })
           )}
         </div>
       )}

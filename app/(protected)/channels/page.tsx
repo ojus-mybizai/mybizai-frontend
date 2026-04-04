@@ -6,7 +6,7 @@ import PermissionGuard from '@/components/permission-guard';
 import { LoadingSkeleton } from '@/components/agents/loading-skeleton';
 import { FacebookSDKLoader } from '@/components/integrations/FacebookSDKLoader';
 import { MetaConnectButton } from '@/components/integrations/MetaConnectButton';
-import { createChannel, deleteChannel, listChannels, setChannelDefaultAgent, type Channel, type MetaChannelType } from '@/services/channels';
+import { createChannel, deleteChannel, listChannels, setChannelAgent, type Channel, type MetaChannelType } from '@/services/channels';
 import { listAgents, type Agent } from '@/services/agents';
 
 const CHANNEL_TYPE_LABELS: Record<string, string> = {
@@ -105,13 +105,13 @@ export default function ChannelsPage() {
     }
   }, []);
 
-  const handleSetDefaultAgent = async (channelId: string, agentId: number | null) => {
+  const handleSetAgent = async (channelId: string, agentId: number | null) => {
     setSavingAgentFor(channelId);
     try {
-      await setChannelDefaultAgent(channelId, agentId);
+      await setChannelAgent(channelId, agentId);
       setChannels((prev) =>
         prev.map((ch) =>
-          ch.id === channelId ? { ...ch, defaultAgentId: agentId, isConnected: agentId !== null } : ch
+          ch.id === channelId ? { ...ch, agentId: agentId, isConnected: agentId !== null } : ch
         )
       );
     } catch (err) {
@@ -231,10 +231,10 @@ export default function ChannelsPage() {
                             </td>
                             <td className="px-4 py-3">
                               <select
-                                value={ch.defaultAgentId ?? ''}
+                                value={ch.agentId ?? ''}
                                 onChange={(e) => {
                                   const val = e.target.value;
-                                  handleSetDefaultAgent(ch.id, val ? Number(val) : null);
+                                  handleSetAgent(ch.id, val ? Number(val) : null);
                                 }}
                                 disabled={savingAgentFor === ch.id}
                                 className="w-full max-w-[180px] rounded-md border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary disabled:opacity-50"

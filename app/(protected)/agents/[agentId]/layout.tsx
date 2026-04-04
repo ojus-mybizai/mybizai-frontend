@@ -69,7 +69,7 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
     (t) => t.mode === 'always' || (t.mode === 'chat' && chatOn) || (t.mode === 'auto' && autoOn),
   );
   const activeTab = tabs.find((t) => pathname?.startsWith(`${base}/${t.slug}`));
-  const setupRecommended = chatOn && (current.channelIds?.length ?? 0) === 0;
+  const setupRecommended = chatOn && (!current.channelIds || current.channelIds.length === 0);
 
   return (
     <ModuleGuard module="agents">

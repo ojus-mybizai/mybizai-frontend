@@ -20,6 +20,7 @@ const LeadAnalyticsDashboard = dynamic(
   { ssr: false, loading: () => <div className="h-64 animate-pulse bg-bg-secondary rounded-lg" /> }
 );
 import { LeadPipelineBoard } from '@/components/leads/lead-pipeline-board';
+import { LeadSidebarPanel } from '@/components/leads/lead-sidebar-panel';
 import { PipelineEditorModal } from '@/components/leads/pipeline-editor-modal';
 import { listPipelineStages, moveLeadToStage, type LeadPipelineStage } from '@/services/customers';
 
@@ -98,6 +99,7 @@ function CustomersContent() {
   const menuRef = useRef<HTMLDivElement>(null);
   const [fieldConfigs, setFieldConfigs] = useState<LeadFieldConfig[]>([]);
   const [showFieldConfig, setShowFieldConfig] = useState(false);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const isLoadMoreRef = useRef(false);
 
   // Custom fields: visible non-system, non-relation fields (shown as data cells)
@@ -307,7 +309,7 @@ function CustomersContent() {
                   void listPipelineStages().then(setPipelineStages);
                   void list(filters);
                 }}
-                onLeadClick={(leadId) => router.push(`/leads/${leadId}`)}
+                onLeadClick={(leadId) => setSelectedLeadId(String(leadId))}
                 onEditPipeline={() => setPipelineEditorOpen(true)}
               />
               <PipelineEditorModal
@@ -390,7 +392,7 @@ function CustomersContent() {
                 </thead>
                 <tbody className="divide-y divide-border-color">
                   {filteredCustomers.map((c) => (
-                    <tr key={c.id} className="hover:bg-bg-secondary/60">
+                    <tr key={c.id} className="hover:bg-bg-secondary/60 cursor-pointer" onClick={() => setSelectedLeadId(c.id)}>
                       <td className="px-4 py-2.5">
                         <div className="text-base font-semibold text-text-primary">{c.name || 'Unknown'}</div>
                         {c.lastMessagePreview && c.lastMessagePreview !== '—' && (
@@ -524,7 +526,7 @@ function CustomersContent() {
                         <div className="relative flex justify-end" ref={openMenuId === c.id ? menuRef : undefined}>
                           <button
                             type="button"
-                            onClick={(e) => {
+                            onClick={(e: React.MouseEvent) => {
                               e.stopPropagation();
                               setOpenMenuId((prev) => (prev === c.id ? null : c.id));
                             }}
@@ -547,9 +549,10 @@ function CustomersContent() {
                                 type="button"
                                 role="menuitem"
                                 className="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setOpenMenuId(null);
-                                  router.push(`/leads/${c.id}`);
+                                  setSelectedLeadId(c.id);
                                 }}
                               >
                                 Profile
@@ -558,9 +561,10 @@ function CustomersContent() {
                                 type="button"
                                 role="menuitem"
                                 className="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setOpenMenuId(null);
-                                  router.push(`/leads/${c.id}`);
+                                  setSelectedLeadId(c.id);
                                 }}
                               >
                                 Edit
@@ -570,7 +574,8 @@ function CustomersContent() {
                                   type="button"
                                   role="menuitem"
                                   className="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setOpenMenuId(null);
                                     router.push(`/conversations/${c.latestConversationId}`);
                                   }}
@@ -589,11 +594,13 @@ function CustomersContent() {
                                 type="button"
                                 role="menuitem"
                                 className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-bg-secondary dark:text-red-400"
-                                onClick={async () => {
+                                onClick={async (e) => {
+                                  e.stopPropagation();
                                   setOpenMenuId(null);
                                   if (!confirm('Are you sure you want to delete this lead? This cannot be undone.')) return;
                                   try {
                                     await deleteLead(c.id);
+                                    if (selectedLeadId === c.id) setSelectedLeadId(null);
                                   } catch (err) {
                                     console.error('Failed to delete lead:', err);
                                     alert('Failed to delete lead. Please try again.');
@@ -655,6 +662,20 @@ function CustomersContent() {
           <LeadFieldConfigPanel onClose={() => setShowFieldConfig(false)} />
         </div>
       </div>
+    )}
+
+    {/* Lead sidebar panel */}
+    {selectedLeadId && (
+      <LeadSidebarPanel
+        leadId={selectedLeadId}
+        initialData={customers.find(c => c.id === selectedLeadId)}
+        onClose={() => setSelectedLeadId(null)}
+        onDeleted={() => {
+          setSelectedLeadId(null);
+          void list(filters);
+        }}
+        onUpdated={() => void list(filters)}
+      />
     )}
     </>
   );

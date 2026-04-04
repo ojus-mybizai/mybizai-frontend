@@ -769,8 +769,16 @@ export async function listLeadActivities(leadId: number | string, page = 1, perP
 }
 
 
-// ---------- Linked Datasheets ----------
+// ---------- Lead-Linked Datasheets ----------
 
+/** A datasheet that has a relation field pointing to Leads (business-level). */
+export interface LeadLinkedModel {
+  model_id: number;
+  display_name: string;
+  field_name: string;
+}
+
+/** Legacy shape returned by per-lead linked-datasheets endpoint. */
 export interface LinkedDatasheet {
   model_id: number;
   name: string;
@@ -798,8 +806,15 @@ export interface LinkedRecord {
 export interface LinkedRecordsResponse {
   fields: LinkedRecordField[];
   records: LinkedRecord[];
+  total_count?: number;
 }
 
+/** Business-level: which datasheets have a relation field to Leads. */
+export async function getLeadLinkedModels(): Promise<LeadLinkedModel[]> {
+  return apiFetch<LeadLinkedModel[]>('/leads/linked-models', { method: 'GET', auth: true });
+}
+
+/** Per-lead: datasheets with record counts for a specific lead. */
 export async function getLinkedDatasheets(leadId: number | string): Promise<LinkedDatasheet[]> {
   return apiFetch<LinkedDatasheet[]>(`/leads/${leadId}/linked-datasheets`, { method: 'GET', auth: true });
 }

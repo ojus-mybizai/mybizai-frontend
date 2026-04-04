@@ -17,7 +17,7 @@ export interface Agent {
   };
   status: AgentStatus;
   deployed: boolean;
-  channelIds: string[];
+  channelId: string | null;
   toolIds: string[];
   chatEnabled: boolean;
   automationEnabled: boolean;
@@ -46,7 +46,7 @@ let agents: Agent[] = [
     capabilities: { search: true, tools: true, knowledge: true, smalltalk: true },
     status: 'active',
     deployed: true,
-    channelIds: ['whatsapp'],
+    channelId: 'whatsapp',
     toolIds: [],
     chatEnabled: true,
     automationEnabled: false,
@@ -62,7 +62,7 @@ let agents: Agent[] = [
     capabilities: { search: false, tools: true, knowledge: true, smalltalk: false },
     status: 'paused',
     deployed: false,
-    channelIds: [],
+    channelId: null,
     toolIds: [],
     chatEnabled: true,
     automationEnabled: false,
@@ -94,7 +94,7 @@ export async function createAgent(input: CreateAgentInput): Promise<Agent> {
     capabilities: { search: false, tools: false, knowledge: false, smalltalk: false },
     status: 'draft',
     deployed: false,
-    channelIds: [],
+    channelId: null,
     toolIds: [],
     chatEnabled: true,
     automationEnabled: false,
@@ -125,8 +125,8 @@ export async function toggleAgentStatus(id: string, next: AgentStatus): Promise<
   });
 }
 
-export async function bindChannels(id: string, channelIds: string[]): Promise<Agent> {
-  return updateAgent(id, { channelIds });
+export async function bindChannel(id: string, channelId: string | null): Promise<Agent> {
+  return updateAgent(id, { channelId });
 }
 
 export async function bindTools(id: string, toolIds: string[]): Promise<Agent> {

@@ -9,7 +9,7 @@ export interface Channel {
   type: ChannelType;
   name: string;
   isConnected: boolean;
-  defaultAgentId: number | null;
+  agentId: number | null;
   createdAt: string | null;
   updatedAt: string | null;
   leadCount?: number;
@@ -20,7 +20,7 @@ type ApiChannel = {
   type: string;
   name: string;
   is_connected: boolean;
-  default_agent_id: number | null;
+  agent_id: number | null;
   created_at: string | null;
   updated_at: string | null;
   lead_count?: number;
@@ -32,7 +32,7 @@ function mapChannel(api: ApiChannel): Channel {
     type: api.type,
     name: api.name,
     isConnected: Boolean(api.is_connected),
-    defaultAgentId: api.default_agent_id ?? null,
+    agentId: api.agent_id ?? null,
     createdAt: api.created_at,
     updatedAt: api.updated_at,
     leadCount: typeof api.lead_count === 'number' ? api.lead_count : 0,
@@ -64,10 +64,10 @@ export interface CreateChannelPayload {
   return mapChannel(data);
 }
 
-export async function setChannelDefaultAgent(
+export async function setChannelAgent(
   channelId: string,
   agentId: number | null,
-): Promise<{ channel_id: number; default_agent_id: number | null }> {
+): Promise<{ channel_id: number; agent_id: number | null }> {
   return apiFetch(`/channels/${channelId}/default-agent`, {
     method: 'PUT',
     body: JSON.stringify({ agent_id: agentId }),

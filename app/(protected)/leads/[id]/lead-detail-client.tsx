@@ -23,9 +23,9 @@ import {
   listLeadActivities,
   type LeadPipelineStage,
   type LeadActivity,
-  getLinkedDatasheets,
+  getLeadLinkedModels,
   getLinkedRecords,
-  type LinkedDatasheet,
+  type LeadLinkedModel,
   type LinkedRecordField,
   type LinkedRecord,
 } from '@/services/customers';
@@ -55,7 +55,6 @@ const BASE_TABS: { id: string; label: string }[] = [
   { id: 'timeline', label: 'Timeline' },
   { id: 'conversations', label: 'Conversations' },
   { id: 'followups', label: 'Follow-ups' },
-  { id: 'work', label: 'Work' },
 ];
 
 const NOTE_CATEGORY_LABELS: Record<string, string> = {
@@ -254,7 +253,7 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
   const [deletingNoteId, setDeletingNoteId] = useState<number | null>(null);
 
   // Linked datasheets
-  const [linkedDatasheets, setLinkedDatasheets] = useState<LinkedDatasheet[]>([]);
+  const [leadLinkedModels, setLeadLinkedModels] = useState<LeadLinkedModel[]>([]);
   const [dsRecords, setDsRecords] = useState<Record<number, { fields: LinkedRecordField[]; records: LinkedRecord[] }>>({});
   const [dsLoading, setDsLoading] = useState<number | null>(null);
 
@@ -292,91 +291,98 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
 
   // --- Effects ---
 
-  useEffect(() => { loadedTabsRef.current = new Set(); }, [id]);
+  // Reset loaded tabs + stale data when lead changes
+  useEffect(() => {
+    loadedTabsRef.current = new Set();
+    setDsRecords({});
+    setActivities([]);
+    setNotes([]);
+    setFollowups([]);
+    setLatestSessions([]);
+    setWorkItems([]);
+  }, [id]);
 
+  // Load lead data
   useEffect(() => {
     if (!id) return;
     void fetchCustomerWithConversations(id);
   }, [id, fetchCustomerWithConversations]);
 
-  // Pipeline stages
+  // Reference data (business-level, load once)
   useEffect(() => {
     listPipelineStages().then(setPipelineStages).catch(() => setPipelineStages([]));
     listAgents().then(setAllAgents).catch(() => setAllAgents([]));
+    getLeadLinkedModels().then(setLeadLinkedModels).catch(() => setLeadLinkedModels([]));
   }, []);
 
-  // Linked datasheets
-  useEffect(() => {
-    if (!id) return;
-    getLinkedDatasheets(id).then(setLinkedDatasheets).catch(() => setLinkedDatasheets([]));
-  }, [id]);
-
-  // Build dynamic tabs (base + datasheet tabs)
-  const allTabs = [...BASE_TABS, ...linkedDatasheets.map(ds => ({
-    id: `ds_${ds.model_id}`,
-    label: ds.display_name,
-    count: ds.record_count,
+  // Build dynamic tabs (base + datasheet tabs from registry)
+  const allTabs = [...BASE_TABS, ...leadLinkedModels.map(lm => ({
+    id: `ds_${lm.model_id}`,
+    label: lm.display_name,
   }))];
 
-  // Timeline data (activities + notes) on mount
+  // ── Unified lazy-load per active tab ──────────────────────────────────
   useEffect(() => {
     if (!id) return;
+    const tab = activeTab;
+    if (loadedTabsRef.current.has(tab)) return;
     let cancelled = false;
-    Promise.all([
-      listLeadActivities(id).catch(() => [] as LeadActivity[]),
-      listLeadNotes(id).catch(() => [] as LeadNote[]),
-    ]).then(([acts, nts]) => {
-      if (cancelled) return;
-      setActivities(acts);
-      setNotes(nts);
-    });
-    return () => { cancelled = true; };
-  }, [id]);
 
-  // Follow-ups on mount
-  useEffect(() => {
-    if (!id) return;
-    const leadId = Number(id);
-    if (!Number.isFinite(leadId)) return;
-    let cancelled = false;
-    setFollowupsLoading(true);
-    listFollowups({ lead_id: leadId })
-      .then((items) => { if (!cancelled) setFollowups(items); })
-      .catch((e: unknown) => { if (!cancelled) setFollowupsError(e instanceof Error ? e.message : 'Failed to load follow-ups'); })
-      .finally(() => { if (!cancelled) setFollowupsLoading(false); });
-    return () => { cancelled = true; };
-  }, [id]);
+    if (tab === 'timeline') {
+      Promise.all([
+        listLeadActivities(id).catch(() => [] as LeadActivity[]),
+        listLeadNotes(id).catch(() => [] as LeadNote[]),
+      ]).then(([acts, nts]) => {
+        if (cancelled) return;
+        setActivities(acts);
+        setNotes(nts);
+        loadedTabsRef.current.add('timeline');
+      });
+    } else if (tab === 'conversations') {
+      const latestConversation = [...conversations].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      )[0];
+      if (!latestConversation?.id) {
+        setLatestSessions([]);
+        loadedTabsRef.current.add('conversations');
+        return;
+      }
+      setLatestSessionsLoading(true);
+      listConversationSessions(latestConversation.id)
+        .then((rows) => { if (!cancelled) { setLatestSessions(rows); loadedTabsRef.current.add('conversations'); } })
+        .catch(() => { if (!cancelled) setLatestSessions([]); })
+        .finally(() => { if (!cancelled) setLatestSessionsLoading(false); });
+    } else if (tab === 'followups') {
+      const leadId = Number(id);
+      if (!Number.isFinite(leadId)) return;
+      setFollowupsLoading(true);
+      listFollowups({ lead_id: leadId })
+        .then((items) => { if (!cancelled) { setFollowups(items); loadedTabsRef.current.add('followups'); } })
+        .catch((e: unknown) => { if (!cancelled) setFollowupsError(e instanceof Error ? e.message : 'Failed to load follow-ups'); })
+        .finally(() => { if (!cancelled) setFollowupsLoading(false); });
+    } else if (tab === 'work') {
+      const leadId = Number(id);
+      if (!Number.isFinite(leadId)) return;
+      setWorkLoading(true);
+      setWorkError(null);
+      listWork({ page: 1, per_page: 50, lead_id: leadId })
+        .then((res) => { if (!cancelled) { setWorkItems(res.items ?? []); loadedTabsRef.current.add('work'); } })
+        .catch((e: unknown) => { if (!cancelled) { setWorkItems([]); setWorkError(e instanceof Error ? e.message : 'Failed to load work items'); } })
+        .finally(() => { if (!cancelled) setWorkLoading(false); });
+    } else if (tab.startsWith('ds_')) {
+      const modelId = Number(tab.replace('ds_', ''));
+      if (!dsRecords[modelId]) {
+        setDsLoading(modelId);
+        getLinkedRecords(id, modelId)
+          .then((res) => { if (!cancelled) { setDsRecords(prev => ({ ...prev, [modelId]: res })); loadedTabsRef.current.add(tab); } })
+          .catch(() => {})
+          .finally(() => { if (!cancelled) setDsLoading(null); });
+      }
+    }
 
-  // Latest sessions for conversations tab
-  useEffect(() => {
-    const latestConversation = [...conversations].sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    )[0];
-    if (!latestConversation?.id) { setLatestSessions([]); return; }
-    let cancelled = false;
-    setLatestSessionsLoading(true);
-    listConversationSessions(latestConversation.id)
-      .then((rows) => { if (!cancelled) setLatestSessions(rows); })
-      .catch(() => { if (!cancelled) setLatestSessions([]); })
-      .finally(() => { if (!cancelled) setLatestSessionsLoading(false); });
     return () => { cancelled = true; };
-  }, [conversations]);
-
-  // Lazy-load work items
-  useEffect(() => {
-    if (!id || activeTab !== 'work') return;
-    if (loadedTabsRef.current.has('work')) return;
-    const leadId = Number(id);
-    if (!Number.isFinite(leadId)) return;
-    let cancelled = false;
-    setWorkLoading(true);
-    setWorkError(null);
-    listWork({ page: 1, per_page: 50, lead_id: leadId })
-      .then((res) => { if (!cancelled) { setWorkItems(res.items ?? []); loadedTabsRef.current.add('work'); } })
-      .catch((e: unknown) => { if (!cancelled) { setWorkItems([]); setWorkError(e instanceof Error ? e.message : 'Failed to load work items'); } })
-      .finally(() => { if (!cancelled) setWorkLoading(false); });
-    return () => { cancelled = true; };
-  }, [activeTab, id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, id, conversations]);
 
   // --- Handlers ---
 
@@ -732,20 +738,7 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    // Load datasheet records when tab is clicked
-                    if (tab.id.startsWith('ds_') && id) {
-                      const modelId = Number(tab.id.replace('ds_', ''));
-                      if (!dsRecords[modelId]) {
-                        setDsLoading(modelId);
-                        getLinkedRecords(id, modelId)
-                          .then((res) => setDsRecords(prev => ({ ...prev, [modelId]: res })))
-                          .catch(() => {})
-                          .finally(() => setDsLoading(null));
-                      }
-                    }
-                  }}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`px-4 py-3 text-sm font-semibold transition-colors whitespace-nowrap ${
                     activeTab === tab.id
                       ? 'border-b-2 border-accent text-accent'
@@ -753,17 +746,17 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
                   }`}
                 >
                   {tab.label}
-                  {'count' in tab && typeof (tab as { count?: number }).count === 'number' && (
-                    <span className="ml-1.5 rounded-full bg-bg-secondary px-1.5 py-0.5 text-xs">
-                      {(tab as { count: number }).count}
-                    </span>
-                  )}
                   {tab.id === 'followups' && followups.length > 0 && (
                     <span className="ml-1.5 rounded-full bg-bg-secondary px-1.5 py-0.5 text-xs">{followups.length}</span>
                   )}
                   {tab.id === 'work' && workItems.length > 0 && (
                     <span className="ml-1.5 rounded-full bg-bg-secondary px-1.5 py-0.5 text-xs">{workItems.length}</span>
                   )}
+                  {tab.id.startsWith('ds_') && (() => {
+                    const mid = Number(tab.id.replace('ds_', ''));
+                    const cnt = dsRecords[mid]?.records?.length;
+                    return cnt ? <span className="ml-1.5 rounded-full bg-bg-secondary px-1.5 py-0.5 text-xs">{cnt}</span> : null;
+                  })()}
                 </button>
               ))}
               {/* Mobile sidebar toggle */}
@@ -1170,7 +1163,7 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
               {/* ── Linked Datasheet Tabs ── */}
               {activeTab.startsWith('ds_') && (() => {
                 const modelId = Number(activeTab.replace('ds_', ''));
-                const ds = linkedDatasheets.find(d => d.model_id === modelId);
+                const ds = leadLinkedModels.find(d => d.model_id === modelId);
                 const data = dsRecords[modelId];
                 const loading = dsLoading === modelId;
 

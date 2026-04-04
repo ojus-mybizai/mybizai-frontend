@@ -11,7 +11,7 @@ import { useDebounce } from '@/lib/use-debounce';
 import { useAgentStore } from '@/lib/agent-store';
 import { useShallow } from 'zustand/react/shallow';
 import type { AgentStatus, AgentTemplate } from '@/services/agents';
-import { LayoutTemplate, Plus, ChevronDown, ChevronUp, Zap, MessageSquare } from 'lucide-react';
+import { LayoutTemplate, Plus, ChevronDown, ChevronUp, Zap, MessageSquare, Trash2 } from 'lucide-react';
 
 // ─── Template Card ───────────────────────────────────────────
 
@@ -50,10 +50,12 @@ const AgentCard = memo(function AgentCard({
   agent,
   onOpen,
   onDeploy,
+  onDelete,
 }: {
   agent: any;
   onOpen: () => void;
   onDeploy: (next: AgentStatus) => Promise<void>;
+  onDelete: () => void;
 }) {
   const chatOn = agent.chatEnabled !== false;
   const autoOn = agent.automationEnabled === true;
@@ -103,13 +105,23 @@ const AgentCard = memo(function AgentCard({
       </div>
 
       <div className="flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="rounded-lg border border-border-color px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent"
-        >
-          Open
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpen}
+            className="rounded-lg border border-border-color px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent"
+          >
+            Open
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            title="Delete agent"
+            className="rounded-lg border border-border-color p-1.5 text-text-secondary hover:border-red-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
         <DeployButton status={agent.status} onChange={onDeploy} />
       </div>
     </div>
@@ -126,6 +138,7 @@ export default function AgentsClient() {
   );
   const list = useAgentStore((s) => s.list);
   const setStatus = useAgentStore((s) => s.setStatus);
+  const remove = useAgentStore((s) => s.remove);
   const loadTemplates = useAgentStore((s) => s.loadTemplates);
   const createFromTemplate = useAgentStore((s) => s.createFromTemplate);
 
@@ -241,6 +254,10 @@ export default function AgentsClient() {
                   agent={agent}
                   onOpen={() => router.push(`/agents/${agent.id}/overview`)}
                   onDeploy={async (next) => { await setStatus(agent.id, next); }}
+                  onDelete={async () => {
+                    if (!confirm(`Delete agent "${agent.name}"? This cannot be undone.`)) return;
+                    await remove(agent.id);
+                  }}
                 />
               ))}
             </div>
