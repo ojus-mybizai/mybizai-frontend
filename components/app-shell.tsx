@@ -247,7 +247,7 @@ function buildCustomNavItems(
         { label: 'Last Opened Agent',   href: '/agents',            group: 'workspace', isLastAgent: true },
         { label: 'Lead Templates',      href: '/lead-templates',    group: 'analytics' },
         { label: 'Agent Analytics',     href: '/analytics',         group: 'analytics' },
-        { label: 'Message Templates',   href: '/agents/templates',  group: 'analytics' },
+        { label: 'Message Templates',   href: '/message-templates',  group: 'analytics' },
       ],
     });
   }

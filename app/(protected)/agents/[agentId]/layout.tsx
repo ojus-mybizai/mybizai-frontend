@@ -13,7 +13,8 @@ import { useShallow } from 'zustand/react/shallow';
 const allTabs = [
   { slug: 'overview', label: 'Overview', mode: 'always' as const },
   { slug: 'channels', label: 'Channels', mode: 'chat' as const },
-  { slug: 'tools', label: 'Tools', mode: 'chat' as const },
+  { slug: 'skills', label: 'Skills', mode: 'always' as const },
+  { slug: 'knowledge', label: 'Knowledge', mode: 'always' as const },
   { slug: 'automation', label: 'Automation', mode: 'auto' as const },
   { slug: 'analytics', label: 'Analytics', mode: 'always' as const },
   { slug: 'test', label: 'Test', mode: 'chat' as const },

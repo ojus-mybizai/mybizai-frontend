@@ -1,11 +1,13 @@
 'use client';
 
 import { FormEvent, memo, useCallback, useEffect, useRef, useState } from 'react';
-import { LayoutGrid, MessageCircle } from 'lucide-react';
+import Link from 'next/link';
+import { LayoutGrid, MessageCircle, FileText } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AIStatusBadge } from '@/components/customers/ai-status-badge';
 import { MessageBubble } from '@/components/customers/message-bubble';
 import { ConversationRowSkeleton } from '@/components/conversations/ConversationRowSkeleton';
+import { TemplatePickerModal } from '@/components/conversations/TemplatePickerModal';
 import {
   listAllConversations,
   listMessages,
@@ -162,6 +164,7 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
   const [recalculatingConversationAnalytics, setRecalculatingConversationAnalytics] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [input, setInput] = useState('');
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [channelFilter, setChannelFilter] = useState('');
   const [modeFilter, setModeFilter] = useState('');
   const [intentFilter, setIntentFilter] = useState('');
@@ -353,9 +356,18 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
           <div
             className={`flex min-h-0 w-full flex-col border-r border-border-color bg-card-bg md:w-80 md:shrink-0 ${showChatPanel ? 'hidden md:flex' : 'flex'}`}
           >
-            <div className="px-4 py-3">
-              <h2 className="text-lg font-semibold text-text-primary">Conversations</h2>
-              <p className="text-sm text-text-secondary mt-1">Select one to view and reply</p>
+            <div className="flex items-start justify-between px-4 py-3">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">Conversations</h2>
+                <p className="text-sm text-text-secondary mt-1">Select one to view and reply</p>
+              </div>
+              <Link
+                href="/message-templates"
+                title="Manage message templates"
+                className="mt-0.5 flex-none rounded-lg border border-border-color bg-bg-primary p-2 text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+              >
+                <FileText className="h-4 w-4" />
+              </Link>
             </div>
             {/* Channel filter buttons */}
             <div className="flex flex-wrap gap-1.5 px-3 py-2" role="group" aria-label="Filter by channel">
@@ -635,8 +647,17 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
                       </div>
                       <form
                         onSubmit={handleSend}
-                        className="flex gap-3 border-t border-border-color bg-card-bg p-4"
+                        className="flex items-center gap-2 border-t border-border-color bg-card-bg p-4"
                       >
+                        {/* Template message button */}
+                        <button
+                          type="button"
+                          onClick={() => setTemplateModalOpen(true)}
+                          title="Send template message"
+                          className="flex-none rounded-lg border border-border-color bg-bg-primary p-2.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                        >
+                          <FileText className="h-5 w-5" />
+                        </button>
                         <input
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
@@ -651,6 +672,19 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
                           {sendingMessage ? 'Sending…' : 'Send'}
                         </button>
                       </form>
+                      {/* Template Picker Modal */}
+                      {templateModalOpen && selected && (
+                        <TemplatePickerModal
+                          conversationId={selected.id}
+                          channelType={selected.channelType ?? 'generic'}
+                          leadId={selected.customerId}
+                          onClose={() => setTemplateModalOpen(false)}
+                          onSent={(msg) => {
+                            setMessages((prev) => [...prev, msg]);
+                            setTemplateModalOpen(false);
+                          }}
+                        />
+                      )}
                     </>
                   )}
 

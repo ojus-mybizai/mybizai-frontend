@@ -70,8 +70,6 @@ const AgentCard = memo(function AgentCard({
           <div className="text-sm font-semibold text-text-primary truncate">{agent.name}</div>
           <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-text-secondary">
             <span className="capitalize">{agent.role}</span>
-            <span className="opacity-50">-</span>
-            <span>{agent.model || 'gpt-5-mini'}</span>
           </div>
         </div>
         <AgentStatusBadge status={agent.status} />
@@ -94,7 +92,7 @@ const AgentCard = memo(function AgentCard({
         )}
         {chatOn && (
           <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-text-secondary">
-            {agent.channelIds?.length ?? 0} channels - {agent.toolIds?.length ?? 0} tools
+            {agent.channelIds?.length ?? 0} channels - {agent.skills?.length ?? 0} skills
           </span>
         )}
         {autoOn && (

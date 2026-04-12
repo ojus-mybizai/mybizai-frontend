@@ -15,6 +15,8 @@ export default function ModuleGuard({ module, children }: Props) {
   const agentsEnabled = business?.agents_enabled !== false;
   const lmsEnabled = business?.lms_enabled !== false;
 
+  console.log('[ModuleGuard]', { module, hasUser: !!user, hasBusiness: !!business, agentsEnabled, lmsEnabled, businessKeys: business ? Object.keys(business) : 'N/A' });
+
   const required = module === 'agents' ? agentsEnabled : lmsEnabled;
   const moduleLabel = module === 'agents' ? 'Business Agents' : 'Lead Management System';
   const copy =

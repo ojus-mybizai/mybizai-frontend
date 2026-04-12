@@ -37,13 +37,22 @@ export default function PermissionGuard({ permission, module, children }: Permis
     setMounted(true);
   }, []);
 
+  // Debug: log guard state to help diagnose blank pages
+  useEffect(() => {
+    if (mounted) {
+      console.log('[PermissionGuard]', { permission, module, mounted, isOwner, isInitialized, accessToken: !!accessToken, permissionKeys });
+    }
+  }, [mounted, isOwner, isInitialized, accessToken, permissionKeys, permission, module]);
+
   // During SSR or before hydration, render nothing to avoid flash of "Access Denied"
   if (!mounted) {
+    console.log('[PermissionGuard] not mounted yet, returning null');
     return null;
   }
 
   // Owner always has full access
   if (isOwner) {
+    console.log('[PermissionGuard] isOwner=true, rendering children (module=%s)', module);
     if (module) {
       return <ModuleGuard module={module}>{children}</ModuleGuard>;
     }
@@ -51,9 +60,12 @@ export default function PermissionGuard({ permission, module, children }: Permis
   }
 
   // Wait for auth store to finish loading before showing Access Denied
-  if (!isInitialized || (accessToken && permissionKeys.length === 0)) {
+  if (!isInitialized) {
+    console.log('[PermissionGuard] not initialized yet, returning null');
     return null;
   }
+
+  console.log('[PermissionGuard] checking permission=%s, has=%s', permission, Array.isArray(permissionKeys) && permissionKeys.includes(permission));
 
   const allowed = Array.isArray(permissionKeys) && permissionKeys.includes(permission);
   const content = allowed ? children : <AccessDenied />;

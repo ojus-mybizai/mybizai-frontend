@@ -136,7 +136,6 @@ export default function ChannelsPage() {
   };
 
   return (
-    <PermissionGuard permission="manage_channels" module="lms">
       <div className="w-full max-w-full space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -363,6 +362,5 @@ export default function ChannelsPage() {
             </div>
           </div>
         </div>
-    </PermissionGuard>
   );
 }

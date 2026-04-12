@@ -22,9 +22,9 @@ export default function AgentTestPage() {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const SUGGESTIONS: string[] = [
-    'What are your opening hours?',
-    'Do you deliver to my area?',
-    'Tell me about your best-selling products.',
+    'Hi, can you help me?',
+    'What do you offer?',
+    'I need more information.',
   ];
 
   useEffect(() => {

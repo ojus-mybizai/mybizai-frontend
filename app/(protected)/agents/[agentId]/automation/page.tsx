@@ -1,19 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useAgentStore } from '@/lib/agent-store';
 import {
   listAgentRuns,
   runAgentManually,
   listAvailableSkillsAndTriggers,
   type AgentRun,
-  type SkillDefinition,
   type TriggerConfig,
   type DynamicTrigger,
 } from '@/services/agents';
 import {
   Play,
-  Clock,
   Zap,
   CheckCircle,
   XCircle,
@@ -26,46 +25,8 @@ import {
   Brain,
   Loader2,
   Save,
+  Puzzle,
 } from 'lucide-react';
-
-// ─── Skill Picker ────────────────────────────────────────────
-
-function SkillPicker({
-  allSkills,
-  selected,
-  onChange,
-}: {
-  allSkills: SkillDefinition[];
-  selected: string[];
-  onChange: (skills: string[]) => void;
-}) {
-  const categories = Array.from(new Set(allSkills.map((s) => s.category)));
-  return (
-    <div className="space-y-3">
-      {categories.map((cat) => (
-        <div key={cat}>
-          <h4 className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">{cat}</h4>
-          <div className="flex flex-wrap gap-1.5">
-            {allSkills.filter((s) => s.category === cat).map((skill) => {
-              const on = selected.includes(skill.name);
-              return (
-                <button
-                  key={skill.name}
-                  type="button"
-                  onClick={() => onChange(on ? selected.filter((s) => s !== skill.name) : [...selected, skill.name])}
-                  className={`px-2.5 py-1 text-xs rounded-full border transition-all ${on ? 'bg-accent/10 border-accent text-accent' : 'bg-bg-primary border-border-color text-text-secondary hover:border-text-secondary'}`}
-                  title={skill.description}
-                >
-                  {skill.is_llm_based && '🧠 '}{skill.name.replace(/_/g, ' ')}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 // ─── Trigger Editor ──────────────────────────────────────────
 
@@ -214,7 +175,7 @@ function RunRow({ run }: { run: AgentRun }) {
 // ─── Main Automation Tab ─────────────────────────────────────
 
 export default function AutomationPage() {
-  const { current, skills, loadSkills, update } = useAgentStore();
+  const { current, update } = useAgentStore();
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
   const [runningManual, setRunningManual] = useState(false);
@@ -222,23 +183,22 @@ export default function AutomationPage() {
   const [dynamicTriggers, setDynamicTriggers] = useState<DynamicTrigger[]>([]);
 
   // Local form state
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [automationInstructions, setAutomationInstructions] = useState('');
   const [triggers, setTriggers] = useState<TriggerConfig[]>([]);
   const [scheduleCron, setScheduleCron] = useState('');
   const [maxActions, setMaxActions] = useState(10);
 
   useEffect(() => {
-    // Load skills + dynamic triggers together
+    // Load dynamic triggers (datasheet events)
     listAvailableSkillsAndTriggers().then((res) => {
-      // Skills are loaded into the store via loadSkills, but we also need dynamic triggers
       setDynamicTriggers(res.dynamic_triggers ?? []);
     }).catch(() => {});
-    loadSkills();
   }, []);
 
   useEffect(() => {
     if (current) {
-      setSelectedSkills(current.skills ?? []);
+      const rawAutoInst = (current.settings as { automation_instructions?: unknown } | null | undefined)?.automation_instructions;
+      setAutomationInstructions(typeof rawAutoInst === 'string' ? rawAutoInst : '');
       setTriggers(current.triggers ?? []);
       setScheduleCron(current.scheduleCron ?? '');
       setMaxActions(current.maxActionsPerRun ?? 10);
@@ -259,14 +219,19 @@ export default function AutomationPage() {
     if (!current) return;
     setSaving(true);
     try {
+      // Merge automation_instructions into the existing settings JSON
+      const mergedSettings: Record<string, unknown> = {
+        ...(current.settings || {}),
+        automation_instructions: automationInstructions,
+      };
       await update(String(current.id), {
-        skills: selectedSkills,
         triggers,
         scheduleCron: scheduleCron || null,
         maxActionsPerRun: maxActions,
+        settings: mergedSettings,
       });
     } catch { /* error handled by store */ } finally { setSaving(false); }
-  }, [current?.id, selectedSkills, triggers, scheduleCron, maxActions, update]);
+  }, [current, automationInstructions, triggers, scheduleCron, maxActions, update]);
 
   const handleTestRun = useCallback(async () => {
     if (!current) return;
@@ -312,11 +277,26 @@ export default function AutomationPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left: Config */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Skills */}
+          {/* Automation Instructions */}
           <div className="rounded-xl border border-border-color bg-card-bg p-4">
-            <label className="text-xs font-semibold text-text-primary">Skills ({selectedSkills.length} selected)</label>
-            <p className="text-[10px] text-text-secondary mb-2">Choose what actions this agent can take when triggered.</p>
-            <SkillPicker allSkills={skills} selected={selectedSkills} onChange={setSelectedSkills} />
+            <label className="text-xs font-semibold text-text-primary">Automation instructions</label>
+            <p className="text-[10px] text-text-secondary mb-2">
+              What should the agent do when triggered automatically? Used for event triggers
+              and scheduled runs (not for customer chat — that uses the chat instructions in the Overview tab).
+            </p>
+            <textarea
+              value={automationInstructions}
+              onChange={(e) => setAutomationInstructions(e.target.value)}
+              rows={8}
+              placeholder={`Example:\n\nFind leads in "new" status older than 3 days.\nFor each one, send them a re-engagement message using send_message,\nand add a note with add_lead_note summarizing the outreach.`}
+              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary font-mono"
+            />
+            <p className="mt-1 text-[11px] text-text-secondary">
+              The agent uses the <strong>same skill list</strong> as chat — configure it in the{' '}
+              <Link href={`/agents/${current.id}/skills`} className="inline-flex items-center gap-0.5 text-accent hover:underline">
+                <Puzzle className="w-3 h-3" /> Skills
+              </Link>{' '}tab.
+            </p>
           </div>
 
           {/* Triggers */}
@@ -329,13 +309,16 @@ export default function AutomationPage() {
           {/* Max actions */}
           <div className="rounded-xl border border-border-color bg-card-bg p-4">
             <label className="text-xs font-semibold text-text-primary">Max actions per run</label>
+            <p className="text-[10px] text-text-secondary mb-2">
+              Safety limit — the agent can call at most this many skills in one run.
+            </p>
             <input
               type="number"
               min={1}
               max={20}
               value={maxActions}
               onChange={(e) => setMaxActions(Number(e.target.value))}
-              className="mt-1 w-24 rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-sm text-text-primary"
+              className="w-24 rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-sm text-text-primary"
             />
           </div>
         </div>

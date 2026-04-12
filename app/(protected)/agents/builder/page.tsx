@@ -78,13 +78,13 @@ function AgentCreatedCard({ result }: { result: AIBuildResponse }) {
             <span className="font-medium">{result.agent_name}</span>
           </div>
         )}
-        {result.tools_created.length > 0 && (
+        {result.skills_selected && result.skills_selected.length > 0 && (
           <div className="flex gap-2">
-            <span className="text-text-secondary min-w-[60px]">Tools:</span>
+            <span className="text-text-secondary min-w-[60px]">Skills:</span>
             <div className="flex flex-wrap gap-1.5">
-              {result.tools_created.map((t) => (
-                <span key={t} className="px-2 py-0.5 rounded-full bg-accent/10 text-accent text-xs font-medium">
-                  {t}
+              {result.skills_selected.map((s) => (
+                <span key={s} className="px-2 py-0.5 rounded-full bg-accent/10 text-accent text-xs font-medium">
+                  {s}
                 </span>
               ))}
             </div>

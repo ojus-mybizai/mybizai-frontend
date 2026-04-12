@@ -332,7 +332,7 @@ export default function TemplatesPage() {
                       <Bot className="h-3.5 w-3.5 text-primary" />
                       <span className="font-medium">{agent.name}</span>
                       <span className="text-xs text-text-muted">
-                        ({agent.role_type} · {agent.tools?.length || 0} tools)
+                        ({agent.role_type} · {agent.skills?.length || 0} skills)
                       </span>
                     </div>
                   ))}

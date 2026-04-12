@@ -1,6 +1,6 @@
 import { apiFetch } from '@/lib/api-client';
 import type { ChatAPIResponse } from '@/types/ui-protocol';
-import type { ToolState } from '@/components/dashboard/tool-state-display';
+import type { SkillState as ToolState } from '@/components/dashboard/skill-state-display';
 
 export interface DashboardChatMessage {
   role: 'user' | 'assistant';

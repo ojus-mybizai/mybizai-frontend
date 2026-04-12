@@ -137,12 +137,12 @@ export function generateTourFromTemplate(
 
   if (agents.length > 0) {
     const agent = agents[0];
-    const toolCount = agent.tools?.length || 0;
+    const skillCount = agent.skills?.length || 0;
 
     tourSteps.push({
       id: 'agents',
       title: `Meet ${agent.name} 🤖`,
-      description: `Your AI agent "${agent.name}" is ready to help! It has ${toolCount} tools and can ${agent.role_type === 'SALES' ? 'capture leads and answer sales questions' : 'answer questions, capture leads, and assist customers'}. Deploy it to WhatsApp, Instagram, or your website.`,
+      description: `Your AI agent "${agent.name}" is ready to help! It has ${skillCount} skills and can ${agent.role_type === 'SALES' ? 'capture leads and answer sales questions' : 'answer questions, capture leads, and assist customers'}. Deploy it to WhatsApp, Instagram, or your website.`,
       targetSelector: '[data-tour="nav-agents"]',
       placement: 'right',
     });

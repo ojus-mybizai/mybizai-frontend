@@ -28,6 +28,8 @@ import {
   type LeadLinkedModel,
   type LinkedRecordField,
   type LinkedRecord,
+  rescoreLead,
+  type RescoreResult,
 } from '@/services/customers';
 import {
   listFollowups,
@@ -243,6 +245,8 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
   const [switchingAgent, setSwitchingAgent] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [customFieldsExpanded, setCustomFieldsExpanded] = useState(false);
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreDetails, setRescoreDetails] = useState<RescoreResult | null>(null);
 
   // Timeline
   const [activities, setActivities] = useState<LeadActivity[]>([]);
@@ -470,6 +474,36 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
       setError('Failed to switch AI agent.');
     } finally {
       setSwitchingAgent(false);
+    }
+  };
+
+  const handleRescore = async () => {
+    if (!id || rescoring) return;
+    setRescoring(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await rescoreLead(id);
+      setRescoreDetails(result);
+      // Refresh lead so the sidebar score bar reflects the new value
+      void fetchCustomerWithConversations(id);
+      const prev = result.previousScore;
+      const next = Math.round(result.leadLevelScore);
+      if (prev != null) {
+        const delta = Math.round(next - prev);
+        const arrow = delta > 0 ? '\u2191' : delta < 0 ? '\u2193' : '=';
+        setNotice(
+          `Score recomputed: ${Math.round(prev)} \u2192 ${next} (${arrow}${Math.abs(delta)}) over ${result.sessionsConsidered} session${result.sessionsConsidered === 1 ? '' : 's'}.`,
+        );
+      } else {
+        setNotice(
+          `Score computed: ${next}/100 from ${result.sessionsConsidered} session${result.sessionsConsidered === 1 ? '' : 's'}.`,
+        );
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to recompute lead score.');
+    } finally {
+      setRescoring(false);
     }
   };
 
@@ -1339,11 +1373,22 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs text-text-secondary">Lead Score</span>
-                      <span className={`text-xs font-bold ${
-                        (currentCustomer.leadScore ?? 0) >= 71 ? 'text-emerald-500' : (currentCustomer.leadScore ?? 0) >= 31 ? 'text-amber-500' : 'text-text-primary'
-                      }`}>
-                        {currentCustomer.leadScore != null ? Math.round(currentCustomer.leadScore) : '\u2014'}/100
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold ${
+                          (currentCustomer.leadScore ?? 0) >= 71 ? 'text-emerald-500' : (currentCustomer.leadScore ?? 0) >= 31 ? 'text-amber-500' : 'text-text-primary'
+                        }`}>
+                          {currentCustomer.leadScore != null ? Math.round(currentCustomer.leadScore) : '\u2014'}/100
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleRescore()}
+                          disabled={rescoring}
+                          title="Recompute this lead's score from recent session history"
+                          className="rounded border border-border-color bg-card-bg px-2 py-0.5 text-[10px] font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {rescoring ? 'Scoring\u2026' : 'Run scoring'}
+                        </button>
+                      </div>
                     </div>
                     {currentCustomer.leadScore != null && (
                       <div className="h-1.5 w-full rounded-full bg-bg-secondary overflow-hidden">
@@ -1354,6 +1399,28 @@ export default function LeadDetailClient({ leadId }: LeadDetailClientProps) {
                           style={{ width: `${Math.min(100, Math.max(0, currentCustomer.leadScore))}%` }}
                         />
                       </div>
+                    )}
+                    {rescoreDetails && rescoreDetails.sessionBreakdown.length > 0 && (
+                      <details className="mt-2 text-[11px] text-text-secondary">
+                        <summary className="cursor-pointer hover:text-text-primary">
+                          Score breakdown ({rescoreDetails.sessionsConsidered} session{rescoreDetails.sessionsConsidered === 1 ? '' : 's'})
+                        </summary>
+                        <div className="mt-1 space-y-0.5">
+                          {rescoreDetails.sessionBreakdown.slice(0, 5).map((s) => (
+                            <div key={s.sessionId} className="flex items-center justify-between gap-2">
+                              <span className="truncate">
+                                #{s.sessionId} &middot; {s.ageDays}d ago &middot; {s.messagesCount} msgs
+                              </span>
+                              <span className="font-mono">
+                                {Math.round(s.sessionScore)} &times; {s.weight.toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                          {rescoreDetails.sessionBreakdown.length > 5 && (
+                            <div className="italic">+{rescoreDetails.sessionBreakdown.length - 5} older sessions\u2026</div>
+                          )}
+                        </div>
+                      </details>
                     )}
                   </div>
 

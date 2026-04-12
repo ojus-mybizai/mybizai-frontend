@@ -152,9 +152,35 @@ export interface DynamicViewOut {
   updated_at: string | null;
 }
 
+export interface DeleteImpactReference {
+  relation_id: number;
+  source_record_id: number;
+  source_record_label: string;
+  target_record_id: number;
+  field_id: number;
+  field_name?: string | null;
+  field_display_name: string;
+  source_model_id: number | null;
+  source_model_name: string;
+  relation_kind: string;
+}
+
+export interface DeleteImpactGroup {
+  source_model_id: number | null;
+  source_model_name: string;
+  field_id: number;
+  field_display_name: string;
+  /** How many records from this (source_model, field) point at the target */
+  count: number;
+  /** Up to 5 sample labels for display in the error UI */
+  sample_labels: string[];
+}
+
 export interface DeleteImpact {
   blocked: boolean;
-  references: Array<Record<string, unknown>>;
+  total?: number;
+  references: DeleteImpactReference[];
+  by_source_model?: DeleteImpactGroup[];
 }
 
 // Models

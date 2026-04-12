@@ -401,6 +401,7 @@ export function TablePage() {
     async (recordId: number) => {
       if (!ctx?.modelId) return;
       setDeletingRowId(recordId);
+      setError(null);
       try {
         await deleteRecord(ctx.modelId, recordId);
         setSelectedIds((prev) => {
@@ -411,6 +412,9 @@ export function TablePage() {
         setConfirmDeleteRowId(null);
         void refetch({ background: true });
       } catch (e) {
+        // Close the modal so the user can actually see the detailed error banner
+        // (which may be multi-line when the record is referenced by relations).
+        setConfirmDeleteRowId(null);
         setError(normalizeApiError(e).message);
       } finally {
         setDeletingRowId(null);
@@ -452,6 +456,8 @@ export function TablePage() {
       setConfirmBulkDeleteOpen(false);
       void refetch({ background: true });
     } catch (e) {
+      // Close the modal so the user can actually see the detailed error banner.
+      setConfirmBulkDeleteOpen(false);
       setError(normalizeApiError(e).message);
     } finally {
       setBulkDeleting(false);
@@ -499,7 +505,7 @@ export function TablePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
           {error}
         </div>
       )}

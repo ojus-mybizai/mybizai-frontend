@@ -147,3 +147,41 @@ export async function syncMetaTemplateStatus(): Promise<{ synced: number; total_
 export async function sendTemplateMessage(id: number, data: SendTemplateRequest): Promise<{ status: string; message_id?: string }> {
   return apiFetch<{ status: string; message_id?: string }>(`/message-templates/${id}/send`, { method: "POST", body: JSON.stringify(data) });
 }
+
+// ─── Send Template within a Conversation ──
+
+export interface SendConvoTemplateData {
+  template_id: number;
+  parameter_values?: Record<string, string>;
+  record_context?: Record<string, number>; // model_id -> record_id
+}
+
+interface ConvoMessageOut {
+  id: number;
+  conversation_id: number;
+  role: string;
+  content: string;
+  timestamp: string;
+}
+
+/**
+ * Send a template message inside an existing conversation.
+ * The backend resolves channel, lead, and recipient from the conversation.
+ * Returns the persisted Message so the UI can append it to the chat.
+ */
+export async function sendConvoTemplate(
+  convoId: string,
+  data: SendConvoTemplateData,
+): Promise<{ id: string; conversationId: string; role: 'assistant'; content: string; timestamp: string }> {
+  const raw = await apiFetch<ConvoMessageOut>(`/convo/${Number(convoId)}/send-template`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return {
+    id: String(raw.id),
+    conversationId: String(raw.conversation_id),
+    role: "assistant",
+    content: raw.content,
+    timestamp: raw.timestamp,
+  };
+}

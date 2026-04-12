@@ -893,25 +893,44 @@ export function LeadSidebarPanel({ leadId, initialData, onClose, onDeleted, onUp
                               )}
                             </div>
                             <div className="space-y-2 text-sm text-text-secondary">
-                              {(showAllSessions ? latestSessions : latestSessions.slice(0, 3)).map((session) => (
-                                <div key={session.id} className="rounded-md border border-border-color bg-card-bg px-3 py-2">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="font-medium text-text-primary">Session #{session.id}</span>
-                                    <span className="capitalize text-xs">{session.status}</span>
-                                  </div>
-                                  <div className="mt-0.5 text-xs">
-                                    Started {new Date(session.startedAt).toLocaleString()} &middot; {session.messagesCount} msgs
-                                    {session.durationSeconds != null ? ` \u00b7 ${Math.round(session.durationSeconds / 60)}m` : ''}
-                                  </div>
-                                  {(session.leadScore != null || session.sentiment != null) && (
-                                    <div className="mt-0.5 text-xs">
-                                      {session.leadScore != null ? `Score ${session.leadScore.toFixed(1)}` : ''}
-                                      {session.sentiment != null ? ` \u00b7 Sentiment ${session.sentiment.toFixed(2)}` : ''}
+                              {(showAllSessions ? latestSessions : latestSessions.slice(0, 3)).map((session) => {
+                                const hasCost = session.llmCostUsd > 0 || session.llmRunsCount > 0;
+                                const costStr = session.llmCostUsd < 0.01
+                                  ? `$${session.llmCostUsd.toFixed(6)}`
+                                  : `$${session.llmCostUsd.toFixed(4)}`;
+                                const totalTok = (session.llmInputTokens || 0) + (session.llmOutputTokens || 0);
+                                return (
+                                  <div key={session.id} className="rounded-md border border-border-color bg-card-bg px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-medium text-text-primary">Session #{session.id}</span>
+                                      <span className="capitalize text-xs">{session.status}</span>
                                     </div>
-                                  )}
-                                  {session.summary && <div className="mt-0.5 text-xs line-clamp-1">{session.summary}</div>}
-                                </div>
-                              ))}
+                                    <div className="mt-0.5 text-xs">
+                                      Started {new Date(session.startedAt).toLocaleString()} &middot; {session.messagesCount} msgs
+                                      {session.durationSeconds != null ? ` \u00b7 ${Math.round(session.durationSeconds / 60)}m` : ''}
+                                    </div>
+                                    {(session.leadScore != null || session.sentiment != null) && (
+                                      <div className="mt-0.5 text-xs">
+                                        {session.leadScore != null ? `Score ${session.leadScore.toFixed(1)}` : ''}
+                                        {session.sentiment != null ? ` \u00b7 Sentiment ${session.sentiment.toFixed(2)}` : ''}
+                                      </div>
+                                    )}
+                                    {hasCost && (
+                                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-text-secondary">
+                                        <span className="font-medium text-text-primary">LLM cost: {costStr}</span>
+                                        <span>&middot; {session.llmRunsCount} run{session.llmRunsCount === 1 ? '' : 's'}</span>
+                                        {totalTok > 0 && (
+                                          <span>&middot; {totalTok.toLocaleString()} tok</span>
+                                        )}
+                                        {session.llmCachedInputTokens > 0 && (
+                                          <span className="text-emerald-600">&middot; {session.llmCachedInputTokens.toLocaleString()} cached</span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {session.summary && <div className="mt-0.5 text-xs line-clamp-1">{session.summary}</div>}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         ) : null}

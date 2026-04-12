@@ -1,5 +1,5 @@
 import type { AgentUIResponse } from '@/types/ui-protocol';
-import type { ToolState } from './tool-state-display';
+import type { SkillState as ToolState } from './skill-state-display';
 
 export type ChatRole = 'user' | 'assistant' | 'webhook';
 

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import DynamicRenderer from '@/components/dynamic-ui/DynamicRenderer';
-import ToolStateDisplay from './tool-state-display';
+import SkillStateDisplay from './skill-state-display';
 import { AgentActionCard } from './agent-action-card';
 import type { DashboardMessage } from './types';
 
@@ -136,10 +136,10 @@ export default function ChatMessage({ message, onSend, onEdit, disabled }: ChatM
           </div>
         )}
 
-        {/* ── Tool states ── */}
+        {/* ── Skill states ── */}
         {hasToolStates && (
           <div className="mt-2 w-full">
-            <ToolStateDisplay toolStates={message.tool_states!} />
+            <SkillStateDisplay toolStates={message.tool_states!} />
           </div>
         )}
 

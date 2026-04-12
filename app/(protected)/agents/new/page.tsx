@@ -165,9 +165,12 @@ export default function NewAgentPage() {
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
                 rows={5}
-                placeholder="Tell the agent what to do. Be specific about its behavior, what tools to use, and how to respond..."
+                placeholder={`You are a sales assistant for [business].\nYour job is to help customers find the right product and capture their contact info.\nWhen a customer asks about pricing, use search_[your_datasheet] to look up current prices.\nAlways reply in a friendly tone. Never quote prices without checking the data first.`}
                 className="mt-1 w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary font-mono"
               />
+              <p className="mt-1 text-[11px] text-text-secondary">
+                The agent reads this as its system prompt. Be specific about when to use which skill.
+              </p>
             </div>
           </div>
 

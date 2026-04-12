@@ -5,11 +5,11 @@ import {
   Agent,
   AgentStatus,
   bindChannels,
-  bindTools,
   createAgent,
   deleteAgent,
   getAgent,
   listAgents,
+  setAgentSkills,
   toggleAgentStatus,
   updateAgent,
   listAvailableSkills,
@@ -17,7 +17,6 @@ import {
   createAgentFromTemplate,
   type CreateAgentInput,
   type UpdateAgentInput,
-  type BindToolConfigInput,
   type SkillDefinition,
   type AgentTemplate,
 } from '@/services/agents';
@@ -38,7 +37,7 @@ interface AgentState {
   remove(id: string): Promise<void>;
   setStatus(id: string, status: AgentStatus): Promise<Agent>;
   saveChannels(id: string, channelIds: string[]): Promise<Agent | null>;
-  saveTools(id: string, toolIds: string[], toolConfigs?: Record<string, BindToolConfigInput>): Promise<Agent | null>;
+  saveSkills(id: string, skills: string[]): Promise<Agent | null>;
   loadSkills(): Promise<void>;
   loadTemplates(): Promise<void>;
   resetError(): void;
@@ -162,10 +161,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
   },
 
-  async saveTools(id, toolIds, toolConfigs) {
+  async saveSkills(id, skills) {
     set({ loading: true, error: null });
     try {
-      await bindTools(id, toolIds, toolConfigs);
+      await setAgentSkills(id, skills);
       const refreshed = await getAgent(id);
       if (refreshed) {
         set({

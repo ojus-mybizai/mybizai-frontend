@@ -82,6 +82,12 @@ export interface ConversationSession {
   leadScore: number | null;
   sentiment: number | null;
   actionsTaken?: Array<{ tool?: string; timestamp?: string | null }>;
+  // LLM cost rollup (from session_analytics worker)
+  llmCostUsd: number;
+  llmInputTokens: number;
+  llmOutputTokens: number;
+  llmCachedInputTokens: number;
+  llmRunsCount: number;
 }
 
 export interface CustomerFilters {
@@ -183,6 +189,11 @@ type SessionOut = {
   lead_score?: number | null;
   sentiment?: number | null;
   actions_taken?: Array<{ tool?: string; timestamp?: string | null }>;
+  llm_cost_usd?: number | null;
+  llm_input_tokens?: number | null;
+  llm_output_tokens?: number | null;
+  llm_cached_input_tokens?: number | null;
+  llm_runs_count?: number | null;
 };
 
 const EXTRA_DATA_SYSTEM_KEYS = [
@@ -535,6 +546,11 @@ function mapSession(s: SessionOut): ConversationSession {
     leadScore: typeof s.lead_score === 'number' ? s.lead_score : null,
     sentiment: typeof s.sentiment === 'number' ? s.sentiment : null,
     actionsTaken: s.actions_taken ?? [],
+    llmCostUsd: typeof s.llm_cost_usd === 'number' ? s.llm_cost_usd : 0,
+    llmInputTokens: typeof s.llm_input_tokens === 'number' ? s.llm_input_tokens : 0,
+    llmOutputTokens: typeof s.llm_output_tokens === 'number' ? s.llm_output_tokens : 0,
+    llmCachedInputTokens: typeof s.llm_cached_input_tokens === 'number' ? s.llm_cached_input_tokens : 0,
+    llmRunsCount: typeof s.llm_runs_count === 'number' ? s.llm_runs_count : 0,
   };
 }
 
@@ -641,6 +657,52 @@ export async function deleteLead(id: string): Promise<void> {
   await apiFetch(`/leads/${leadId}`, {
     method: 'DELETE',
   });
+}
+
+export interface RescoreResult {
+  leadId: number;
+  leadLevelScore: number;
+  previousScore: number | null;
+  lastScoreUpdate: string;
+  sessionsConsidered: number;
+  sessionBreakdown: Array<{
+    sessionId: number;
+    createdAt: string | null;
+    ageDays: number;
+    weight: number;
+    messagesCount: number;
+    sessionScore: number;
+    weightedContribution: number;
+  }>;
+}
+
+/**
+ * Recompute the lead-level score on demand (calls the same scorer the
+ * session analytics worker uses). Returns the new score plus a breakdown
+ * of which sessions contributed to it.
+ */
+export async function rescoreLead(id: string): Promise<RescoreResult> {
+  const leadId = Number(id);
+  const raw = await apiFetch<any>(`/leads/${leadId}/rescore`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  return {
+    leadId: raw.lead_id,
+    leadLevelScore: raw.lead_level_score,
+    previousScore: raw.previous_score ?? null,
+    lastScoreUpdate: raw.last_score_update,
+    sessionsConsidered: raw.sessions_considered ?? 0,
+    sessionBreakdown: (raw.session_breakdown ?? []).map((s: any) => ({
+      sessionId: s.session_id,
+      createdAt: s.created_at ?? null,
+      ageDays: s.age_days,
+      weight: s.weight,
+      messagesCount: s.messages_count,
+      sessionScore: s.session_score,
+      weightedContribution: s.weighted_contribution,
+    })),
+  };
 }
 
 export async function getLeadStats(): Promise<LeadStats> {
