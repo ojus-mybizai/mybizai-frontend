@@ -46,14 +46,15 @@ export function MetaConnectButton({ channel, onConnected }: MetaConnectButtonPro
 
     setLoading(true);
 
-    // Safety timeout: if FB.login() never calls its callback (e.g. popup blocked by browser),
-    // reset the loading state so the button doesn't stay stuck forever.
+    // Safety timeout: if FB.login() never calls its callback (e.g. popup blocked
+    // by browser), reset the loading state. 3 minutes to account for slow
+    // backend processing (WABA fetch + webhook subscription).
     const timeoutId = setTimeout(() => {
       setLoading(false);
       setError(
-        'The Facebook login window did not open. Please allow pop-ups for this site in your browser and try again.'
+        'The connection timed out. Please allow pop-ups for this site in your browser and try again.'
       );
-    }, 30000);
+    }, 180000);
 
     // Build login options based on channel type
     const isWhatsApp = channel === 'whatsapp';
