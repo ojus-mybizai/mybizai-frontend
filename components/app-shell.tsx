@@ -90,6 +90,7 @@ function buildNavItems(
     { label: 'Home',           href: '/home',           icon: Home },
     { label: 'Leads',         href: '/leads',         icon: Users },
     { label: 'AI Agent',      href: '/agents',        icon: Bot },
+    { label: 'Lite Agent',   href: '/lite-agents',   icon: Zap },
     { label: 'Conversations', href: '/conversations', icon: MessageSquare },
     { label: 'Channels',       href: '/channels',      icon: Radio },
     { kind: 'datasheet' as const },
@@ -273,6 +274,7 @@ const TITLE_MAP: Record<string, string> = {
   '/lead-templates':     'Lead Templates',
   '/analytics':          'Agent Analytics',
   '/settings':           'Settings',
+  '/settings/billing':   'Billing & Plans',
   '/automation':         'Automation',
 };
 
@@ -423,6 +425,14 @@ export default function AppShell({ children }: AppShellProps) {
             className="flex items-center justify-center rounded-md border border-border-color p-1.5 text-text-secondary hover:bg-primary/10 hover:text-primary transition-colors"
           >
             <span className="text-sm" aria-hidden>🎓</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSidebarOpen(false); router.push('/settings/billing'); }}
+            title="Billing & Plans"
+            className="flex items-center justify-center rounded-md border border-border-color p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+          >
+            <CreditCard className="h-4 w-4" aria-hidden />
           </button>
           <button
             type="button"

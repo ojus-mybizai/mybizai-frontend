@@ -13,6 +13,7 @@ interface LoginSuccessData {
   token_type: string;
   refresh_token: string | null;
   onboarding_required: boolean | null;
+  plan_selection_required?: boolean | null;
   default_business_id?: number | null;
   default_role?: 'owner' | 'manager' | 'executive' | null;
   has_active_business_access?: boolean;
@@ -109,6 +110,7 @@ function LoginForm() {
       router.replace(
         resolvePostAuthRedirect({
           onboardingRequired,
+          planSelectionRequired: Boolean(data.plan_selection_required),
           next,
           isOwner: Boolean(isOwner),
         }),

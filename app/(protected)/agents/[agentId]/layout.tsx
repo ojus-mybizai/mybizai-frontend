@@ -1,14 +1,17 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter } from 'next/navigation';
+import { Lock } from 'lucide-react';
 import ModuleGuard from '@/components/module-guard';
 import { AgentStatusBadge } from '@/components/agents/agent-status-badge';
 import { DeployButton } from '@/components/agents/deploy-button';
 import { EmptyState } from '@/components/agents/empty-state';
 import { useAgentStore } from '@/lib/agent-store';
+import { useAuthStore } from '@/lib/auth-store';
 import { useShallow } from 'zustand/react/shallow';
+import { getCurrentPlan } from '@/services/billing';
 
 const allTabs = [
   { slug: 'overview', label: 'Overview', mode: 'always' as const },
@@ -20,6 +23,9 @@ const allTabs = [
   { slug: 'test', label: 'Test', mode: 'chat' as const },
 ];
 
+// Tabs that require Growth+ plan (locked on Starter with upgrade badge)
+const GROWTH_ONLY_TABS = new Set(['skills', 'knowledge', 'automation']);
+
 export default function AgentLayout({ children }: { children: ReactNode }) {
   const params = useParams<{ agentId: string }>();
   const pathname = usePathname();
@@ -30,6 +36,23 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
     select: s.select,
     setStatus: s.setStatus,
   })));
+
+  // Read plan from global store (cached across navigations — no flash)
+  const { planSlug, planLoaded, setPlanSlug } = useAuthStore(useShallow((s) => ({
+    planSlug: s.planSlug,
+    planLoaded: s.planLoaded,
+    setPlanSlug: s.setPlanSlug,
+  })));
+
+  // Fetch once per session, then it's cached in the store
+  useEffect(() => {
+    if (planLoaded) return; // already fetched
+    getCurrentPlan()
+      .then((p) => setPlanSlug(p.plan_slug || 'starter'))
+      .catch(() => setPlanSlug('growth')); // fail open → full access
+  }, [planLoaded, setPlanSlug]);
+
+  const isStarterPlan = planLoaded && planSlug === 'starter';
 
   useEffect(() => {
     if (params?.agentId) {
@@ -121,17 +144,21 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
             {tabs.map((tab) => {
               const href = `${base}/${tab.slug}`;
               const active = pathname?.startsWith(href);
+              const locked = isStarterPlan && GROWTH_ONLY_TABS.has(tab.slug);
               return (
                 <Link
                   key={tab.slug}
                   href={href}
                   className={`rounded-lg px-3 py-2 font-semibold transition ${
                     active ? 'bg-card-bg text-text-primary border border-border-color' : 'text-text-secondary hover:text-text-primary'
-                  }`}
+                  } ${locked ? 'opacity-70' : ''}`}
                 >
                   <span className="inline-flex items-center gap-1.5">
                     {tab.label}
-                    {tab.slug === 'channels' && setupRecommended && (
+                    {locked && (
+                      <span title="Upgrade to Growth plan to unlock"><Lock className="h-3 w-3 text-amber-500" /></span>
+                    )}
+                    {tab.slug === 'channels' && setupRecommended && !locked && (
                       <span
                         className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
                         title="Setup recommended"
@@ -144,7 +171,37 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
             })}
           </div>
 
-          <div>{children}</div>
+          <div>
+            {/* If the active tab is locked on Starter plan, show upgrade overlay instead of content */}
+            {isStarterPlan && activeTab && GROWTH_ONLY_TABS.has(activeTab.slug) ? (
+              <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-amber-200 bg-amber-50/50 px-6 py-16 text-center">
+                <div className="rounded-full bg-amber-100 p-3">
+                  <Lock className="h-6 w-6 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-text-primary">
+                    {activeTab.label} requires Growth plan
+                  </h3>
+                  <p className="mt-1 text-sm text-text-secondary max-w-md">
+                    {activeTab.slug === 'skills' && 'Customize which skills your AI agent can use — product search, order creation, media sending, and more.'}
+                    {activeTab.slug === 'knowledge' && 'Upload knowledge files so your AI agent can answer questions about your policies, pricing, and procedures.'}
+                    {activeTab.slug === 'automation' && 'Set up automated triggers and workflows — schedule tasks, react to events, and automate lead management.'}
+                  </p>
+                </div>
+                <Link
+                  href="/settings/billing"
+                  className="rounded-lg bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 transition-colors"
+                >
+                  Upgrade to Growth — Rs 2,999/mo
+                </Link>
+                <p className="text-xs text-text-secondary">
+                  Your Starter plan includes unlimited AI messages with auto-reply + lead scoring.
+                </p>
+              </div>
+            ) : (
+              children
+            )}
+          </div>
         </div>
     </ModuleGuard>
   );

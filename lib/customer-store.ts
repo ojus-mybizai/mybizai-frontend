@@ -192,12 +192,12 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
 
   async sendMessage(conversationId, content) {
     set({ loading: true, sendingMessage: true, error: null });
-    try {
-      await appendMessage(conversationId, 'assistant', content);
+    const result = await appendMessage(conversationId, 'assistant', content);
+    if (result.ok) {
       const msgs = await listMessages(conversationId);
       set({ messages: msgs, loading: false, sendingMessage: false });
-    } catch (err) {
-      set({ error: (err as Error).message, loading: false, sendingMessage: false });
+    } else {
+      set({ error: result.error, loading: false, sendingMessage: false });
     }
   },
 

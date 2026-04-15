@@ -222,7 +222,7 @@ export default function AgentBuilderPage() {
 
   if (!hasPermission('manage_agents')) {
     return (
-      <ModuleGuard module="lms">
+      <ModuleGuard module="agents">
         <div className="flex items-center justify-center h-[60vh] text-text-secondary">
           You do not have permission to manage agents.
         </div>

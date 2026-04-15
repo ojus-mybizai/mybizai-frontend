@@ -9,7 +9,7 @@ import {
   Lock, Mail, Phone, Globe, Clock, DollarSign, Shield,
   Save, AlertCircle, CheckCircle2, Eye, EyeOff,
   Briefcase, MapPin, Target, Hash, Smartphone, Monitor,
-  AlertTriangle, Trash2,
+  AlertTriangle, Trash2, CreditCard,
 } from 'lucide-react';
 import {
   getNotificationPreferences,
@@ -517,6 +517,15 @@ export default function SettingsPage() {
                   </button>
                 );
               })}
+              {/* Billing tab — navigates to separate page */}
+              <button
+                type="button"
+                onClick={() => router.push('/settings/billing')}
+                className="flex items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary hover:border-border-color"
+              >
+                <CreditCard className="h-4 w-4" />
+                <span className="hidden sm:inline">Billing & Plans</span>
+              </button>
             </nav>
           </div>
 

@@ -560,23 +560,35 @@ export async function listConversationSessions(conversationId: string): Promise<
   return (rows ?? []).map(mapSession);
 }
 
-export async function appendMessage(conversationId: string, role: Message['role'], content: string): Promise<Message> {
+export async function appendMessage(
+  conversationId: string,
+  role: Message['role'],
+  content: string,
+): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
   const convoId = Number(conversationId);
-  const created = await apiFetch<any>(`/convo/${convoId}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({
-      text: content,
-      sender: role === 'assistant' ? 'assistant' : 'user',
-      message_type: 'text',
-    }),
-  });
-  return {
-    id: String(created.id),
-    conversationId,
-    role: created.role,
-    content: created.content,
-    timestamp: created.timestamp,
-  };
+  try {
+    const created = await apiFetch<any>(`/convo/${convoId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        text: content,
+        sender: role === 'assistant' ? 'assistant' : 'user',
+        message_type: 'text',
+      }),
+    });
+    return {
+      ok: true,
+      message: {
+        id: String(created.id),
+        conversationId,
+        role: created.role,
+        content: created.content,
+        timestamp: created.timestamp,
+      },
+    };
+  } catch (err: any) {
+    const detail = err?.data?.detail ?? err?.message ?? 'Failed to send message';
+    return { ok: false, error: typeof detail === 'string' ? detail : 'Failed to send message' };
+  }
 }
 
 export async function toggleConversationStatus(conversationId: string, status: ConversationStatus) {

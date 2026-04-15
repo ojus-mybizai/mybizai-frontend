@@ -182,6 +182,7 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
   const [switchingAgent, setSwitchingAgent] = useState(false);
   const [agentSwitchOpen, setAgentSwitchOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<'info' | 'error'>('info');
   const endRef = useRef<HTMLDivElement | null>(null);
   const chatHeaderRef = useRef<HTMLDivElement | null>(null);
 
@@ -329,12 +330,15 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
     if (!trimmed || !selectedId || sendingMessage) return;
     setSendingMessage(true);
     setInput('');
-    try {
-      const created = await appendMessage(selectedId, 'assistant', trimmed);
-      setMessages((prev) => [...prev, created]);
-    } finally {
-      setSendingMessage(false);
+    const result = await appendMessage(selectedId, 'assistant', trimmed);
+    if (result.ok) {
+      setMessages((prev) => [...prev, result.message]);
+    } else {
+      setToastType('error');
+      setToastMessage(result.error);
+      setInput(trimmed);
     }
+    setSendingMessage(false);
   };
 
   const handleToggleMode = async () => {
@@ -729,6 +733,24 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
                                   {conversationAnalytics.status}
                                 </span>
                               </div>
+                              {/* LLM cost total across all sessions */}
+                              {sessions.length > 0 && (() => {
+                                const totalCost = sessions.reduce((s, sess) => s + (sess.llmCostUsd || 0), 0);
+                                const totalRuns = sessions.reduce((s, sess) => s + (sess.llmRunsCount || 0), 0);
+                                const totalTok = sessions.reduce((s, sess) => s + (sess.llmInputTokens || 0) + (sess.llmOutputTokens || 0), 0);
+                                if (totalRuns === 0) return null;
+                                return (
+                                  <div>
+                                    <span className="block text-xs font-medium uppercase tracking-wide text-text-secondary">LLM Cost</span>
+                                    <span className="mt-1 block text-sm font-semibold text-text-primary">
+                                      {totalCost < 0.01 ? `$${totalCost.toFixed(6)}` : `$${totalCost.toFixed(4)}`}
+                                    </span>
+                                    <span className="block text-xs text-text-secondary">
+                                      {totalRuns} runs · {totalTok.toLocaleString()} tok
+                                    </span>
+                                  </div>
+                                );
+                              })()}
                             </div>
                             <div className="mt-4 flex justify-end">
                               <button
@@ -764,23 +786,40 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
                             <p className="text-sm text-text-secondary">No sessions found for this conversation yet.</p>
                           ) : (
                             <ul className="space-y-2">
-                              {sessions.map((session) => (
-                                <li
-                                  key={session.id}
-                                  className="rounded-lg border border-border-color bg-card-bg p-3 text-sm text-text-secondary"
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-semibold text-text-primary">Session #{session.id}</span>
-                                    <span className="capitalize text-text-primary">{session.status}</span>
-                                  </div>
-                                  <div className="mt-1 text-xs">
-                                    {new Date(session.startedAt).toLocaleString()} · {formatDuration(session.durationSeconds)} · {session.messagesCount} msgs
-                                  </div>
-                                  {session.summary && (
-                                    <div className="mt-1 line-clamp-2 text-text-secondary">{session.summary}</div>
-                                  )}
-                                </li>
-                              ))}
+                              {sessions.map((session) => {
+                                const hasCost = session.llmCostUsd > 0 || session.llmRunsCount > 0;
+                                const costStr = session.llmCostUsd < 0.01
+                                  ? `$${session.llmCostUsd.toFixed(6)}`
+                                  : `$${session.llmCostUsd.toFixed(4)}`;
+                                const totalTok = (session.llmInputTokens || 0) + (session.llmOutputTokens || 0);
+                                return (
+                                  <li
+                                    key={session.id}
+                                    className="rounded-lg border border-border-color bg-card-bg p-3 text-sm text-text-secondary"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-semibold text-text-primary">Session #{session.id}</span>
+                                      <span className="capitalize text-text-primary">{session.status}</span>
+                                    </div>
+                                    <div className="mt-1 text-xs">
+                                      {new Date(session.startedAt).toLocaleString()} · {formatDuration(session.durationSeconds)} · {session.messagesCount} msgs
+                                    </div>
+                                    {hasCost && (
+                                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                                        <span className="font-medium text-text-primary">LLM: {costStr}</span>
+                                        <span>{session.llmRunsCount} run{session.llmRunsCount === 1 ? '' : 's'}</span>
+                                        {totalTok > 0 && <span>{totalTok.toLocaleString()} tok</span>}
+                                        {session.llmCachedInputTokens > 0 && (
+                                          <span className="text-emerald-600">{session.llmCachedInputTokens.toLocaleString()} cached</span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {session.summary && (
+                                      <div className="mt-1 line-clamp-2 text-text-secondary">{session.summary}</div>
+                                    )}
+                                  </li>
+                                );
+                              })}
                             </ul>
                           )}
                         </div>
@@ -794,7 +833,11 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
 
           {/* Toast notification */}
           {toastMessage && (
-            <div className="fixed bottom-6 right-6 z-50 rounded-lg border border-border-color bg-card-bg px-4 py-3 text-sm font-medium text-text-primary shadow-lg animate-in fade-in slide-in-from-bottom-2">
+            <div className={`fixed bottom-6 right-6 z-50 rounded-lg border px-4 py-3 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-bottom-2 ${
+              toastType === 'error'
+                ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950 dark:text-red-300'
+                : 'border-border-color bg-card-bg text-text-primary'
+            }`}>
               {toastMessage}
             </div>
           )}

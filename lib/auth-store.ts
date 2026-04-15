@@ -66,6 +66,10 @@ export interface AuthState {
   permissionKeys: string[];
   /** True if current user is owner of default business. */
   isOwner: boolean;
+  /** Current subscription plan slug (fetched once, cached for the session). */
+  planSlug: string | null;
+  /** Whether planSlug has been fetched at least once this session. */
+  planLoaded: boolean;
   setAccessToken: (token: string | null) => void;
   setUser: (user: User) => void;
   setOnboardingRequired: (value: boolean) => void;
@@ -75,6 +79,7 @@ export interface AuthState {
   setInitialized: (value: boolean) => void;
   setPermissionKeys: (keys: string[]) => void;
   setIsOwner: (value: boolean) => void;
+  setPlanSlug: (slug: string) => void;
   /** True if user has the permission or is owner. */
   hasPermission: (key: string) => boolean;
   logout: (broadcast?: boolean) => void;
@@ -90,6 +95,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isInitialized: false,
   permissionKeys: [],
   isOwner: false,
+  planSlug: null,
+  planLoaded: false,
   setAccessToken: (token: string | null) => {
     persistAccessToken(token);
     set({ accessToken: token });
@@ -105,6 +112,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setInitialized: (value: boolean) => set({ isInitialized: value }),
   setPermissionKeys: (keys: string[]) => set({ permissionKeys: keys }),
   setIsOwner: (value: boolean) => set({ isOwner: value }),
+  setPlanSlug: (slug: string) => set({ planSlug: slug, planLoaded: true }),
   hasPermission: (key: string) => {
     const s = get();
     if (s.isOwner) return true;
@@ -122,6 +130,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       hasActiveBusinessAccess: false,
       permissionKeys: [],
       isOwner: false,
+      planSlug: null,
+      planLoaded: false,
     });
     if (broadcast && typeof window !== "undefined") {
       broadcastAuthEvent("logout");
