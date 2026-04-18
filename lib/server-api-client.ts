@@ -4,10 +4,11 @@ import { cookies } from 'next/headers';
 import { cache } from 'react';
 
 // Server-only base URL: prefer internal API_URL, fallback to public
-const API_BASE_URL =
+const API_BASE_URL = (
   process.env.API_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
-  'http://127.0.0.1:8000/api/v1';
+  'http://127.0.0.1:8000/api/v1'
+).replace(/\/+$/, '');
 
 // ---------------------------------------------------------------------------
 // Auth session type (mirrors auth-store fields)
