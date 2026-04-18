@@ -8,6 +8,7 @@ import { AIStatusBadge } from '@/components/customers/ai-status-badge';
 import { MessageBubble } from '@/components/customers/message-bubble';
 import { ConversationRowSkeleton } from '@/components/conversations/ConversationRowSkeleton';
 import { TemplatePickerModal } from '@/components/conversations/TemplatePickerModal';
+import { LeadSidebarPanel } from '@/components/leads/lead-sidebar-panel';
 import {
   listAllConversations,
   listMessages,
@@ -63,72 +64,128 @@ function formatDuration(seconds: number | null | undefined): string {
   return `${mins}m ${secs}s`;
 }
 
+// ── Channel brand icons ──────────────────────────────────────────
+
+function ChannelIcon({ type, size = 16 }: { type?: string; size?: number }) {
+  const s = String(size);
+  switch (type?.toLowerCase()) {
+    case 'whatsapp':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" className="shrink-0">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill="#25D366"/>
+          <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18a7.96 7.96 0 01-4.106-1.138l-.294-.176-2.868.852.852-2.868-.176-.294A7.96 7.96 0 014 12c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z" fill="#25D366"/>
+        </svg>
+      );
+    case 'instagram':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" className="shrink-0">
+          <defs>
+            <linearGradient id="ig-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#FFDC80"/>
+              <stop offset="25%" stopColor="#F77737"/>
+              <stop offset="50%" stopColor="#E1306C"/>
+              <stop offset="75%" stopColor="#C13584"/>
+              <stop offset="100%" stopColor="#833AB4"/>
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="20" height="20" rx="5" stroke="url(#ig-grad)" strokeWidth="2" fill="none"/>
+          <circle cx="12" cy="12" r="4.5" stroke="url(#ig-grad)" strokeWidth="2" fill="none"/>
+          <circle cx="17.5" cy="6.5" r="1.25" fill="url(#ig-grad)"/>
+        </svg>
+      );
+    case 'messenger':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" className="shrink-0">
+          <path d="M12 2C6.36 2 2 6.13 2 11.7c0 2.91 1.2 5.42 3.15 7.18.16.15.26.36.27.58l.05 1.82c.02.64.68 1.06 1.27.8l2.03-.9c.17-.08.37-.09.55-.05.94.26 1.94.4 2.98.4h.3c5.34-.22 9.4-4.24 9.4-9.53C22 6.13 17.64 2 12 2z" fill="#0084FF"/>
+          <path d="M6.53 14.42l2.69-4.27a1.5 1.5 0 012.17-.4l2.14 1.6a.6.6 0 00.72 0l2.89-2.2c.39-.29.89.18.63.6l-2.69 4.27a1.5 1.5 0 01-2.17.4l-2.14-1.6a.6.6 0 00-.72 0l-2.89 2.2c-.39.29-.89-.18-.63-.6z" fill="white"/>
+        </svg>
+      );
+    default:
+      return <MessageCircle className="h-4 w-4 shrink-0 text-text-secondary" />;
+  }
+}
+
+const CHANNEL_RING: Record<string, string> = {
+  whatsapp: 'ring-emerald-400',
+  instagram: 'ring-pink-400',
+  messenger: 'ring-blue-400',
+};
+
 const ConversationRow = memo(function ConversationRow({
   conv,
   isSelected,
   onSelect,
+  onLeadClick,
 }: {
   conv: InboxConversation;
   isSelected: boolean;
   onSelect: (id: string) => void;
+  onLeadClick?: (leadId: string) => void;
 }) {
   const displayName = conv.leadName || conv.customerId || 'Unknown';
   const initials = getInitials(conv.leadName ?? conv.customerId, 'Unknown');
   const hasUnread = (conv.unreadCount ?? 0) > 0;
+  const ringColor = CHANNEL_RING[conv.channelType?.toLowerCase() ?? ''] || 'ring-gray-300';
   return (
-    <li className="py-1">
+    <li className="py-0.5">
       <button
         type="button"
         onClick={() => onSelect(conv.id)}
         aria-pressed={isSelected}
-        className={`flex w-full items-start gap-3 rounded-lg px-4 py-3 text-left transition-colors min-h-[60px] ${
+        className={`flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
           isSelected
-            ? 'border-l-4 border-l-(--accent) bg-(--accent-soft)'
-            : 'border-l-4 border-l-transparent hover:bg-bg-secondary/50'
+            ? 'bg-(--accent-soft) shadow-sm'
+            : 'hover:bg-bg-secondary/50'
         }`}
       >
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-secondary text-sm font-semibold text-text-secondary"
-          aria-hidden
-        >
-          {initials}
+        {/* Avatar with channel ring */}
+        <div className="relative shrink-0">
+          <div
+            className={`flex h-10 w-10 items-center justify-center rounded-full bg-bg-secondary text-sm font-semibold text-text-secondary ring-2 ${ringColor}`}
+            aria-hidden
+          >
+            {initials}
+          </div>
+          {/* Channel icon badge (bottom-right) */}
+          {conv.channelType && (
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-card-bg shadow-sm border border-border-color">
+              <ChannelIcon type={conv.channelType} size={12} />
+            </span>
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-sm font-semibold text-text-primary">
+            <span
+              className="truncate text-sm font-semibold text-text-primary hover:underline cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                onLeadClick?.(conv.customerId);
+              }}
+              title="View lead profile"
+            >
               {displayName}
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
               {hasUnread && (
                 <span className="h-2 w-2 rounded-full bg-(--accent)" aria-label="Unread" />
               )}
-              <span className="text-xs text-text-secondary" title={formatTime(conv.updatedAt)}>
+              <span className="text-[11px] text-text-secondary" title={formatTime(conv.updatedAt)}>
                 {formatRelativeTime(conv.updatedAt)}
               </span>
             </span>
           </div>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            {conv.channelType && (
-              <span className="text-xs font-medium capitalize text-text-secondary">
-                {conv.channelType}
-              </span>
-            )}
-            {conv.channelName && (
-              <span className="text-xs text-text-secondary truncate max-w-[120px]">
-                {conv.channelName}
-              </span>
-            )}
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <AIStatusBadge mode={conv.status} />
             {conv.agentName && conv.agentName !== '—' && (
               <span
-                className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
                 title={`Agent: ${conv.agentName}`}
               >
                 {conv.agentName}
               </span>
             )}
           </div>
-          <p className="line-clamp-2 text-sm text-text-secondary mt-1">
+          <p className="line-clamp-1 text-[13px] text-text-secondary mt-0.5">
             {conv.lastMessagePreview || '—'}
           </p>
         </div>
@@ -183,6 +240,7 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
   const [agentSwitchOpen, setAgentSwitchOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'info' | 'error'>('info');
+  const [profileLeadId, setProfileLeadId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const chatHeaderRef = useRef<HTMLDivElement | null>(null);
 
@@ -472,6 +530,7 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
                         setShowChatPanel(true);
                         setTimeout(() => chatHeaderRef.current?.focus({ preventScroll: true }), 0);
                       }}
+                      onLeadClick={(leadId) => setProfileLeadId(leadId)}
                     />
                   ))}
                 </ul>
@@ -506,12 +565,17 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
                       ← Back
                     </button>
                     <div className="min-w-0">
-                      <h3 className="truncate text-lg font-semibold text-text-primary">
+                      <h3
+                        className="truncate text-lg font-semibold text-text-primary hover:underline cursor-pointer"
+                        onClick={() => setProfileLeadId(selected.customerId)}
+                        title="View lead profile"
+                      >
                         {selected.leadName || selected.customerId || 'Unknown'}
                       </h3>
                       <div className="flex items-center gap-2 mt-0.5">
                         {selected.channelType && (
-                          <span className="rounded-md bg-bg-secondary px-2 py-0.5 text-xs font-medium capitalize text-text-secondary">
+                          <span className="inline-flex items-center gap-1.5 rounded-md bg-bg-secondary px-2 py-0.5 text-xs font-medium capitalize text-text-secondary">
+                            <ChannelIcon type={selected.channelType} size={14} />
                             {selected.channelType}
                           </span>
                         )}
@@ -840,6 +904,23 @@ export function ConversationsView({ initialConversationId, agentFilter }: { init
             }`}>
               {toastMessage}
             </div>
+          )}
+
+          {/* Lead profile sidebar */}
+          {profileLeadId && (
+            <LeadSidebarPanel
+              leadId={profileLeadId}
+              onClose={() => setProfileLeadId(null)}
+              onUpdated={() => {
+                // Refresh conversation list to reflect any lead changes
+                const filters: ConversationListFilters = {};
+                if (channelFilter) filters.channel_type = channelFilter;
+                if (modeFilter) filters.mode = modeFilter;
+                if (debouncedIntent) filters.intent = debouncedIntent;
+                if (unreadOnly) filters.unread_only = true;
+                listAllConversations(filters).then(setConversations).catch(() => {});
+              }}
+            />
           )}
         </div>
   );

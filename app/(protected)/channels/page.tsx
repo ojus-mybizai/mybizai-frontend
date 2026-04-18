@@ -6,6 +6,7 @@ import PermissionGuard from '@/components/permission-guard';
 import { LoadingSkeleton } from '@/components/agents/loading-skeleton';
 import { FacebookSDKLoader } from '@/components/integrations/FacebookSDKLoader';
 import { MetaConnectButton } from '@/components/integrations/MetaConnectButton';
+import { WhatsAppManualConnectModal } from '@/components/integrations/WhatsAppManualConnectModal';
 import { createChannel, deleteChannel, listChannels, setChannelAgent, type Channel, type MetaChannelType } from '@/services/channels';
 import { listAgents, type Agent } from '@/services/agents';
 
@@ -30,6 +31,7 @@ export default function ChannelsPage() {
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [savingAgentFor, setSavingAgentFor] = useState<string | null>(null);
+  const [showWhatsAppManual, setShowWhatsAppManual] = useState(false);
   const [showIndiaMARTForm, setShowIndiaMARTForm] = useState(false);
   const [indiamartName, setIndiamartName] = useState('');
   const [indiamartSellerId, setIndiamartSellerId] = useState('');
@@ -287,8 +289,17 @@ export default function ChannelsPage() {
                 >
                   <h4 className="text-base font-semibold text-text-primary">{name}</h4>
                   <p className="mt-1 flex-1 text-sm text-text-secondary">{description}</p>
-                  <div className="mt-3">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <MetaConnectButton channel={type} onConnected={refreshChannels} />
+                    {type === 'whatsapp' && (
+                      <button
+                        type="button"
+                        onClick={() => setShowWhatsAppManual(true)}
+                        className="text-sm font-medium text-accent hover:underline"
+                      >
+                        Add manually (advanced)
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -361,6 +372,12 @@ export default function ChannelsPage() {
               )}
             </div>
           </div>
+
+          <WhatsAppManualConnectModal
+            open={showWhatsAppManual}
+            onClose={() => setShowWhatsAppManual(false)}
+            onConnected={refreshChannels}
+          />
         </div>
   );
 }

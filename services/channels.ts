@@ -73,3 +73,50 @@ export async function setChannelAgent(
     body: JSON.stringify({ agent_id: agentId }),
   });
 }
+
+export interface WhatsAppWebhookConfig {
+  callback_url: string;
+  verify_token: string;
+  subscribed_fields: string[];
+}
+
+export async function getWhatsAppWebhookConfig(): Promise<WhatsAppWebhookConfig> {
+  return apiFetch<WhatsAppWebhookConfig>('/channels/whatsapp/webhook-config', {
+    method: 'GET',
+  });
+}
+
+export interface WhatsAppVerifyResult {
+  phone_number_id: string;
+  display_phone_number?: string | null;
+  verified_name?: string | null;
+  quality_rating?: string | null;
+  code_verification_status?: string | null;
+  waba_ok?: boolean;
+  waba_phone_numbers?: Array<{ id: string; display_phone_number: string | null }>;
+  waba_error?: string;
+}
+
+export async function verifyWhatsAppManual(payload: {
+  waba_id?: string;
+  phone_number_id: string;
+  access_token: string;
+}): Promise<WhatsAppVerifyResult> {
+  return apiFetch<WhatsAppVerifyResult>('/channels/whatsapp/verify', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createWhatsAppManual(payload: {
+  waba_id: string;
+  phone_number_id: string;
+  access_token: string;
+  display_name?: string;
+}): Promise<Channel> {
+  const data = await apiFetch<ApiChannel>('/channels/whatsapp/manual', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return mapChannel(data);
+}

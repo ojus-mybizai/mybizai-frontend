@@ -32,6 +32,7 @@ import {
   Radio,
   Zap,
   Sparkles,
+  Send,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -92,6 +93,7 @@ function buildNavItems(
     { label: 'AI Agent',      href: '/agents',        icon: Bot },
     { label: 'Lite Agent',   href: '/lite-agents',   icon: Zap },
     { label: 'Conversations', href: '/conversations', icon: MessageSquare },
+    { label: 'Outbound',       href: '/outbound',      icon: Send },
     { label: 'Channels',       href: '/channels',      icon: Radio },
     { kind: 'datasheet' as const },
   ];
