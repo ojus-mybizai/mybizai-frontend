@@ -330,7 +330,7 @@ export default function OutboundHubPage() {
                               </span>
                             </div>
                             <div className="text-gray-500 break-all">{call.exact_url}</div>
-                            {call.meta_error && (
+                            {!!call.meta_error && (
                               <pre className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded p-2 whitespace-pre-wrap break-all">
                                 {typeof call.meta_error === 'string'
                                   ? call.meta_error
