@@ -33,6 +33,7 @@ import {
   Zap,
   Sparkles,
   Send,
+  GitBranch,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -85,9 +86,9 @@ function isDataSheetSlot(e: NavEntry): e is DataSheetSlot {
 function buildNavItems(
   _lmsEnabled: boolean,
   _agentsEnabled: boolean,
-  _hasPermission: (key: string) => boolean,
+  hasPermission: (key: string) => boolean,
 ): NavEntry[] {
-  return [
+  const items: NavEntry[] = [
     { label: 'Home',           href: '/home',           icon: Home },
     { label: 'Leads',         href: '/leads',         icon: Users },
     { label: 'AI Agent',      href: '/agents',        icon: Bot },
@@ -95,8 +96,22 @@ function buildNavItems(
     { label: 'Conversations', href: '/conversations', icon: MessageSquare },
     { label: 'Outbound',       href: '/outbound',      icon: Send },
     { label: 'Channels',       href: '/channels',      icon: Radio },
+
+    { kind: 'section', label: 'Team & Work' },
+    { label: 'My Workstation', href: '/employee-dashboard', icon: LayoutDashboard },
+    { label: 'Work & Tasks',   href: '/work',               icon: CheckSquare },
+    { label: 'Work Templates', href: '/work/templates',     icon: ClipboardList },
+    { label: 'Processes',      href: '/processes',          icon: GitBranch },
+    { label: 'Employees',      href: '/employees',          icon: UserCog },
+    { label: 'Team Chats',     href: '/chats',              icon: MessagesSquare },
+
+    { kind: 'section', label: 'Data & Insights' },
     { kind: 'datasheet' as const },
+    { label: 'Reports',    href: '/reports',    icon: BarChart2 },
+    { label: 'Automation', href: '/automation', icon: Zap },
   ];
+
+  return items;
 }
 
 /* ─── Icon resolver for blueprint nav ───────────────────────────────────── */
@@ -378,13 +393,22 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
-        {navItems.map((entry) => {
+        {navItems.map((entry, idx) => {
           if (isDataSheetSlot(entry)) {
             return (
               <DataSheetNav key="datasheet" onNavigate={() => setSidebarOpen(false)} />
             );
           }
-          if (isSection(entry)) return null;
+          if (isSection(entry)) {
+            return (
+              <div
+                key={`section-${idx}-${entry.label}`}
+                className="px-2.5 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary/70"
+              >
+                {entry.label}
+              </div>
+            );
+          }
           return renderNavItem(entry);
         })}
       </nav>
