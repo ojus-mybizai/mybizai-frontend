@@ -15,12 +15,8 @@ import {
   Bar,
 } from 'recharts';
 import type { DatasheetReport, ReportLayout, ReportLayoutSection } from '@/services/reports';
-
-const DAYS_OPTIONS = [
-  { value: 7, label: 'Last 7 days' },
-  { value: 30, label: 'Last 30 days' },
-  { value: 90, label: 'Last 90 days' },
-];
+import { DateRangePicker } from '@/components/ui/date-range-picker';
+import { useDateRangeStore } from '@/lib/stores/date-range-store';
 
 const CHART_COLORS = [
   '#8884d8',
@@ -37,8 +33,10 @@ interface DatasheetReportViewProps {
   report: DatasheetReport | null;
   loading: boolean;
   error: string | null;
-  days: number;
-  onDaysChange: (days: number) => void;
+  /** @deprecated — use global date range store instead. Kept for backward compat with callers that pass days. */
+  days?: number;
+  /** @deprecated */
+  onDaysChange?: (days: number) => void;
   /** When provided, sections are rendered in this order (time_series, pie, bar, summary). */
   layout?: ReportLayout | null;
 }
@@ -47,32 +45,17 @@ export function DatasheetReportView({
   report,
   loading,
   error,
-  days,
-  onDaysChange,
   layout = null,
 }: DatasheetReportViewProps) {
   const sections = layout?.sections ?? null;
+  const toDays   = useDateRangeStore((s) => s.toDays);
+  const days     = toDays();
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold text-text-primary">Report</h2>
-        <div className="flex gap-2">
-          {DAYS_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              onClick={() => onDaysChange(o.value)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                days === o.value
-                  ? 'bg-accent text-white'
-                  : 'border border-border-color bg-bg-primary text-text-primary hover:border-accent'
-              }`}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
+        <DateRangePicker />
       </div>
 
       {error && (

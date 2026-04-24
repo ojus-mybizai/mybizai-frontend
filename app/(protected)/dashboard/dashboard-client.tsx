@@ -7,6 +7,8 @@ import AIChatPanel from '@/components/dashboard/ai-chat-panel';
 import { useAuthStore } from '@/lib/auth-store';
 import { useDashboardStats } from '@/lib/use-dashboard-stats';
 import { useReportsDashboard } from '@/lib/use-reports-dashboard';
+import { useDateRangeStore } from '@/lib/stores/date-range-store';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
   getManagerStatus,
   connectManager,
@@ -49,12 +51,15 @@ export default function DashboardClient() {
   );
   const lmsEnabled = user?.businesses?.[0]?.lms_enabled !== false;
 
-  const [activeTab, setActiveTab]           = useState<Tab>('chat');
+  const [activeTab, setActiveTab] = useState<Tab>('chat');
+
+  const toDays = useDateRangeStore((s) => s.toDays);
 
   const { stats, recentActivity, insights, leadStatsError, loading: statsLoading } =
     useDashboardStats({ lmsEnabled, enabled: activeTab === 'metrics' });
   const { data: reportsDashboard, loading: reportsLoading, error: reportsError } =
-    useReportsDashboard(30, activeTab === 'metrics');
+    useReportsDashboard(toDays(), activeTab === 'metrics');
+
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [managerStatus, setManagerStatus]   = useState<ManagerStatus | null>(null);
   const [managerLoading, setManagerLoading] = useState(true);
@@ -66,9 +71,7 @@ export default function DashboardClient() {
     finally { setManagerLoading(false); }
   }, []);
 
-  useEffect(() => {
-    if (activeTab === 'chat') fetchStatus();
-  }, [fetchStatus, activeTab]);
+  useEffect(() => { if (activeTab === 'chat') fetchStatus(); }, [fetchStatus, activeTab]);
 
   const handleConnect = async () => {
     setManagerLoading(true);
@@ -93,16 +96,16 @@ export default function DashboardClient() {
 
   return (
     <div className="flex h-full flex-col gap-3">
-
-      {/* ── Minimal top bar ── */}
-      <div className="flex shrink-0 items-center justify-between">
-        <h2 className="text-sm font-semibold text-text-secondary tracking-wide uppercase">
-          Dashboard
-        </h2>
-        <TabBar active={activeTab} onChange={setActiveTab} />
+      {/* ── Top bar ── */}
+      <div className="flex shrink-0 items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-sm font-semibold text-text-secondary tracking-wide uppercase">Dashboard</h2>
+        <div className="flex items-center gap-2">
+          {activeTab === 'metrics' && <DateRangePicker />}
+          <TabBar active={activeTab} onChange={setActiveTab} />
+        </div>
       </div>
 
-      {/* ── Chat (primary tab) ── */}
+      {/* ── Chat tab ── */}
       {activeTab === 'chat' && (
         <div className="flex flex-1 min-h-0">
           <AIChatPanel

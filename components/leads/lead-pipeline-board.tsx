@@ -98,27 +98,21 @@ function LeadCard({
 
   return (
     <div
-      className={`group relative rounded-lg border border-border-color bg-card-bg p-3 shadow-sm transition-shadow hover:shadow-md ${
-        moving ? 'pointer-events-none opacity-60' : 'cursor-pointer'
+      className={`group relative rounded-xl border border-border-color bg-card-bg p-3 shadow-sm transition-all hover:shadow-md hover:border-accent/30 ${
+        moving ? 'pointer-events-none opacity-50' : 'cursor-pointer'
       }`}
+      onClick={() => !moving && onLeadClick(lead.id)}
     >
-      {/* Top row: name + priority */}
-      <div
-        className="flex items-start justify-between gap-2"
-        onClick={() => onLeadClick(lead.id)}
-      >
-        <span className="truncate text-sm font-medium text-text-primary">
+      {/* Top row: name + priority dot */}
+      <div className="flex items-start justify-between gap-2">
+        <span className="truncate text-sm font-semibold text-text-primary leading-snug">
           {lead.name || 'Unnamed'}
         </span>
         {lead.priority && (
           <span
-            className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white ${
-              PRIORITY_COLORS[lead.priority] ?? 'bg-gray-400'
-            }`}
+            className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${PRIORITY_COLORS[lead.priority] ?? 'bg-gray-400'}`}
             title={`${lead.priority} priority`}
-          >
-            {priorityLabel(lead.priority)}
-          </span>
+          />
         )}
       </div>
 
@@ -129,10 +123,10 @@ function LeadCard({
         </p>
       )}
 
-      {/* Activity + assignee */}
-      <p className="mt-1 truncate text-xs text-text-secondary">
+      {/* Activity */}
+      <p className="mt-1.5 text-xs text-text-secondary">
         {relativeTime(lead.lastActivity)}
-        {lead.assignedAgent ? ` \u00B7 ${lead.assignedAgent}` : ''}
+        {lead.assignedAgent ? ` · ${lead.assignedAgent}` : ''}
       </p>
 
       {/* Move-to dropdown (visible on hover) */}
@@ -140,29 +134,29 @@ function LeadCard({
         <div className="relative">
           <button
             type="button"
-            className="w-full rounded border border-border-color bg-transparent px-2 py-1 text-left text-xs text-text-secondary hover:bg-gray-100 dark:hover:bg-white/5"
+            className="w-full rounded-lg border border-border-color bg-bg-secondary px-2 py-1 text-left text-xs font-medium text-text-secondary hover:border-accent hover:text-accent transition-colors"
             onClick={(e) => {
               e.stopPropagation();
               setShowMenu((v) => !v);
             }}
           >
-            Move to &#9662;
+            Move to ›
           </button>
 
           {showMenu && (
-            <div className="absolute left-0 z-20 mt-1 w-full rounded-md border border-border-color bg-card-bg py-1 shadow-lg">
+            <div className="absolute left-0 z-20 mt-1 w-full rounded-xl border border-border-color bg-card-bg py-1 shadow-xl">
               {otherStages.map((s) => (
                 <button
                   key={s.id}
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-gray-100 dark:hover:bg-white/10"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-bg-secondary"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleMove(s.id);
                   }}
                 >
                   <span
-                    className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                    className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
                     style={{ backgroundColor: s.color || '#6B7280' }}
                   />
                   {s.name}
@@ -267,9 +261,9 @@ export function LeadPipelineBoard({
               {/* Cards */}
               <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
                 {stageLeads.length === 0 && (
-                  <p className="py-6 text-center text-xs text-text-secondary">
-                    No leads
-                  </p>
+                  <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-color py-8 px-3 text-center">
+                    <p className="text-xs text-text-secondary">No leads here</p>
+                  </div>
                 )}
                 {stageLeads.map((lead) => (
                   <LeadCard

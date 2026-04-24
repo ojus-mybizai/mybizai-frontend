@@ -63,6 +63,7 @@ function FieldLabel({ label, required }: { label: string; required?: boolean }) 
 export function CreateLeadForm({ onSubmit, onCancel, isLoading = false, fieldConfigs }: CreateLeadFormProps) {
   const [formData, setFormData] = useState<LeadCreate>({
     name: '',
+    company: '',
     phone: '',
     email: '',
     priority: 'medium',
@@ -125,6 +126,18 @@ export function CreateLeadForm({ onSubmit, onCancel, isLoading = false, fieldCon
               autoFocus
             />
             {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
+          </div>
+
+          {/* Company */}
+          <div className="md:col-span-2">
+            <FieldLabel label="Company / Organization" />
+            <input
+              type="text"
+              value={formData.company ?? ''}
+              onChange={(e) => set('company', e.target.value)}
+              placeholder="e.g. Acme Pvt Ltd"
+              className={INPUT_CLS}
+            />
           </div>
 
           {/* Phone */}
@@ -191,6 +204,33 @@ export function CreateLeadForm({ onSubmit, onCancel, isLoading = false, fieldCon
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* ── Deal info ── */}
+      <SectionCard title="Deal Info" icon="💰">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <FieldLabel label="Expected Value (₹)" />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={formData.expected_value ?? ''}
+              onChange={(e) => set('expected_value', e.target.value ? Number(e.target.value) : undefined)}
+              placeholder="0.00"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <FieldLabel label="Expected Close Date" />
+            <input
+              type="date"
+              value={formData.expected_close_date ?? ''}
+              onChange={(e) => set('expected_close_date', e.target.value || undefined)}
+              className={INPUT_CLS}
+            />
           </div>
         </div>
       </SectionCard>

@@ -13,6 +13,7 @@ export interface LinkedChannel {
 export interface Customer {
   id: string; // lead_id
   name: string | null;
+  company?: string | null;
   phone: string;
   email?: string | null;
   channel: Channel; // primary/first channel for display
@@ -46,6 +47,20 @@ export interface Customer {
   pipeline_stage_type?: string;
   /** AI agent assigned to this lead */
   aiAgentId?: number | null;
+  expectedValue?: number | null;
+  expectedCloseDate?: string | null;
+  overdueFollowupCount?: number;
+  lastHumanContactAt?: string | null;
+  tags?: LeadTag[];
+  nurtureStatus?: 'active' | 'paused' | null;
+  nurtureSequenceName?: string | null;
+  nurtureStep?: number | null;
+}
+
+export interface LeadTag {
+  id: number;
+  name: string;
+  color?: string | null;
 }
 
 export interface Conversation {
@@ -97,10 +112,12 @@ export interface CustomerFilters {
   stage_type?: string;
   priority?: 'low' | 'medium' | 'high';
   source?: string;
-  channelId?: number; // Filter by channel (leads linked to this channel)
-  assignedToId?: number | null; // Filter by assignee; use with assignedFilter for "unassigned"
-  assignedFilter?: 'all' | 'unassigned' | 'me'; // me = current user (owner)
-  pipelineStageId?: number | null; // Filter by pipeline stage
+  channelId?: number;
+  assignedToId?: number | null;
+  assignedFilter?: 'all' | 'unassigned' | 'me';
+  pipelineStageId?: number | null;
+  sort_by?: 'created_at' | 'updated_at' | 'name' | 'priority' | 'pipeline_stage_id';
+  sort_dir?: 'asc' | 'desc';
 }
 
 type Lead = {
@@ -265,12 +282,11 @@ export async function listLeadsForSelect(params: { search?: string; per_page?: n
 export async function listCustomers(filters: CustomerFilters = {}) {
   const page = filters.page ?? 1;
   const perPage = filters.perPage ?? 10;
-  const search = filters.search ?? undefined;
 
   const params = new URLSearchParams();
   params.set('page', String(page));
   params.set('per_page', String(perPage));
-  if (search) params.set('search', search);
+  if (filters.search) params.set('search', filters.search);
   if (filters.stage_type) params.set('stage_type', filters.stage_type);
   if (filters.priority) params.set('priority', filters.priority);
   if (filters.source) params.set('source', filters.source);
@@ -278,32 +294,17 @@ export async function listCustomers(filters: CustomerFilters = {}) {
   if (filters.assignedFilter === 'unassigned') params.set('assigned_filter', 'unassigned');
   if (filters.assignedFilter === 'me' && filters.assignedToId != null) params.set('assigned_to_id', String(filters.assignedToId));
   if (filters.assignedToId != null && filters.assignedFilter !== 'me' && filters.assignedFilter !== 'unassigned') params.set('assigned_to_id', String(filters.assignedToId));
+  if (filters.pipelineStageId != null) params.set('pipeline_stage_id', String(filters.pipelineStageId));
+  if (filters.sort_by) params.set('sort_by', filters.sort_by);
+  if (filters.sort_dir) params.set('sort_dir', filters.sort_dir);
 
   const data = await apiFetch<LeadListResponse>(`/leads?${params.toString()}`, { method: 'GET' });
 
-  // Only fetch conversations for the displayed leads (not ALL conversations)
-  let latestByLead = new Map<number, ConvoOut>();
-  if (data.leads.length > 0) {
-    try {
-      const leadIds = data.leads.map(l => l.id);
-      // Use lead_ids filter to fetch only relevant conversations
-      const convos = await apiFetch<ConvoOut[]>(`/convo/?lead_ids=${leadIds.join(',')}`, { method: 'GET' });
-      for (const c of convos) {
-        const prev = latestByLead.get(c.lead_id);
-        const ts = c.last_message_at ?? c.updated_at ?? '';
-        const prevTs = prev?.last_message_at ?? prev?.updated_at ?? '';
-        if (!prev || (ts && prevTs && new Date(ts).getTime() > new Date(prevTs).getTime())) {
-          latestByLead.set(c.lead_id, c);
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to fetch conversations for lead list:', error);
-    }
-  }
-
+  // Convo data is now enriched server-side — no waterfall needed
   const items: Customer[] = data.leads.map((l) => {
-    const convo = latestByLead.get(l.id);
-    const last = convo?.last_message_at ?? convo?.updated_at ?? l.updated_at ?? l.created_at;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = l as any;
+    const lastActivity = raw.last_message_at ?? l.updated_at ?? l.created_at;
     const { leadScore, lastScoreUpdate, customFields, templateId, lastFilled } = parseExtraData(l.extra_data);
     return {
       id: String(l.id),
@@ -312,13 +313,13 @@ export async function listCustomers(filters: CustomerFilters = {}) {
       email: l.email ?? null,
       channel: primaryChannel(l),
       linkedChannels: l.linked_channels ?? [],
-      assignedAgent: convo?.agent_name ?? '—',
+      assignedAgent: '—',
       assignedToId: l.assigned_to_id ?? null,
       assignedAt: l.assigned_at ?? null,
       assignmentLockedUntil: l.assignment_locked_until ?? null,
-      lastActivity: last,
-      lastMessagePreview: convo?.summary ?? '—',
-      aiActive: (convo?.mode ?? 'ai') === 'ai',
+      lastActivity,
+      lastMessagePreview: raw.last_message_preview ?? '—',
+      aiActive: false,
       priority: l.priority as 'low' | 'medium' | 'high' | undefined,
       source: l.source ?? undefined,
       notes: l.notes ?? null,
@@ -329,19 +330,22 @@ export async function listCustomers(filters: CustomerFilters = {}) {
       lastFilled,
       createdAt: l.created_at,
       updatedAt: l.updated_at ?? undefined,
-      latestConversationId: convo ? String(convo.id) : null,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      custom_fields: (l as any).custom_fields,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      relations_summary: (l as any).relations_summary,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      pipelineStageId: (l as any).pipeline_stage_id ?? null,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      pipelineStageName: (l as any).pipeline_stage_name ?? null,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      pipelineStageColor: (l as any).pipeline_stage_color ?? null,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      aiAgentId: (l as any).ai_agent_id ?? null,
+      latestConversationId: raw.latest_conversation_id ? String(raw.latest_conversation_id) : null,
+      custom_fields: raw.custom_fields,
+      relations_summary: raw.relations_summary,
+      pipelineStageId: raw.pipeline_stage_id ?? null,
+      pipelineStageName: raw.pipeline_stage_name ?? null,
+      pipelineStageColor: raw.pipeline_stage_color ?? null,
+      pipeline_stage_type: raw.pipeline_stage_type ?? undefined,
+      aiAgentId: raw.ai_agent_id ?? null,
+      expectedValue: raw.expected_value != null ? Number(raw.expected_value) : null,
+      expectedCloseDate: raw.expected_close_date ?? null,
+      overdueFollowupCount: raw.overdue_followup_count ?? 0,
+      lastHumanContactAt: raw.last_human_contact_at ?? null,
+      tags: (raw.tags ?? []) as LeadTag[],
+      nurtureStatus: raw.nurture_status ?? null,
+      nurtureSequenceName: raw.nurture_sequence_name ?? null,
+      nurtureStep: raw.nurture_step ?? null,
     };
   });
 
@@ -352,6 +356,26 @@ export async function listCustomers(filters: CustomerFilters = {}) {
     perPage: data.per_page,
     totalPages: Math.max(1, Math.ceil(data.total / data.per_page)),
   };
+}
+
+export interface BulkActionPayload {
+  lead_ids: number[];
+  action: 'change_stage' | 'change_priority' | 'assign' | 'delete';
+  pipeline_stage_id?: number;
+  priority?: 'low' | 'medium' | 'high';
+  assigned_to_id?: number | null;
+}
+
+export async function bulkLeadAction(payload: BulkActionPayload): Promise<{ affected: number; action: string }> {
+  return apiFetch('/leads/bulk-action', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function exportLeadsCSV(filters: CustomerFilters = {}): Promise<Customer[]> {
+  const result = await listCustomers({ ...filters, page: 1, perPage: 1000 });
+  return result.items;
 }
 
 export async function getCustomer(id: string): Promise<Customer | null> {
@@ -374,6 +398,7 @@ export async function getCustomer(id: string): Promise<Customer | null> {
   return {
     id: String(lead.id),
     name: lead.name ?? null,
+    company: lead.company ?? null,
     phone: lead.phone ?? '',
     email: lead.email ?? null,
     channel: primaryChannel(lead),
@@ -490,6 +515,7 @@ export async function fetchCustomerDetail(id: string): Promise<CustomerDetailRes
   const customer: Customer = {
     id: String(lead.id),
     name: lead.name ?? null,
+    company: lead.company ?? null,
     phone: lead.phone ?? '',
     email: lead.email ?? null,
     assignedToId: lead.assigned_to_id ?? null,
@@ -512,6 +538,8 @@ export async function fetchCustomerDetail(id: string): Promise<CustomerDetailRes
     createdAt: lead.created_at,
     updatedAt: lead.updated_at ?? undefined,
     aiAgentId: (lead as any).ai_agent_id ?? null,
+    expectedValue: (lead as any).expected_value != null ? Number((lead as any).expected_value) : null,
+    expectedCloseDate: (lead as any).expected_close_date ?? null,
   };
   const conversations = mapConvosToConversations(leadId, convos);
   return { customer, conversations };
@@ -603,23 +631,30 @@ export async function toggleConversationStatus(conversationId: string, status: C
 // Lead Management Types
 export interface LeadCreate {
   name: string;
+  company?: string;
   phone: string;
   email?: string;
   priority?: 'low' | 'medium' | 'high';
   source?: string;
   notes?: string;
+  expected_value?: number;
+  expected_close_date?: string;
   extra_data?: Record<string, any>;
 }
 
 export interface LeadUpdate {
   name?: string;
+  company?: string;
   phone?: string;
   email?: string;
   priority?: 'low' | 'medium' | 'high';
   source?: string;
   notes?: string;
+  expected_value?: number | null;
+  expected_close_date?: string | null;
   extra_data?: Record<string, any>;
   assigned_to_id?: number | null;
+  pipeline_stage_id?: number | null;
 }
 
 export interface LeadStats {
@@ -638,6 +673,68 @@ export async function createLead(data: LeadCreate): Promise<Customer> {
   
   // Fetch the created lead with full data
   return getCustomer(String(created.id)) as Promise<Customer>;
+}
+
+/** Lightweight PATCH — no round-trip GET after PUT. Use for inline edits. */
+export async function patchLead(id: string, data: LeadUpdate): Promise<void> {
+  await apiFetch<Lead>(`/leads/${Number(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+// ─── Saved views ─────────────────────────────────────────────────────────────
+
+export interface SavedViewRecord {
+  id: number;
+  name: string;
+  filters: Record<string, unknown>;
+  created_at?: string | null;
+}
+
+export async function listSavedViews(): Promise<SavedViewRecord[]> {
+  return apiFetch<SavedViewRecord[]>('/leads/saved-views');
+}
+
+export async function createSavedView(name: string, filters: Record<string, unknown>): Promise<SavedViewRecord> {
+  return apiFetch<SavedViewRecord>('/leads/saved-views', {
+    method: 'POST',
+    body: JSON.stringify({ name, filters }),
+  });
+}
+
+export async function deleteSavedView(viewId: number): Promise<void> {
+  await apiFetch<void>(`/leads/saved-views/${viewId}`, { method: 'DELETE' });
+}
+
+// ─── Tag management ───────────────────────────────────────────────────────────
+
+export async function listLeadTags(): Promise<LeadTag[]> {
+  return apiFetch<LeadTag[]>('/leads/tags');
+}
+
+export async function createLeadTag(name: string, color?: string): Promise<LeadTag> {
+  return apiFetch<LeadTag>('/leads/tags', {
+    method: 'POST',
+    body: JSON.stringify({ name, color }),
+  });
+}
+
+export async function deleteLeadTag(tagId: number): Promise<void> {
+  await apiFetch<void>(`/leads/tags/${tagId}`, { method: 'DELETE' });
+}
+
+export async function assignTagToLead(leadId: string, tagId: number): Promise<void> {
+  await apiFetch<void>(`/leads/${Number(leadId)}/tags/${tagId}`, { method: 'POST' });
+}
+
+export async function unassignTagFromLead(leadId: string, tagId: number): Promise<void> {
+  await apiFetch<void>(`/leads/${Number(leadId)}/tags/${tagId}`, { method: 'DELETE' });
+}
+
+/** Lightweight assign — no round-trip GET after PUT. Use for inline edits. */
+export async function patchAssign(id: string, assignedToId: number | null): Promise<void> {
+  await apiFetch<void>(`/leads/${Number(id)}/assign`, {
+    method: 'PUT',
+    body: JSON.stringify({ assigned_to_id: assignedToId, force_reassign: false }),
+  });
 }
 
 export async function updateLead(id: string, data: LeadUpdate): Promise<Customer> {

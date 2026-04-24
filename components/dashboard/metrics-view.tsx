@@ -4,6 +4,7 @@ import type { DashboardStats, RecentActivityItem, DashboardInsights } from '@/li
 import type { ReportsDashboard } from '@/services/reports';
 import { useRouter } from 'next/navigation';
 import { useLeadsActivity } from '@/lib/use-leads-activity';
+import { useDateRangeStore } from '@/lib/stores/date-range-store';
 
 interface MetricsViewProps {
   stats?: DashboardStats | null;
@@ -27,7 +28,11 @@ export default function MetricsView({
   reportsError,
 }: MetricsViewProps) {
   const router = useRouter();
-  const { data: activitySeries, loading: activityLoading, error: activityError } = useLeadsActivity(30);
+  const toDays = useDateRangeStore((s) => s.toDays);
+  const preset = useDateRangeStore((s) => s.preset);
+  const startDate = useDateRangeStore((s) => s.startDate);
+  const endDate   = useDateRangeStore((s) => s.endDate);
+  const { data: activitySeries, loading: activityLoading, error: activityError } = useLeadsActivity(toDays());
 
   return (
     <div className="space-y-6">
@@ -64,7 +69,14 @@ export default function MetricsView({
         <div className="rounded-xl border border-border-color bg-card-bg p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-base font-semibold text-text-primary">Leads over time</h3>
-            <span className="text-sm text-text-secondary">Last 30 days</span>
+            <span className="text-sm text-text-secondary">
+              {preset !== 'custom'
+                ? { today: 'Today', yesterday: 'Yesterday', this_week: 'This Week',
+                    last_week: 'Last Week', month_to_date: 'Month to Date',
+                    last_month: 'Last Month', last_7_days: 'Last 7 Days',
+                    last_30_days: 'Last 30 Days', last_90_days: 'Last 90 Days' }[preset] ?? 'Selected range'
+                : `${startDate} – ${endDate}`}
+            </span>
           </div>
           <div className="flex h-40 items-center justify-center rounded-md bg-bg-secondary px-3">
             {activityLoading ? (

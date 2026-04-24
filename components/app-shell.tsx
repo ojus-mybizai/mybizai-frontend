@@ -34,6 +34,7 @@ import {
   Sparkles,
   Send,
   GitBranch,
+  Flame,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -81,7 +82,7 @@ function isDataSheetSlot(e: NavEntry): e is DataSheetSlot {
   return (e as DataSheetSlot).kind === 'datasheet';
 }
 
-/* ─── Nav builder ────────────────────────────────────────────────────────── */
+/* ─── Nav builder ─────────────────────────────────────────────────────────── */
 
 function buildNavItems(
   _lmsEnabled: boolean,
@@ -90,20 +91,14 @@ function buildNavItems(
 ): NavEntry[] {
   const items: NavEntry[] = [
     { label: 'Home',           href: '/home',           icon: Home },
+    { label: 'Dashboard',      href: '/new_dashboard',  icon: LayoutDashboard },
     { label: 'Leads',         href: '/leads',         icon: Users },
+    { label: 'Nurture',       href: '/nurture',       icon: Flame },
     { label: 'AI Agent',      href: '/agents',        icon: Bot },
     { label: 'Lite Agent',   href: '/lite-agents',   icon: Zap },
     { label: 'Conversations', href: '/conversations', icon: MessageSquare },
     { label: 'Outbound',       href: '/outbound',      icon: Send },
     { label: 'Channels',       href: '/channels',      icon: Radio },
-
-    { kind: 'section', label: 'Team & Work' },
-    { label: 'My Workstation', href: '/employee-dashboard', icon: LayoutDashboard },
-    { label: 'Work & Tasks',   href: '/work',               icon: CheckSquare },
-    { label: 'Work Templates', href: '/work/templates',     icon: ClipboardList },
-    { label: 'Processes',      href: '/processes',          icon: GitBranch },
-    { label: 'Employees',      href: '/employees',          icon: UserCog },
-    { label: 'Team Chats',     href: '/chats',              icon: MessagesSquare },
 
     { kind: 'section', label: 'Data & Insights' },
     { kind: 'datasheet' as const },

@@ -6,6 +6,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { getLeadStats, getLeadStatsOverTime, type LeadStats, type LeadStatsOverTime } from '@/services/customers';
+import { useDateRangeStore } from '@/lib/stores/date-range-store';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 
 // ─── Colour palette (theme-safe) ──────────────────────────────────────────────
 
@@ -66,18 +68,22 @@ export function LeadAnalyticsDashboard() {
   const [stats, setStats] = useState<LeadStats | null>(null);
   const [timeSeries, setTimeSeries] = useState<LeadStatsOverTime['series']>([]);
   const [loading, setLoading] = useState(true);
-  const [days, setDays] = useState(30);
+
+  const toDays    = useDateRangeStore((s) => s.toDays);
+  const startDate = useDateRangeStore((s) => s.startDate);
+  const endDate   = useDateRangeStore((s) => s.endDate);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getLeadStats(), getLeadStatsOverTime(days)])
+    Promise.all([getLeadStats(), getLeadStatsOverTime(toDays())])
       .then(([s, t]) => {
         setStats(s);
         setTimeSeries(t.series ?? []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [days]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
 
   if (loading) {
     return (
@@ -125,19 +131,8 @@ export function LeadAnalyticsDashboard() {
 
       {/* Time-range selector + area chart */}
       <ChartSection title="Leads over time">
-        <div className="flex justify-end mb-3 gap-1">
-          {[7, 14, 30, 90].map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setDays(d)}
-              className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                days === d ? 'bg-accent text-white' : 'border border-border-color text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {d}d
-            </button>
-          ))}
+        <div className="flex justify-end mb-3">
+          <DateRangePicker />
         </div>
         <ResponsiveContainer width="100%" height={200}>
           <AreaChart data={formattedSeries} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>

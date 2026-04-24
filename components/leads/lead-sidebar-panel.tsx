@@ -141,6 +141,17 @@ export function LeadSidebarPanel({ leadId, initialData, onClose, onDeleted, onUp
   const [latestSessionsLoading, setLatestSessionsLoading] = useState(false);
   const [showAllSessions, setShowAllSessions] = useState(false);
 
+  // Nurture enrollment
+  const [nurtureEnrollment, setNurtureEnrollment] = useState<import('@/services/nurture').NurtureEnrollment | null | undefined>(undefined);
+  const [nurtureActing, setNurtureActing] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    import('@/services/nurture').then(({ getLeadEnrollment }) =>
+      getLeadEnrollment(Number(id)).then(setNurtureEnrollment).catch(() => setNurtureEnrollment(null))
+    );
+  }, [id]);
+
   // Follow-ups
   const [followups, setFollowups] = useState<FollowUpMessage[]>([]);
   const [followupsLoading, setFollowupsLoading] = useState(false);
@@ -510,10 +521,13 @@ export function LeadSidebarPanel({ leadId, initialData, onClose, onDeleted, onUp
                         if (currentCustomer) {
                           setEditData({
                             name: currentCustomer.name || '',
+                            company: currentCustomer.company || '',
                             phone: currentCustomer.phone || '',
                             email: currentCustomer.email || '',
                             priority: currentCustomer.priority as LeadUpdate['priority'],
                             source: currentCustomer.source || '',
+                            expected_value: currentCustomer.expectedValue ?? undefined,
+                            expected_close_date: currentCustomer.expectedCloseDate ?? undefined,
                           });
                           setEditCustomFields(currentCustomer.customFields || {});
                         }
@@ -582,22 +596,26 @@ export function LeadSidebarPanel({ leadId, initialData, onClose, onDeleted, onUp
               {hasPipelineStages && (
                 <div className="px-5 py-3 border-b border-border-color bg-bg-secondary/30">
                   <div className="flex flex-wrap gap-1.5">
-                    {pipelineStages.sort((a, b) => a.sort_order - b.sort_order).map((stage) => {
+                    {pipelineStages.sort((a, b) => a.sort_order - b.sort_order).map((stage, i) => {
                       const isActive = currentCustomer.pipelineStageId === stage.id;
+                      // Use stage.color but fall back to a palette so gray stages still look distinct
+                      const PALETTE = ['#3B82F6','#F59E0B','#8B5CF6','#10B981','#EF4444','#06B6D4','#F97316'];
+                      const activeColor = (stage.color && stage.color !== '#6B7280') ? stage.color : PALETTE[i % PALETTE.length];
                       return (
                         <button
                           key={stage.id}
                           type="button"
                           disabled={saving}
                           onClick={() => !isActive && handlePipelineMove(stage.id)}
+                          title={isActive ? `Current stage: ${stage.name}` : `Move to ${stage.name}`}
                           className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
                             isActive
-                              ? 'text-white shadow-md scale-105'
-                              : 'border border-border-color text-text-secondary hover:border-accent hover:text-text-primary'
-                          }`}
-                          style={isActive && stage.color ? { backgroundColor: stage.color } : undefined}
+                              ? 'text-white shadow-sm ring-2 ring-offset-1 ring-offset-bg-secondary'
+                              : 'border border-border-color text-text-secondary hover:border-accent hover:text-text-primary bg-transparent'
+                          } disabled:opacity-60`}
+                          style={isActive ? { backgroundColor: activeColor, ringColor: activeColor } : undefined}
                         >
-                          {stage.name}
+                          {isActive && <span className="mr-1 opacity-80">✓</span>}{stage.name}
                         </button>
                       );
                     })}
@@ -784,6 +802,68 @@ export function LeadSidebarPanel({ leadId, initialData, onClose, onDeleted, onUp
                 {/* TIMELINE */}
                 {activeTab === 'timeline' && (
                   <div className="space-y-3">
+                    {/* Active Nurture Sequence card */}
+                    {nurtureEnrollment && (nurtureEnrollment.status === 'active' || nurtureEnrollment.status === 'paused') && (
+                      <div className={`rounded-xl border p-3 ${nurtureEnrollment.status === 'paused' ? 'border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-900/20' : 'border-accent/30 bg-accent/5'}`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <svg className={`h-3.5 w-3.5 ${nurtureEnrollment.status === 'paused' ? 'text-orange-500' : 'text-accent'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            <span className="text-xs font-semibold text-text-primary">Nurture Sequence</span>
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full capitalize ${nurtureEnrollment.status === 'paused' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'}`}>
+                              {nurtureEnrollment.status}
+                            </span>
+                          </div>
+                          <a href={`/nurture/${nurtureEnrollment.sequence_id}`} className="text-[10px] text-accent hover:underline">View →</a>
+                        </div>
+                        <div className="text-sm font-medium text-text-primary truncate">{nurtureEnrollment.sequence_name}</div>
+                        <div className="text-xs text-text-secondary mt-0.5">
+                          Step {nurtureEnrollment.current_step} of {nurtureEnrollment.total_steps}
+                          {nurtureEnrollment.next_send_at && nurtureEnrollment.status === 'active' && (
+                            <> · Next: {new Date(nurtureEnrollment.next_send_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</>
+                          )}
+                          {nurtureEnrollment.status === 'paused' && nurtureEnrollment.paused_reason === 'lead_replied' && ' · Lead replied'}
+                        </div>
+                        <div className="flex gap-2 mt-2.5">
+                          {nurtureEnrollment.status === 'active' && (
+                            <button disabled={nurtureActing} onClick={async () => {
+                              setNurtureActing(true);
+                              try {
+                                const { pauseEnrollment } = await import('@/services/nurture');
+                                await pauseEnrollment(nurtureEnrollment.id);
+                                setNurtureEnrollment(e => e ? { ...e, status: 'paused' as const, next_send_at: null } : e);
+                              } finally { setNurtureActing(false); }
+                            }} className="rounded-lg px-2.5 py-1 text-xs border border-border-color text-text-secondary hover:bg-bg-secondary transition-colors disabled:opacity-50">
+                              Pause
+                            </button>
+                          )}
+                          {nurtureEnrollment.status === 'paused' && (
+                            <button disabled={nurtureActing} onClick={async () => {
+                              setNurtureActing(true);
+                              try {
+                                const { resumeEnrollment } = await import('@/services/nurture');
+                                const updated = await resumeEnrollment(nurtureEnrollment.id);
+                                setNurtureEnrollment(updated);
+                              } finally { setNurtureActing(false); }
+                            }} className="rounded-lg px-2.5 py-1 text-xs border border-accent/40 text-accent hover:bg-accent/5 transition-colors disabled:opacity-50">
+                              Resume
+                            </button>
+                          )}
+                          <button disabled={nurtureActing} onClick={async () => {
+                            if (!confirm('Cancel this nurture sequence?')) return;
+                            setNurtureActing(true);
+                            try {
+                              const { cancelEnrollment } = await import('@/services/nurture');
+                              await cancelEnrollment(nurtureEnrollment.id);
+                              setNurtureEnrollment(null);
+                            } finally { setNurtureActing(false); }
+                          }} className="rounded-lg px-2.5 py-1 text-xs border border-border-color text-text-secondary hover:text-red-500 hover:border-red-300 transition-colors disabled:opacity-50">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {/* Add note */}
                     <div className="rounded-lg border border-border-color bg-card-bg p-3">
                       <textarea
@@ -1255,6 +1335,7 @@ export function LeadSidebarPanel({ leadId, initialData, onClose, onDeleted, onUp
               <div className="p-5 space-y-3">
                 {[
                   { label: 'Name', key: 'name', type: 'text' },
+                  { label: 'Company', key: 'company', type: 'text' },
                   { label: 'Phone', key: 'phone', type: 'tel' },
                   { label: 'Email', key: 'email', type: 'email' },
                 ].map(({ label, key, type }) => (
@@ -1268,6 +1349,29 @@ export function LeadSidebarPanel({ leadId, initialData, onClose, onDeleted, onUp
                     />
                   </div>
                 ))}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">Expected Value (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editData.expected_value ?? ''}
+                      onChange={(e) => setEditData({ ...editData, expected_value: e.target.value ? Number(e.target.value) : null })}
+                      className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">Close Date</label>
+                    <input
+                      type="date"
+                      value={editData.expected_close_date ?? ''}
+                      onChange={(e) => setEditData({ ...editData, expected_close_date: e.target.value || null })}
+                      className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                    />
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-text-secondary mb-1">Priority</label>
