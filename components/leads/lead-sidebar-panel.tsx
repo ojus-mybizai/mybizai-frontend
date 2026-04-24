@@ -613,7 +613,7 @@ export function LeadSidebarPanel({ leadId, initialData, onClose, onDeleted, onUp
                               ? 'text-white shadow-sm ring-2 ring-offset-1 ring-offset-bg-secondary'
                               : 'border border-border-color text-text-secondary hover:border-accent hover:text-text-primary bg-transparent'
                           } disabled:opacity-60`}
-                          style={isActive ? { backgroundColor: activeColor, ringColor: activeColor } : undefined}
+                          style={isActive ? { backgroundColor: activeColor, ['--ring-color' as string]: activeColor } : undefined}
                         >
                           {isActive && <span className="mr-1 opacity-80">✓</span>}{stage.name}
                         </button>

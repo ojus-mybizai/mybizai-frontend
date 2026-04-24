@@ -125,6 +125,7 @@ type Lead = {
   business_id: number;
   assigned_to_id?: number | null;
   name?: string | null;
+  company?: string | null;
   phone?: string | null;
   email?: string | null;
   priority?: string;
