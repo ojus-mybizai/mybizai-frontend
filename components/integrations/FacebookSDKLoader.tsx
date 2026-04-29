@@ -22,7 +22,7 @@ declare global {
   }
 }
 
-const GRAPH_API_VERSION = 'v18.0';
+const GRAPH_API_VERSION = 'v25.0';
 
 export function FacebookSDKLoader() {
   const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID?.trim();
