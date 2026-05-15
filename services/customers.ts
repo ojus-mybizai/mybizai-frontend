@@ -10,6 +10,30 @@ export interface LinkedChannel {
   display_name?: string;
 }
 
+/** Meta ad attribution data — present only when lead came from a Meta ad. */
+export interface AdAttribution {
+  ad_platform: string | null;                // "meta"
+  // Campaign hierarchy
+  meta_campaign_id?: string | null;
+  meta_campaign_name?: string | null;
+  meta_adset_id?: string | null;
+  meta_adset_name?: string | null;
+  meta_ad_id?: string | null;
+  meta_ad_name?: string | null;
+  meta_form_id?: string | null;
+  meta_form_name?: string | null;
+  meta_page_id?: string | null;
+  meta_lead_id?: string | null;
+  // CTWA-specific
+  ctwa_clid?: string | null;
+  ad_headline?: string | null;
+  ad_body?: string | null;
+  ad_image_url?: string | null;
+  /** "text" | "ice_breaker" | "flow_response" */
+  ctwa_entry_type?: string | null;
+  ctwa_entry_message?: string | null;
+}
+
 export interface Customer {
   id: string; // lead_id
   name: string | null;
@@ -47,6 +71,8 @@ export interface Customer {
   pipeline_stage_type?: string;
   /** AI agent assigned to this lead */
   aiAgentId?: number | null;
+  /** Routing mode for this lead: 'ai' | 'manual' | 'blocked' */
+  routingMode?: 'ai' | 'manual' | 'blocked';
   expectedValue?: number | null;
   expectedCloseDate?: string | null;
   overdueFollowupCount?: number;
@@ -55,6 +81,8 @@ export interface Customer {
   nurtureStatus?: 'active' | 'paused' | null;
   nurtureSequenceName?: string | null;
   nurtureStep?: number | null;
+  /** Meta ad attribution — null for non-ad leads */
+  adAttribution?: AdAttribution | null;
 }
 
 export interface LeadTag {
@@ -83,6 +111,12 @@ export interface Message {
   role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   timestamp: string;
+  // Delivery receipts — populated for outbound channels that emit them
+  // (WhatsApp). For other channels delivered defaults to true.
+  delivered?: boolean;
+  read?: boolean;
+  error_code?: string | null;
+  error_detail?: string | null;
 }
 
 export interface ConversationSession {
@@ -118,6 +152,12 @@ export interface CustomerFilters {
   pipelineStageId?: number | null;
   sort_by?: 'created_at' | 'updated_at' | 'name' | 'priority' | 'pipeline_stage_id';
   sort_dir?: 'asc' | 'desc';
+  /** Filter to only leads from a specific ad platform (e.g. "meta") */
+  ad_platform?: string | null;
+  /** Filter by Meta campaign ID */
+  meta_campaign_id?: string | null;
+  /** Filter by Meta lead ad form ID */
+  meta_form_id?: string | null;
 }
 
 type Lead = {
@@ -154,7 +194,8 @@ type LeadListResponse = {
 
 type ConvoOut = {
   id: number;
-  lead_id: number;
+  lead_id?: number | null;
+  contact_id?: number | null;
   agent_id?: number | null;
   agent_name?: string | null;
   mode: 'ai' | 'manual';
@@ -162,6 +203,9 @@ type ConvoOut = {
   last_message_at?: string | null;
   updated_at?: string | null;
   lead_name?: string | null;
+  contact_name?: string | null;
+  owner_type?: string | null;
+  owner_name?: string | null;
   channel_name?: string | null;
   channel_type?: string | null;
   lead_status?: string | null;
@@ -181,6 +225,7 @@ export interface ConversationListFilters {
   unread_only?: boolean;
   agent_id?: number;
   agent_name?: string;
+  contact_group_id?: number;
 }
 
 type PaginatedMessages = {
@@ -192,6 +237,10 @@ type PaginatedMessages = {
     role: 'user' | 'assistant' | 'tool' | 'system';
     content: string;
     timestamp: string;
+    delivered?: boolean;
+    read?: boolean;
+    error_code?: string | null;
+    error_detail?: string | null;
   }>;
 };
 
@@ -298,6 +347,10 @@ export async function listCustomers(filters: CustomerFilters = {}) {
   if (filters.pipelineStageId != null) params.set('pipeline_stage_id', String(filters.pipelineStageId));
   if (filters.sort_by) params.set('sort_by', filters.sort_by);
   if (filters.sort_dir) params.set('sort_dir', filters.sort_dir);
+  // ── Ad source filters ──────────────────────────────────────────────
+  if (filters.ad_platform) params.set('ad_platform', filters.ad_platform);
+  if (filters.meta_campaign_id) params.set('meta_campaign_id', filters.meta_campaign_id);
+  if (filters.meta_form_id) params.set('meta_form_id', filters.meta_form_id);
 
   const data = await apiFetch<LeadListResponse>(`/leads?${params.toString()}`, { method: 'GET' });
 
@@ -347,6 +400,7 @@ export async function listCustomers(filters: CustomerFilters = {}) {
       nurtureStatus: raw.nurture_status ?? null,
       nurtureSequenceName: raw.nurture_sequence_name ?? null,
       nurtureStep: raw.nurture_step ?? null,
+      adAttribution: raw.ad_attribution ?? null,
     };
   });
 
@@ -440,9 +494,13 @@ function mapConvosToConversations(leadId: number, convos: ConvoOut[]): Conversat
   }));
 }
 
-/** Inbox list item: conversation with lead and channel names for display. */
+/** Inbox list item: conversation with lead/contact and channel names for display. */
 export interface InboxConversation extends Conversation {
   leadName?: string;
+  contactName?: string;
+  ownerName?: string;
+  ownerType?: 'lead' | 'contact';
+  contactId?: number | null;
   channelName?: string;
   channelType?: string;
   leadStatus?: string;
@@ -453,13 +511,17 @@ export interface InboxConversation extends Conversation {
 function mapConvosToInboxConversations(convos: ConvoOut[]): InboxConversation[] {
   return convos.map((c) => ({
     id: String(c.id),
-    customerId: String(c.lead_id),
+    customerId: c.lead_id != null ? String(c.lead_id) : String(c.contact_id ?? ''),
+    contactId: c.contact_id ?? null,
     agentId: c.agent_id ?? null,
     agentName: c.agent_name ?? '—',
     status: c.mode,
     updatedAt: c.updated_at ?? c.last_message_at ?? new Date().toISOString(),
     lastMessagePreview: c.last_message_preview ?? c.summary ?? '—',
     leadName: c.lead_name ?? undefined,
+    contactName: c.contact_name ?? undefined,
+    ownerName: c.owner_name ?? c.lead_name ?? c.contact_name ?? undefined,
+    ownerType: (c.owner_type as 'lead' | 'contact') ?? (c.lead_id ? 'lead' : 'contact'),
     channelName: c.channel_name ?? undefined,
     channelType: c.channel_type ?? undefined,
     leadStatus: c.lead_status ?? undefined,
@@ -479,6 +541,7 @@ export async function listAllConversations(
   if (filters?.unread_only) params.set('unread_only', 'true');
   if (filters?.agent_id) params.set('agent_id', String(filters.agent_id));
   if (filters?.agent_name) params.set('agent_name', filters.agent_name);
+  if (filters?.contact_group_id) params.set('contact_group_id', String(filters.contact_group_id));
   const qs = params.toString();
   const url = qs ? `/convo/?${qs}` : '/convo/';
   const convos = await apiFetch<ConvoOut[]>(url, { method: 'GET' });
@@ -539,6 +602,7 @@ export async function fetchCustomerDetail(id: string): Promise<CustomerDetailRes
     createdAt: lead.created_at,
     updatedAt: lead.updated_at ?? undefined,
     aiAgentId: (lead as any).ai_agent_id ?? null,
+    routingMode: ((lead as any).routing_mode ?? 'manual') as 'ai' | 'manual' | 'blocked',
     expectedValue: (lead as any).expected_value != null ? Number((lead as any).expected_value) : null,
     expectedCloseDate: (lead as any).expected_close_date ?? null,
   };
@@ -559,6 +623,10 @@ export async function listMessages(conversationId: string): Promise<Message[]> {
     role: m.role,
     content: m.content,
     timestamp: m.timestamp,
+    delivered: m.delivered,
+    read: m.read,
+    error_code: m.error_code ?? null,
+    error_detail: m.error_detail ?? null,
   }));
 }
 

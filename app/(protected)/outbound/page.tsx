@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import PermissionGuard from '@/components/permission-guard';
 import { LoadingSkeleton } from '@/components/agents/loading-skeleton';
 import {
@@ -65,6 +66,7 @@ const META_CATEGORY_META: Record<string, { label: string; color: string; desc: s
 };
 
 export default function OutboundHubPage() {
+  const router = useRouter();
   const [stats, setStats] = useState<WalletStats | null>(null);
   const [metaUsage, setMetaUsage] = useState<MetaUsage | null>(null);
   const [recent, setRecent] = useState<Campaign[]>([]);
@@ -655,32 +657,39 @@ export default function OutboundHubPage() {
                     const meta = CATEGORY_META[c.category] ?? { icon: '', label: c.category, color: '' };
                     const pill = STATUS_BADGE[c.status] ?? 'bg-gray-100 text-gray-700';
                     return (
-                      <li key={c.id}>
+                      <li key={c.id} className="flex items-center hover:bg-gray-50 dark:hover:bg-neutral-800 group">
                         <Link
                           href={`/outbound/${c.id}`}
-                          className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-neutral-800"
+                          className="flex flex-1 items-center gap-3 p-4 min-w-0"
                         >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xl">{meta.icon}</span>
-                            <div className="min-w-0">
-                              <div className="font-medium truncate">{c.name}</div>
-                              <div className="text-xs text-gray-500 mt-0.5">
-                                {c.total_recipients} recipients
-                                {c.status !== 'draft' && (
-                                  <>
-                                    {' · '}
-                                    {c.sent_count}/{c.total_recipients} sent
-                                  </>
-                                )}
-                                {' · '}
-                                {formatMoney(c.actual_cost || c.estimated_cost)}
-                              </div>
+                          <span className="text-xl shrink-0">{meta.icon}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium truncate">{c.name}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {c.total_recipients} recipients
+                              {c.status !== 'draft' && (
+                                <>
+                                  {' · '}
+                                  {c.sent_count}/{c.total_recipients} sent
+                                </>
+                              )}
+                              {' · '}
+                              {formatMoney(c.actual_cost || c.estimated_cost)}
                             </div>
                           </div>
-                          <span className={`text-xs font-medium px-2 py-1 rounded-full ${pill}`}>
+                          <span className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${pill}`}>
                             {c.status}
                           </span>
                         </Link>
+                        {/* Repeat campaign button */}
+                        <button
+                          type="button"
+                          title="Repeat this campaign"
+                          onClick={() => router.push(`/outbound/new?repeat=${c.id}`)}
+                          className="mr-3 px-2.5 py-1 text-xs font-medium border border-gray-300 dark:border-neutral-600 rounded-md text-gray-600 dark:text-gray-300 hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          🔁 Repeat
+                        </button>
                       </li>
                     );
                   })}

@@ -14,13 +14,14 @@ import { useShallow } from 'zustand/react/shallow';
 import { getCurrentPlan } from '@/services/billing';
 
 const allTabs = [
-  { slug: 'overview', label: 'Overview', mode: 'always' as const },
-  { slug: 'channels', label: 'Channels', mode: 'chat' as const },
-  { slug: 'skills', label: 'Skills', mode: 'always' as const },
-  { slug: 'knowledge', label: 'Knowledge', mode: 'always' as const },
-  { slug: 'automation', label: 'Automation', mode: 'auto' as const },
-  { slug: 'analytics', label: 'Analytics', mode: 'always' as const },
-  { slug: 'test', label: 'Test', mode: 'chat' as const },
+  { slug: 'overview',    label: 'Overview',    mode: 'always' as const },
+  { slug: 'chat',        label: 'Chat',         mode: 'chat'   as const },
+  { slug: 'automation',  label: 'Automation',   mode: 'auto'   as const },
+  { slug: 'channels',    label: 'Channels',     mode: 'chat'   as const },
+  { slug: 'skills',      label: 'Skills',       mode: 'always' as const },
+  { slug: 'knowledge',   label: 'Knowledge',    mode: 'always' as const },
+  { slug: 'analytics',   label: 'Analytics',    mode: 'always' as const },
+  { slug: 'test',        label: 'Test',         mode: 'chat'   as const },
 ];
 
 // Tabs that require Growth+ plan (locked on Starter with upgrade badge)

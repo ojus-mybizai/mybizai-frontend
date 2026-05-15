@@ -1,13 +1,16 @@
 'use client';
 
 /**
- * Lead selector for campaign audience — search existing CRM leads and
- * pick them via checkboxes. Supports search, pagination, and shows
- * phone + stage for easy identification.
+ * ContactSelector for campaign audience — search contacts from the CRM and
+ * pick them via checkboxes. Supports search, pagination (100 per page), and
+ * shows phone for easy identification.
+ *
+ * Internally uses the Contacts V2 API (/contacts-v2). The prop names retain
+ * "lead" terminology only for backwards-compatibility with the campaign wizard.
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { listLeadsForSelect, type LeadOption } from '@/services/customers';
+import { contactsV2Service, type Contact } from '@/services/contacts-v2';
 
 interface Props {
   selectedLeadIds: number[];
@@ -15,22 +18,23 @@ interface Props {
 }
 
 export function LeadSelector({ selectedLeadIds, onChange }: Props) {
-  const [search, setSearch] = useState('');
-  const [leads, setLeads] = useState<LeadOption[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [search,   setSearch]   = useState('');
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading,  setLoading]  = useState(false);
   const [searched, setSearched] = useState(false);
 
   const doSearch = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await listLeadsForSelect({
+      const res = await contactsV2Service.list({
         search: search || undefined,
-        per_page: 100,
+        limit: 100,
+        offset: 0,
       });
-      setLeads(data);
+      setContacts(res.contacts ?? []);
       setSearched(true);
     } catch {
-      setLeads([]);
+      setContacts([]);
     } finally {
       setLoading(false);
     }
@@ -39,6 +43,7 @@ export function LeadSelector({ selectedLeadIds, onChange }: Props) {
   // Initial load
   useEffect(() => {
     void doSearch();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggle = (id: number) => {
@@ -49,16 +54,17 @@ export function LeadSelector({ selectedLeadIds, onChange }: Props) {
   };
 
   const selectAll = () => {
-    const allIds = new Set([...selectedLeadIds, ...leads.filter((l) => l.phone).map((l) => l.id)]);
+    const withPhone = contacts.filter((c) => c.phone);
+    const allIds = new Set([...selectedLeadIds, ...withPhone.map((c) => c.id)]);
     onChange(Array.from(allIds));
   };
 
   const deselectAll = () => {
-    const currentIds = new Set(leads.map((l) => l.id));
+    const currentIds = new Set(contacts.map((c) => c.id));
     onChange(selectedLeadIds.filter((id) => !currentIds.has(id)));
   };
 
-  const leadsWithPhone = leads.filter((l) => l.phone);
+  const contactsWithPhone = contacts.filter((c) => c.phone);
 
   return (
     <div className="space-y-3">
@@ -74,13 +80,13 @@ export function LeadSelector({ selectedLeadIds, onChange }: Props) {
             }
           }}
           placeholder="Search by name, phone, or email…"
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-900"
+          className="flex-1 px-3 py-2 border border-border-color rounded-lg bg-bg-primary text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent text-sm"
         />
         <button
           type="button"
           onClick={doSearch}
           disabled={loading}
-          className="px-4 py-2 border border-gray-300 dark:border-neutral-700 rounded-md hover:bg-gray-50 dark:hover:bg-neutral-800"
+          className="px-4 py-2 border border-border-color rounded-lg hover:bg-bg-secondary text-text-secondary transition-colors text-sm"
         >
           {loading ? '…' : '🔍'}
         </button>
@@ -88,57 +94,69 @@ export function LeadSelector({ selectedLeadIds, onChange }: Props) {
 
       {/* Bulk actions */}
       <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-500">
-          {selectedLeadIds.length} lead{selectedLeadIds.length !== 1 ? 's' : ''} selected
-          {leadsWithPhone.length > 0 && (
-            <> · {leadsWithPhone.length} shown with phone</>
+        <span className="text-text-secondary">
+          {selectedLeadIds.length} contact{selectedLeadIds.length !== 1 ? 's' : ''} selected
+          {contactsWithPhone.length > 0 && (
+            <> · {contactsWithPhone.length} shown with phone</>
           )}
         </span>
-        <div className="flex gap-2">
-          <button type="button" onClick={selectAll} className="text-primary text-xs hover:underline">
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={selectAll}
+            className="text-accent text-xs hover:underline"
+          >
             Select all shown
           </button>
-          <button type="button" onClick={deselectAll} className="text-red-600 text-xs hover:underline">
+          <button
+            type="button"
+            onClick={deselectAll}
+            className="text-red-500 text-xs hover:underline"
+          >
             Deselect shown
           </button>
         </div>
       </div>
 
-      {/* Lead list */}
-      <div className="border border-gray-200 dark:border-neutral-800 rounded-md max-h-64 overflow-y-auto divide-y divide-gray-200 dark:divide-neutral-800">
+      {/* Contact list */}
+      <div className="border border-border-color rounded-xl max-h-64 overflow-y-auto divide-y divide-border-color">
         {!searched ? (
-          <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>
-        ) : leadsWithPhone.length === 0 ? (
-          <div className="p-6 text-center text-gray-500 text-sm">
+          <div className="p-6 text-center text-text-secondary text-sm animate-pulse">
+            Loading contacts…
+          </div>
+        ) : contactsWithPhone.length === 0 ? (
+          <div className="p-6 text-center text-text-secondary text-sm">
             {search
-              ? 'No leads with a phone number match your search.'
-              : 'No leads with phone numbers found.'}
+              ? 'No contacts with a phone number match your search.'
+              : 'No contacts with phone numbers found.'}
           </div>
         ) : (
-          leadsWithPhone.map((lead) => {
-            const checked = selectedLeadIds.includes(lead.id);
+          contactsWithPhone.map((contact) => {
+            const checked = selectedLeadIds.includes(contact.id);
             return (
               <label
-                key={lead.id}
-                className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-800 ${
-                  checked ? 'bg-primary/5' : ''
+                key={contact.id}
+                className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-bg-secondary transition-colors ${
+                  checked ? 'bg-accent/5' : ''
                 }`}
               >
                 <input
                   type="checkbox"
                   checked={checked}
-                  onChange={() => toggle(lead.id)}
-                  className="rounded"
+                  onChange={() => toggle(contact.id)}
+                  className="rounded accent-accent"
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">
-                    {lead.name || 'Unnamed'}
+                  <div className="text-sm font-medium text-text-primary truncate">
+                    {contact.name || 'Unnamed'}
                   </div>
-                  <div className="text-xs text-gray-500 font-mono">{lead.phone}</div>
+                  <div className="text-xs text-text-secondary font-mono">
+                    {contact.phone}
+                  </div>
                 </div>
-                {lead.email && (
-                  <div className="text-xs text-gray-400 truncate max-w-[140px]">
-                    {lead.email}
+                {contact.email && (
+                  <div className="text-xs text-text-secondary truncate max-w-[140px]">
+                    {contact.email}
                   </div>
                 )}
               </label>
@@ -147,9 +165,9 @@ export function LeadSelector({ selectedLeadIds, onChange }: Props) {
         )}
       </div>
 
-      {leads.length > 0 && leads.length - leadsWithPhone.length > 0 && (
-        <p className="text-xs text-amber-600">
-          {leads.length - leadsWithPhone.length} lead(s) hidden (no phone number)
+      {contacts.length > 0 && contacts.length - contactsWithPhone.length > 0 && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          {contacts.length - contactsWithPhone.length} contact(s) hidden — no phone number on file
         </p>
       )}
     </div>

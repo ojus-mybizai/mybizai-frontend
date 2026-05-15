@@ -15,14 +15,17 @@ export function AIStatusBadge({ mode }: AIStatusBadgeProps) {
   }
   if (mode === 'closed') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800/50 px-2 py-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
         Closed
       </span>
     );
   }
-  // manual — show nothing prominent, just a quiet label
+  // manual — bold orange badge, equally visible as AI
   return (
-    <span className="text-xs text-text-secondary">Manual</span>
+    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 dark:bg-orange-900/30 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:text-orange-400">
+      <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+      Manual
+    </span>
   );
 }

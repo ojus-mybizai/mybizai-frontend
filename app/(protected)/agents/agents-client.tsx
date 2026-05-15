@@ -190,6 +190,13 @@ export default function AgentsClient() {
             </button>
             <button
               type="button"
+              onClick={() => router.push('/agents/builder')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-2 text-sm font-semibold text-accent hover:bg-accent/10 transition-colors"
+            >
+              <Zap className="w-4 h-4" /> Build with AI
+            </button>
+            <button
+              type="button"
               onClick={() => router.push('/agents/new')}
               className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white hover:opacity-90"
             >

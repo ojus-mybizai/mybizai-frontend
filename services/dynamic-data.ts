@@ -13,6 +13,9 @@ export interface DynamicModel {
   enable_embeddings: boolean;
   created_at: string | null;
   updated_at: string | null;
+  /** Computed by list_models — true when any field has relation_builtin_model = "leads" */
+  has_lead_relation: boolean;
+  lead_relation_field: string | null;
 }
 
 export interface DynamicModelCreate {
@@ -472,10 +475,13 @@ export async function searchBuiltinModel(
   modelKey: string,
   keyword: string = '',
   page: number = 1,
-  perPage: number = 20
+  perPage: number = 20,
+  ids?: number[]
 ) {
+  let url = `/dynamic-data/builtin-models/${modelKey}/search?keyword=${encodeURIComponent(keyword)}&page=${page}&per_page=${perPage}`;
+  if (ids && ids.length > 0) url += `&ids=${ids.join(',')}`;
   return apiFetch<{ items: { id: number; label: string }[]; total: number }>(
-    `/dynamic-data/builtin-models/${modelKey}/search?keyword=${encodeURIComponent(keyword)}&page=${page}&per_page=${perPage}`,
+    url,
     { method: 'GET', auth: true }
   );
 }

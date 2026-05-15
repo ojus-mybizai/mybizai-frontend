@@ -1672,12 +1672,15 @@ export default function SettingsPage() {
 
 
 const EVENT_TYPE_CONFIG: Record<string, { label: string; desc: string }> = {
+  new_conversation_message: { label: 'New Message', desc: 'When a customer sends a new message to any channel' },
   lead_assigned: { label: 'Lead Assigned', desc: 'When a lead is assigned to you' },
-  lead_stage_changed: { label: 'Lead Stage Changed', desc: 'When your assigned lead stage changes' },
-  work_assigned: { label: 'Work Assigned', desc: 'When new work is assigned to you' },
-  work_completed: { label: 'Work Completed', desc: 'When work you created is completed' },
-  work_overdue: { label: 'Work Overdue', desc: 'Reminder when work passes its due date' },
-  new_conversation_message: { label: 'New Message', desc: 'When a lead sends a new message' },
+  lead_stage_changed: { label: 'Lead Stage Changed', desc: 'When your assigned lead moves to a new stage' },
+  work_assigned: { label: 'Work Assigned', desc: 'When a work item is assigned to you' },
+  work_completed: { label: 'Work Completed', desc: 'When a work item you created is marked complete' },
+  work_overdue: { label: 'Work Overdue', desc: 'Reminder when a work item passes its due date' },
+  work_comment: { label: 'Work Comment', desc: 'When someone comments on a work item assigned to you' },
+  work_mention: { label: 'Work Mention', desc: 'When you are @mentioned in a work item' },
+  template_status_updated: { label: 'Template Status', desc: 'When a WhatsApp message template is approved or rejected by Meta' },
 };
 
 function NotificationPreferencesTab() {

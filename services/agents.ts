@@ -32,6 +32,37 @@ export interface TriggerConfig {
   cron?: string;
 }
 
+// ─── Skill Overrides (Phase-4 owner-authored per-skill guidance) ───
+
+export interface SkillOverrideExample {
+  /** What's happening that should make the LLM act */
+  situation: string;
+  /** Optional reasoning hint shown alongside the example */
+  why?: string;
+}
+
+export type SkillOverrideMode = 'append' | 'replace';
+
+/**
+ * Per-skill guidance overlay set by the agent owner from the Skills page.
+ * Stored on `BusinessAgent.skill_overrides` as `{ skillName: SkillOverride }`.
+ *
+ * - `mode: "append"` (default): owner's `customGuidance` is added on top of
+ *   the developer's WHEN/DO-NOT/EXAMPLES. Owner examples come first.
+ * - `mode: "replace"`: owner's block replaces the developer's WHEN/DO-NOT/
+ *   EXAMPLES entirely. The skill's base description is always preserved.
+ *
+ * An empty `customGuidance` with `mode: "replace"` silently downgrades to
+ * append — the backend never lets the owner accidentally erase all guidance.
+ */
+export interface SkillOverride {
+  customGuidance: string;
+  mode: SkillOverrideMode;
+  examples: SkillOverrideExample[];
+}
+
+export type SkillOverridesMap = Record<string, SkillOverride>;
+
 export interface AgentDatasheetAccess {
   id: number;
   agentId: number;
@@ -47,12 +78,20 @@ export interface AgentDatasheetAccess {
   maxResults: number;
 }
 
+export type InstructionsQuality = 'ok' | 'needs_review';
+
 export interface Agent {
   id: string;
   name: string;
   role: AgentRole;
   tone: string;
   instructions: string;
+  /**
+   * Phase-5 builder validation flag. "needs_review" means the AI-generated
+   * instructions failed structural validation at build time — a banner is
+   * shown on the overview page asking the owner to review and edit.
+   */
+  instructionsQuality: InstructionsQuality;
   personaName: string;
   replyLanguage: string;
   replyFormat: AgentReplyFormat;
@@ -71,6 +110,12 @@ export interface Agent {
   scheduleCron: string | null;
   maxActionsPerRun: number;
   skills: string[] | null;
+  /**
+   * Phase-4 owner-authored per-skill guidance overlay.
+   * Map of skill_name -> { customGuidance, mode, examples }.
+   * Compiled into the OpenAI tool description at runtime by the backend.
+   */
+  skillOverrides: SkillOverridesMap;
   /**
    * Free-form agent settings JSON. Keys currently used:
    *   - automation_instructions: string — system prompt body for non-chat runs
@@ -108,8 +153,58 @@ export interface UpdateAgentInput {
   scheduleCron?: string | null;
   maxActionsPerRun?: number;
   skills?: string[] | null;
+  /** Phase-4 per-skill owner overrides — see SkillOverride. */
+  skillOverrides?: SkillOverridesMap;
   /** Free-form settings JSON (e.g. {automation_instructions: "..."}) */
   settings?: Record<string, unknown>;
+}
+
+// Wire shape for one skill_override entry from the backend (snake_case).
+type ApiSkillOverride = {
+  custom_guidance?: string;
+  mode?: SkillOverrideMode;
+  examples?: Array<{ situation?: string; why?: string }>;
+};
+
+function mapSkillOverrides(
+  raw: Record<string, ApiSkillOverride> | null | undefined,
+): SkillOverridesMap {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: SkillOverridesMap = {};
+  for (const [name, cfg] of Object.entries(raw)) {
+    if (!cfg || typeof cfg !== 'object') continue;
+    out[name] = {
+      customGuidance: cfg.custom_guidance ?? '',
+      mode: cfg.mode === 'replace' ? 'replace' : 'append',
+      examples: Array.isArray(cfg.examples)
+        ? cfg.examples.map((e) => ({
+            situation: e?.situation ?? '',
+            why: e?.why ?? '',
+          }))
+        : [],
+    };
+  }
+  return out;
+}
+
+function serializeSkillOverrides(
+  map: SkillOverridesMap | undefined,
+): Record<string, ApiSkillOverride> {
+  if (!map) return {};
+  const out: Record<string, ApiSkillOverride> = {};
+  for (const [name, cfg] of Object.entries(map)) {
+    // Drop entries the user emptied out — keeps payloads small and lets
+    // the backend cleanup pass treat them as removed.
+    const guidance = (cfg.customGuidance ?? '').trim();
+    const examples = (cfg.examples ?? []).filter((e) => (e.situation ?? '').trim());
+    if (!guidance && examples.length === 0) continue;
+    out[name] = {
+      custom_guidance: guidance,
+      mode: cfg.mode === 'replace' ? 'replace' : 'append',
+      examples,
+    };
+  }
+  return out;
 }
 
 type ApiChatAgent = {
@@ -119,6 +214,7 @@ type ApiChatAgent = {
   role_type: AgentRole;
   tone?: string | null;
   instructions?: string | null;
+  instructions_quality?: InstructionsQuality | null;
   persona_name?: string | null;
   reply_language?: string | null;
   reply_format?: JsonMap;
@@ -134,6 +230,7 @@ type ApiChatAgent = {
   schedule_cron?: string | null;
   max_actions_per_run?: number;
   skills?: string[] | null;
+  skill_overrides?: Record<string, ApiSkillOverride> | null;
   settings?: Record<string, unknown> | null;
   last_run_at?: string | null;
   total_runs?: number;
@@ -149,6 +246,9 @@ function mapAgent(a: ApiChatAgent): Agent {
     role: a.role_type,
     tone: a.tone ?? '',
     instructions: a.instructions ?? '',
+    instructionsQuality: (a.instructions_quality === 'needs_review'
+      ? 'needs_review'
+      : 'ok'),
     personaName: a.persona_name ?? '',
     replyLanguage: a.reply_language ?? 'auto',
     replyFormat: {
@@ -180,6 +280,7 @@ function mapAgent(a: ApiChatAgent): Agent {
     scheduleCron: a.schedule_cron ?? null,
     maxActionsPerRun: a.max_actions_per_run ?? 10,
     skills: a.skills ?? null,
+    skillOverrides: mapSkillOverrides(a.skill_overrides),
     settings: (a.settings && typeof a.settings === 'object') ? (a.settings as Record<string, unknown>) : {},
     lastRunAt: a.last_run_at ?? null,
     totalRuns: a.total_runs ?? 0,
@@ -262,6 +363,9 @@ export async function updateAgent(id: string, input: UpdateAgentInput): Promise<
   if (input.scheduleCron !== undefined) payload.schedule_cron = input.scheduleCron;
   if (input.maxActionsPerRun !== undefined) payload.max_actions_per_run = input.maxActionsPerRun;
   if (input.skills !== undefined) payload.skills = input.skills;
+  if (input.skillOverrides !== undefined) {
+    payload.skill_overrides = serializeSkillOverrides(input.skillOverrides);
+  }
   if (input.settings !== undefined) payload.settings = input.settings;
 
   const updated = await apiFetch<ApiChatAgent>(`/agents/${id}`, {
@@ -295,10 +399,10 @@ export async function bindChannels(agentId: string, channelIds: string[]): Promi
   });
 }
 
-export async function testAgent(id: string, userMessage: string): Promise<string> {
+export async function testAgent(id: string, userMessage: string, sessionId?: string): Promise<string> {
   const res = await apiFetch<{ response: string }>(`/agents/${id}/test`, {
     method: 'POST',
-    body: JSON.stringify({ user_message: userMessage }),
+    body: JSON.stringify({ user_message: userMessage, session_id: sessionId ?? null }),
   });
   return res.response;
 }
@@ -420,26 +524,47 @@ export async function listAvailableSkillsAndTriggers(): Promise<SkillsAndTrigger
 }
 
 /**
- * Get the skill names currently enabled for an agent.
+ * Get the skill names currently enabled for an agent + per-skill overrides.
  * Backed by GET /agents/{id}/skills.
  */
-export async function getAgentSkills(agentId: string | number): Promise<string[]> {
-  const res = await apiFetch<{ skills: string[] }>(`/agents/${agentId}/skills`, { method: 'GET' });
-  return res.skills ?? [];
+export async function getAgentSkills(agentId: string | number): Promise<{
+  skills: string[];
+  skillOverrides: SkillOverridesMap;
+}> {
+  const res = await apiFetch<{
+    skills: string[];
+    skill_overrides?: Record<string, ApiSkillOverride> | null;
+  }>(`/agents/${agentId}/skills`, { method: 'GET' });
+  return {
+    skills: res.skills ?? [],
+    skillOverrides: mapSkillOverrides(res.skill_overrides),
+  };
 }
 
 /**
- * Replace the set of skills enabled for an agent.
+ * Replace the set of skills enabled for an agent. Optionally also save the
+ * per-skill owner overrides (Phase 4) in the same atomic round-trip so the
+ * skills page never has to fire two requests.
  * Backed by PUT /agents/{id}/skills.
  */
-export async function setAgentSkills(agentId: string | number, skills: string[]): Promise<{ agent_id: number; skills: string[] }> {
-  return apiFetch<{ success: boolean; agent_id: number; skills: string[] }>(
-    `/agents/${agentId}/skills`,
-    {
-      method: 'PUT',
-      body: JSON.stringify({ skills }),
-    },
-  );
+export async function setAgentSkills(
+  agentId: string | number,
+  skills: string[],
+  skillOverrides?: SkillOverridesMap,
+): Promise<{ agent_id: number; skills: string[]; skill_overrides: Record<string, ApiSkillOverride> }> {
+  const body: Record<string, unknown> = { skills };
+  if (skillOverrides !== undefined) {
+    body.skill_overrides = serializeSkillOverrides(skillOverrides);
+  }
+  return apiFetch<{
+    success: boolean;
+    agent_id: number;
+    skills: string[];
+    skill_overrides: Record<string, ApiSkillOverride>;
+  }>(`/agents/${agentId}/skills`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
 }
 
 export async function runAgentManually(agentId: string, context?: Record<string, unknown>): Promise<unknown> {

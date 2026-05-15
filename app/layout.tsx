@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AuthBootstrap from "@/components/auth-bootstrap";
 import ThemeController from "@/components/theme-controller";
+import UIController from "@/components/ui-controller";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { WebVitalsReporter } from "@/components/web-vitals-reporter";
 
@@ -56,6 +57,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} bg-bg-primary text-text-primary`}
       >
         <ThemeController />
+        <UIController />
         <WebVitalsReporter />
         <QueryProvider>
           <AuthBootstrap>{children}</AuthBootstrap>

@@ -26,7 +26,192 @@ import {
   Loader2,
   Save,
   Puzzle,
+  Clock,
 } from 'lucide-react';
+
+// ─── Schedule Builder (cron ↔ friendly UI) ───────────────────
+
+type Frequency = 'none' | 'daily' | 'weekly' | 'monthly';
+const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 1); // 1–12
+const MINUTES = ['00', '15', '30', '45'];
+
+interface ScheduleState {
+  frequency: Frequency;
+  hour: number;      // 1–12
+  minute: string;    // '00'|'15'|'30'|'45'
+  ampm: 'AM' | 'PM';
+  weekDays: number[]; // 0=Sun..6=Sat
+  monthDay: number;   // 1–31
+}
+
+function parseCron(cron: string): ScheduleState {
+  const blank: ScheduleState = { frequency: 'none', hour: 9, minute: '00', ampm: 'AM', weekDays: [1], monthDay: 1 };
+  if (!cron.trim()) return blank;
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return blank;
+  const [min, hr, dom, , dow] = parts;
+  const h24 = parseInt(hr, 10);
+  const m = parseInt(min, 10);
+  if (isNaN(h24) || isNaN(m)) return blank;
+  const ampm: 'AM' | 'PM' = h24 >= 12 ? 'PM' : 'AM';
+  const hour = h24 % 12 === 0 ? 12 : h24 % 12;
+  const minute = ['00', '15', '30', '45'].includes(String(m).padStart(2, '0')) ? String(m).padStart(2, '0') : '00';
+  if (dow !== '*') {
+    return { frequency: 'weekly', hour, minute, ampm, weekDays: dow.split(',').map(Number).filter((d) => !isNaN(d)), monthDay: 1 };
+  }
+  if (dom !== '*') {
+    return { frequency: 'monthly', hour, minute, ampm, weekDays: [1], monthDay: parseInt(dom, 10) || 1 };
+  }
+  return { frequency: 'daily', hour, minute, ampm, weekDays: [1], monthDay: 1 };
+}
+
+function buildCron(s: ScheduleState): string {
+  if (s.frequency === 'none') return '';
+  const m = parseInt(s.minute, 10);
+  const h = s.ampm === 'PM' ? (s.hour === 12 ? 12 : s.hour + 12) : (s.hour === 12 ? 0 : s.hour);
+  if (s.frequency === 'daily') return `${m} ${h} * * *`;
+  if (s.frequency === 'weekly') return `${m} ${h} * * ${(s.weekDays.length ? s.weekDays : [1]).sort().join(',')}`;
+  if (s.frequency === 'monthly') return `${m} ${h} ${s.monthDay} * *`;
+  return '';
+}
+
+function humanCron(s: ScheduleState): string {
+  if (s.frequency === 'none') return 'No schedule — event triggers only';
+  const time = `${s.hour}:${s.minute} ${s.ampm}`;
+  if (s.frequency === 'daily') return `Every day at ${time}`;
+  if (s.frequency === 'weekly') {
+    const days = (s.weekDays.length ? s.weekDays : [1]).sort().map((d) => DAYS_OF_WEEK[d]).join(', ');
+    return `Every week on ${days} at ${time}`;
+  }
+  if (s.frequency === 'monthly') return `Every month on day ${s.monthDay} at ${time}`;
+  return '';
+}
+
+function ScheduleBuilder({ cron, onChange }: { cron: string; onChange: (c: string) => void }) {
+  const [s, setS] = useState<ScheduleState>(() => parseCron(cron));
+
+  // Sync incoming cron (e.g. loaded from DB) once on mount
+  useEffect(() => {
+    setS(parseCron(cron));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const update = (patch: Partial<ScheduleState>) => {
+    const next = { ...s, ...patch };
+    setS(next);
+    onChange(buildCron(next));
+  };
+
+  const toggleWeekDay = (d: number) => {
+    const next = s.weekDays.includes(d) ? s.weekDays.filter((x) => x !== d) : [...s.weekDays, d];
+    update({ weekDays: next.length ? next : [d] });
+  };
+
+  const freq = s.frequency;
+
+  return (
+    <div className="space-y-3">
+      {/* Frequency pills */}
+      <div>
+        <label className="text-xs font-medium text-text-secondary mb-1 block">Repeat</label>
+        <div className="flex flex-wrap gap-1.5">
+          {(['none', 'daily', 'weekly', 'monthly'] as Frequency[]).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => update({ frequency: f })}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-all capitalize ${freq === f ? 'bg-accent text-white border-accent' : 'bg-bg-primary border-border-color text-text-secondary hover:border-accent hover:text-text-primary'}`}
+            >
+              {f === 'none' ? 'No schedule' : f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {freq !== 'none' && (
+        <>
+          {/* Time picker */}
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Time</label>
+            <div className="flex items-center gap-2">
+              <select
+                value={s.hour}
+                onChange={(e) => update({ hour: Number(e.target.value) })}
+                className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary"
+              >
+                {HOURS.map((h) => <option key={h} value={h}>{String(h).padStart(2, '0')}</option>)}
+              </select>
+              <span className="text-text-secondary text-sm">:</span>
+              <select
+                value={s.minute}
+                onChange={(e) => update({ minute: e.target.value })}
+                className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary"
+              >
+                {MINUTES.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <div className="flex rounded-lg border border-border-color overflow-hidden">
+                {(['AM', 'PM'] as const).map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => update({ ampm: a })}
+                    className={`px-3 py-1.5 text-xs font-medium transition-all ${s.ampm === a ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Weekly: day of week */}
+          {freq === 'weekly' && (
+            <div>
+              <label className="text-xs font-medium text-text-secondary mb-1 block">Days of week</label>
+              <div className="flex gap-1.5">
+                {DAYS_OF_WEEK.map((day, i) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => toggleWeekDay(i)}
+                    className={`w-9 h-9 rounded-full text-xs font-medium border transition-all ${s.weekDays.includes(i) ? 'bg-accent text-white border-accent' : 'bg-bg-primary border-border-color text-text-secondary hover:border-accent hover:text-text-primary'}`}
+                  >
+                    {day.slice(0, 2)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Monthly: day of month */}
+          {freq === 'monthly' && (
+            <div>
+              <label className="text-xs font-medium text-text-secondary mb-1 block">Day of month</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={s.monthDay}
+                  onChange={(e) => update({ monthDay: Math.min(31, Math.max(1, Number(e.target.value))) })}
+                  className="w-20 rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-sm text-text-primary"
+                />
+                <span className="text-xs text-text-secondary">of every month</span>
+              </div>
+            </div>
+          )}
+
+          {/* Human-readable summary */}
+          <div className="flex items-center gap-1.5 rounded-lg bg-bg-secondary px-3 py-2">
+            <Clock className="w-3.5 h-3.5 text-accent flex-shrink-0" />
+            <span className="text-xs text-text-primary font-medium">{humanCron(s)}</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ─── Trigger Editor ──────────────────────────────────────────
 
@@ -92,15 +277,8 @@ function TriggerEditor({
         ))}
       </div>
       <div>
-        <label className="text-xs font-medium text-text-secondary">Schedule (cron)</label>
-        <input
-          type="text"
-          value={scheduleCron}
-          onChange={(e) => onCronChange(e.target.value)}
-          placeholder="e.g. 0 9 * * * (daily at 9am)"
-          className="mt-1 w-full rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-sm text-text-primary"
-        />
-        <p className="text-[10px] text-text-secondary mt-0.5">5-field cron: minute hour day month weekday. Leave empty for event-only.</p>
+        <label className="text-xs font-medium text-text-secondary mb-2 block">Schedule</label>
+        <ScheduleBuilder cron={scheduleCron} onChange={onCronChange} />
       </div>
     </div>
   );

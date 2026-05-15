@@ -53,8 +53,9 @@ export interface ConversationAnalyticsResponse {
   id: number;
   conversation_id: number;
   agent_id: number;
-  lead_id: number;
-  channel_id: number;
+  lead_id?: number | null;
+  contact_id?: number | null;
+  channel_id?: number | null;
   start_time: string;
   end_time?: string | null;
   first_response_time?: number | null;
@@ -88,6 +89,7 @@ export interface ConversationAnalyticsListParams {
   end_date: string;
   agent_id?: number;
   lead_id?: number;
+  contact_id?: number;
   status?: string;
   resolution_status?: string;
   limit?: number;
@@ -157,6 +159,7 @@ export async function listConversationAnalytics(
   q.set('end_date', params.end_date);
   if (params.agent_id !== undefined) q.set('agent_id', String(params.agent_id));
   if (params.lead_id !== undefined) q.set('lead_id', String(params.lead_id));
+  if (params.contact_id !== undefined) q.set('contact_id', String(params.contact_id));
   if (params.status) q.set('status', params.status);
   if (params.resolution_status) q.set('resolution_status', params.resolution_status);
   if (params.limit !== undefined) q.set('limit', String(params.limit));

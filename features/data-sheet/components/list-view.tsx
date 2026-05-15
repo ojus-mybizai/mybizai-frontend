@@ -4,47 +4,12 @@ import { useMemo, useState } from 'react';
 import type { DynamicField } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { ListViewConfig } from '@/features/data-sheet/state/view-state';
+import { FieldDisplay } from '@/components/data-sheet/field-display';
 
 type RecordItem = QueryResponse['items'][number];
 
-function formatValue(field: DynamicField, value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
-  switch (field.field_type) {
-    case 'boolean':
-      return value === true || value === 'true' || value === 1 ? 'Yes' : 'No';
-    case 'currency': {
-      const code = (field.config?.currency_code as string) || 'USD';
-      const num = Number(value);
-      if (!Number.isFinite(num)) return String(value);
-      try {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(num);
-      } catch {
-        return `${code} ${num.toFixed(2)}`;
-      }
-    }
-    case 'number': {
-      const n = Number(value);
-      return Number.isFinite(n) ? n.toLocaleString() : String(value);
-    }
-    case 'date': {
-      try {
-        const d = new Date(String(value));
-        return isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
-      } catch {
-        return String(value);
-      }
-    }
-    case 'relation':
-      if (Array.isArray(value)) return `${value.length} linked`;
-      return value ? '1 linked' : '—';
-    case 'image':
-    case 'file':
-      return 'Attachment';
-    default: {
-      const s = String(value);
-      return s.length > 80 ? s.slice(0, 80) + '...' : s;
-    }
-  }
+function isEmptyValue(v: unknown): boolean {
+  return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
 }
 
 interface ListViewProps {
@@ -135,28 +100,11 @@ export function ListView({
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
                 {detailFields.map((field) => {
                   const value = data[field.name];
-                  const formatted = formatValue(field, value);
-                  if (formatted === '—') return null;
-
+                  if (isEmptyValue(value)) return null;
                   return (
                     <span key={field.id} className="flex items-center gap-1 text-xs text-text-secondary">
                       <span className="font-medium">{field.display_name}:</span>
-                      {field.field_type === 'enum' && value ? (
-                        <span className="rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                          {String(value)}
-                        </span>
-                      ) : field.field_type === 'boolean' ? (
-                        <span className="flex items-center gap-0.5">
-                          <span className={`inline-block h-1.5 w-1.5 rounded-full ${
-                            value === true || value === 'true' || value === 1
-                              ? 'bg-green-500'
-                              : 'bg-gray-300 dark:bg-gray-600'
-                          }`} />
-                          {formatted}
-                        </span>
-                      ) : (
-                        <span className="truncate">{formatted}</span>
-                      )}
+                      <FieldDisplay field={field} value={value} density="compact" showEmpty={false} />
                     </span>
                   );
                 })}

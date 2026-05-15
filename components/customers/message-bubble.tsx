@@ -1,5 +1,6 @@
 'use client';
 
+import { AlertCircle, CheckCheck, Clock } from 'lucide-react';
 import type { Message } from '@/services/customers';
 
 function cx(...classes: Array<boolean | string | null | undefined>) {
@@ -18,6 +19,40 @@ function formatMessageTime(timestamp: string): string {
 }
 
 type MessageWithMeta = Message & { tool_called?: string; intent?: string };
+
+/**
+ * Render a small status indicator next to the timestamp on outgoing bubbles.
+ * Driven by Meta's webhook receipts (see backend/app/services/delivery_receipts.py).
+ *
+ *   failed       → red ⚠ with tooltip showing the Meta error
+ *   read         → blue ✓✓
+ *   delivered    → ✓✓
+ *   pending      → clock (Meta accepted but no delivery receipt yet)
+ *   undefined    → no icon (legacy/no-receipt channels)
+ */
+function DeliveryStatus({ message }: { message: MessageWithMeta }) {
+  if (message.error_code) {
+    return (
+      <span
+        title={message.error_detail || message.error_code}
+        className="inline-flex items-center gap-0.5 text-red-200"
+      >
+        <AlertCircle className="h-3.5 w-3.5" />
+        <span className="text-xs font-medium">Failed</span>
+      </span>
+    );
+  }
+  if (message.read) {
+    return <CheckCheck className="h-3.5 w-3.5 text-sky-200" aria-label="Read" />;
+  }
+  if (message.delivered) {
+    return <CheckCheck className="h-3.5 w-3.5 text-white/70" aria-label="Delivered" />;
+  }
+  if (message.delivered === false) {
+    return <Clock className="h-3.5 w-3.5 text-white/70" aria-label="Pending" />;
+  }
+  return null;
+}
 
 export function MessageBubble({ message, sharp }: { message: MessageWithMeta; sharp?: boolean }) {
   const isUser = message.role === 'user';
@@ -53,7 +88,22 @@ export function MessageBubble({ message, sharp }: { message: MessageWithMeta; sh
             )}
           </div>
         )}
-        <div className={cx('mt-1 text-xs', isAssistant ? 'text-white/80' : 'text-text-secondary')}>{formatMessageTime(message.timestamp)}</div>
+        <div
+          className={cx(
+            'mt-1 flex items-center gap-1.5 text-xs',
+            isAssistant ? 'text-white/80' : 'text-text-secondary',
+            isUser && 'justify-start',
+            !isUser && 'justify-end',
+          )}
+        >
+          <span>{formatMessageTime(message.timestamp)}</span>
+          {isAssistant && <DeliveryStatus message={message} />}
+        </div>
+        {isAssistant && message.error_code && message.error_detail && (
+          <div className="mt-1 rounded bg-red-500/20 px-2 py-1 text-xs text-white">
+            {message.error_detail}
+          </div>
+        )}
       </div>
     </div>
   );

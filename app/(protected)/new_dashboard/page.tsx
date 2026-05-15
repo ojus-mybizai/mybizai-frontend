@@ -7,6 +7,7 @@ import {
   Plus, Check, GripVertical,
   TrendingUp, Users, MessageSquare, Clock, BarChart3,
   X, ArrowUpRight, Zap, Database, LayoutGrid,
+  UsersRound, Send, CalendarCheck, CheckCircle2, RefreshCw,
 } from 'lucide-react';
 import {
   DndContext,
@@ -26,6 +27,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { apiFetch } from '@/lib/api-client';
 import { useDateRangeStore } from '@/lib/stores/date-range-store';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
+import { getWorkStats as getWaWorkStats } from '@/services/waWork';
+import { listEmployees as listWaEmployees, getAttendance } from '@/services/waEmployees';
 
 // ── Recharts donut (single lazy bundle — keeps Recharts component identity intact) ─
 const DonutChart = dynamic(() => import('./donut-chart'), {
@@ -636,6 +639,183 @@ function Skeleton() {
   );
 }
 
+// ── Team Pulse ────────────────────────────────────────────────────────────────
+
+interface TeamPulseData {
+  activeEmployees: number;
+  attendedToday: number;
+  liveTasks: number;
+  completionRate: number;
+  loading: boolean;
+  lastUpdated: Date | null;
+}
+
+function TeamPulseCard({ pulse, onRefresh }: { pulse: TeamPulseData; onRefresh: () => void }) {
+  const attendanceRate =
+    pulse.activeEmployees > 0
+      ? Math.round((pulse.attendedToday / pulse.activeEmployees) * 100)
+      : 0;
+
+  const stats: Array<{
+    label: string;
+    value: string | number;
+    sub?: string;
+    icon: React.ElementType;
+    bg: string;
+    iconCls: string;
+    href: string;
+    barPct?: number;
+    barCls?: string;
+  }> = [
+    {
+      label: 'Active Employees',
+      value: pulse.activeEmployees,
+      icon: UsersRound,
+      bg: 'bg-green-100 dark:bg-green-500/15',
+      iconCls: 'text-green-600 dark:text-green-400',
+      href: '/wa-employees',
+    },
+    {
+      label: "Today's Attendance",
+      value: `${pulse.attendedToday} / ${pulse.activeEmployees}`,
+      sub: `${attendanceRate}% checked in`,
+      icon: CalendarCheck,
+      bg: 'bg-blue-100 dark:bg-blue-500/15',
+      iconCls: 'text-blue-600 dark:text-blue-400',
+      href: '/wa-employees',
+      barPct: attendanceRate,
+      barCls:
+        attendanceRate >= 80
+          ? 'bg-green-500'
+          : attendanceRate >= 50
+          ? 'bg-yellow-400'
+          : 'bg-orange-400',
+    },
+    {
+      label: 'Live Tasks',
+      value: pulse.liveTasks,
+      sub: 'pending + awaiting',
+      icon: Send,
+      bg: 'bg-orange-100 dark:bg-orange-500/15',
+      iconCls: 'text-orange-600 dark:text-orange-400',
+      href: '/wa-work',
+    },
+    {
+      label: 'Task Completion',
+      value: `${pulse.completionRate}%`,
+      sub: 'overall',
+      icon: CheckCircle2,
+      bg: 'bg-purple-100 dark:bg-purple-500/15',
+      iconCls: 'text-purple-600 dark:text-purple-400',
+      href: '/wa-work',
+      barPct: pulse.completionRate,
+      barCls:
+        pulse.completionRate >= 80
+          ? 'bg-green-500'
+          : pulse.completionRate >= 50
+          ? 'bg-yellow-400'
+          : 'bg-orange-400',
+    },
+  ];
+
+  return (
+    <div className="mb-7">
+      {/* Section header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-5 rounded-full bg-green-500" />
+          <h2 className="text-sm font-semibold text-text-primary">Team Pulse</h2>
+          <span className="text-[10px] text-text-secondary font-medium bg-bg-secondary px-2 py-0.5 rounded-full">
+            Today
+          </span>
+          {pulse.lastUpdated && !pulse.loading && (
+            <span className="text-[10px] text-text-secondary opacity-60">
+              · updated {pulse.lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onRefresh}
+            disabled={pulse.loading}
+            title="Refresh Team Pulse"
+            className="text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+          >
+            <RefreshCw size={13} className={pulse.loading ? 'animate-spin' : ''} />
+          </button>
+          <Link
+            href="/wa-employees"
+            className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
+          >
+            View Team <ArrowUpRight size={12} />
+          </Link>
+          <Link
+            href="/wa-work"
+            className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
+          >
+            View Tasks <ArrowUpRight size={12} />
+          </Link>
+        </div>
+      </div>
+
+      {/* Stat cards row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {stats.map((s) => {
+          const Icon = s.icon;
+          const inner = (
+            <div className="bg-card-bg border border-border-color rounded-2xl p-4 h-full flex flex-col gap-3 hover:shadow-md transition-shadow">
+              {/* Icon + label */}
+              <div className="flex items-center justify-between">
+                <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center`}>
+                  {pulse.loading ? (
+                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin opacity-40" />
+                  ) : (
+                    <Icon size={16} className={s.iconCls} />
+                  )}
+                </div>
+                <ArrowUpRight size={13} className="text-text-secondary opacity-30 group-hover:opacity-70 transition-opacity" />
+              </div>
+
+              {/* Value */}
+              {pulse.loading ? (
+                <div className="h-6 w-16 bg-bg-secondary rounded-lg animate-pulse" />
+              ) : (
+                <p className="text-2xl font-bold text-text-primary tracking-tight leading-none">
+                  {s.value}
+                </p>
+              )}
+
+              {/* Label + sub */}
+              <div>
+                <p className="text-xs font-medium text-text-secondary">{s.label}</p>
+                {s.sub && (
+                  <p className="text-[10px] text-text-secondary opacity-60 mt-0.5">{s.sub}</p>
+                )}
+              </div>
+
+              {/* Optional progress bar */}
+              {s.barPct !== undefined && !pulse.loading && (
+                <div className="h-1 bg-bg-secondary rounded-full overflow-hidden -mt-1">
+                  <div
+                    className={`h-full rounded-full transition-all ${s.barCls}`}
+                    style={{ width: `${Math.min(100, s.barPct)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+
+          return (
+            <Link key={s.label} href={s.href} className="block group">
+              {inner}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function NewDashboardPage() {
@@ -647,10 +827,47 @@ export default function NewDashboardPage() {
   const [showModal, setShowModal] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
 
+  /* ── Team Pulse state ── */
+  const [pulse, setPulse] = useState<TeamPulseData>({
+    activeEmployees: 0,
+    attendedToday: 0,
+    liveTasks: 0,
+    completionRate: 0,
+    loading: true,
+    lastUpdated: null,
+  });
+
   const startDate = useDateRangeStore((s) => s.startDate);
   const endDate   = useDateRangeStore((s) => s.endDate);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  /* Load Team Pulse data independently (fire-and-forget from main load) */
+  const loadTeamPulse = useCallback(async () => {
+    setPulse((p) => ({ ...p, loading: true }));
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const [workStats, employees, attendance] = await Promise.all([
+        getWaWorkStats(),
+        listWaEmployees({ status: 'active' }),
+        getAttendance({ date: todayStr }),
+      ]);
+      const activeEmployees = employees.filter((e) => e.is_active).length;
+      const attendedToday   = attendance.length;
+      // "live" = total_assignments - done
+      const liveTasks = Math.max(0, workStats.total_assignments - workStats.done);
+      setPulse({
+        activeEmployees,
+        attendedToday,
+        liveTasks,
+        completionRate: Math.round(workStats.completion_rate),
+        loading: false,
+        lastUpdated: new Date(),
+      });
+    } catch {
+      setPulse((p) => ({ ...p, loading: false }));
+    }
+  }, []);
 
   const loadAll = useCallback(async () => {
     try {
@@ -666,6 +883,7 @@ export default function NewDashboardPage() {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => { loadTeamPulse(); }, [loadTeamPulse]);
 
   // Re-fetch only widget data when date range changes (widget list stays the same)
   useEffect(() => {
@@ -772,6 +990,9 @@ export default function NewDashboardPage() {
             )}
           </div>
         </div>
+
+        {/* ── Team Pulse ── */}
+        <TeamPulseCard pulse={pulse} onRefresh={loadTeamPulse} />
 
         {/* ── Widget grid ── */}
         {widgets.length === 0 ? (

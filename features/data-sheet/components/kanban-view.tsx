@@ -17,6 +17,7 @@ import { Columns3 } from 'lucide-react';
 import type { DynamicField } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { KanbanViewConfig } from '@/features/data-sheet/state/view-state';
+import { FieldDisplay } from '@/components/data-sheet/field-display';
 
 type RecordItem = QueryResponse['items'][number];
 
@@ -39,28 +40,8 @@ function getColumnColor(idx: number): string {
   return COLUMN_COLORS[idx % COLUMN_COLORS.length];
 }
 
-function formatValue(field: DynamicField | undefined, value: unknown): string {
-  if (value === null || value === undefined || value === '') return '\u2014';
-  if (!field) return String(value);
-  switch (field.field_type) {
-    case 'currency': {
-      const num = Number(value);
-      if (!Number.isFinite(num)) return String(value);
-      const code = (field.config?.currency_code as string) || 'USD';
-      try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(num); }
-      catch { return `${code} ${num.toFixed(2)}`; }
-    }
-    case 'date': {
-      try { const d = new Date(String(value)); return isNaN(d.getTime()) ? String(value) : d.toLocaleDateString(); }
-      catch { return String(value); }
-    }
-    case 'boolean': return value === true || value === 'true' ? 'Yes' : 'No';
-    case 'number': { const n = Number(value); return Number.isFinite(n) ? n.toLocaleString() : String(value); }
-    default: {
-      const s = String(value);
-      return s.length > 60 ? s.slice(0, 60) + '...' : s;
-    }
-  }
+function isEmptyValue(v: unknown): boolean {
+  return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
 }
 
 const UNCATEGORIZED = '__uncategorized__';
@@ -148,11 +129,11 @@ function KanbanCard({
     return String(record.record_key || `#${record.id}`);
   })();
 
-  // Detail fields: remaining cardFields
-  const details = cardFieldNames.slice(1).map((fn) => {
-    const f = fieldMap.get(fn);
-    return { name: fn, displayName: f?.display_name || fn, value: formatValue(f, ((record.data ?? {}) as Record<string, unknown>)[fn]) };
-  }).filter((d) => d.value !== '\u2014');
+  // Detail fields: remaining cardFields with resolved field meta + value
+  const data = (record.data ?? {}) as Record<string, unknown>;
+  const details = cardFieldNames.slice(1)
+    .map((fn) => ({ name: fn, field: fieldMap.get(fn), value: data[fn] }))
+    .filter((d): d is { name: string; field: DynamicField; value: unknown } => !!d.field && !isEmptyValue(d.value));
 
   return (
     <div
@@ -173,12 +154,14 @@ function KanbanCard({
     >
       <p className="truncate text-sm font-medium text-text-primary">{title}</p>
       {details.length > 0 && (
-        <div className="mt-1.5 space-y-0.5">
+        <div className="mt-1.5 space-y-1">
           {details.slice(0, 3).map((d) => (
-            <p key={d.name} className="truncate text-xs text-text-secondary">
-              <span className="text-text-secondary/70">{d.displayName}:</span>{' '}
-              <span className="text-text-primary">{d.value}</span>
-            </p>
+            <div key={d.name} className="flex min-w-0 items-center gap-1.5 text-xs">
+              <span className="shrink-0 text-text-secondary/70">{d.field.display_name}</span>
+              <div className="min-w-0 flex-1 truncate text-right">
+                <FieldDisplay field={d.field} value={d.value} density="comfortable" />
+              </div>
+            </div>
           ))}
         </div>
       )}

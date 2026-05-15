@@ -101,7 +101,7 @@ export default function AnalyticsClient() {
           <>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-xl border border-border-color bg-card-bg px-4 py-3">
-                <div className="text-xs font-medium text-text-secondary mb-1">Leads needing follow-up</div>
+                <div className="text-xs font-medium text-text-secondary mb-1">Open conversations</div>
                 <div className="text-xl font-semibold text-text-primary">
                   {conversationRows.filter((c) => c.status !== 'resolved').length}
                 </div>
@@ -190,6 +190,7 @@ export default function AnalyticsClient() {
                     <thead className="bg-bg-secondary text-xs uppercase text-text-secondary">
                       <tr>
                         <th className="px-4 py-3 text-left">Conversation</th>
+                        <th className="px-4 py-3 text-left">Entity</th>
                         <th className="px-4 py-3 text-left">Status</th>
                         <th className="px-4 py-3 text-left">Avg response</th>
                         <th className="px-4 py-3 text-left">Messages</th>
@@ -197,17 +198,33 @@ export default function AnalyticsClient() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border-color text-sm">
-                      {conversationRows.slice(0, 10).map((c) => (
-                        <tr key={c.id}>
-                          <td className="px-4 py-3 text-text-primary">#{c.conversation_id}</td>
-                          <td className="px-4 py-3 text-text-secondary capitalize">{c.status}</td>
-                          <td className="px-4 py-3 text-text-secondary">
-                            {c.avg_response_time != null ? `${c.avg_response_time.toFixed(1)}s` : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-text-secondary">{c.message_count}</td>
-                          <td className="px-4 py-3 text-text-secondary">{c.tool_calls?.length ?? 0}</td>
-                        </tr>
-                      ))}
+                      {conversationRows.slice(0, 10).map((c) => {
+                        const entityType = c.contact_id != null ? 'Contact' : 'Lead';
+                        const entityId   = c.contact_id ?? c.lead_id;
+                        const entityColor = c.contact_id != null
+                          ? 'text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-400 dark:bg-purple-900/20 dark:border-purple-800'
+                          : 'text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-900/20 dark:border-blue-800';
+                        return (
+                          <tr key={c.id}>
+                            <td className="px-4 py-3 text-text-primary">#{c.conversation_id}</td>
+                            <td className="px-4 py-3">
+                              {entityId != null ? (
+                                <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border font-medium ${entityColor}`}>
+                                  {entityType} #{entityId}
+                                </span>
+                              ) : (
+                                <span className="text-text-secondary text-xs">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-text-secondary capitalize">{c.status}</td>
+                            <td className="px-4 py-3 text-text-secondary">
+                              {c.avg_response_time != null ? `${c.avg_response_time.toFixed(1)}s` : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-text-secondary">{c.message_count}</td>
+                            <td className="px-4 py-3 text-text-secondary">{c.tool_calls?.length ?? 0}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

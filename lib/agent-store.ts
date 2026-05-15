@@ -19,6 +19,7 @@ import {
   type UpdateAgentInput,
   type SkillDefinition,
   type AgentTemplate,
+  type SkillOverridesMap,
 } from '@/services/agents';
 
 interface AgentState {
@@ -37,7 +38,11 @@ interface AgentState {
   remove(id: string): Promise<void>;
   setStatus(id: string, status: AgentStatus): Promise<Agent>;
   saveChannels(id: string, channelIds: string[]): Promise<Agent | null>;
-  saveSkills(id: string, skills: string[]): Promise<Agent | null>;
+  saveSkills(
+    id: string,
+    skills: string[],
+    skillOverrides?: SkillOverridesMap,
+  ): Promise<Agent | null>;
   loadSkills(): Promise<void>;
   loadTemplates(): Promise<void>;
   resetError(): void;
@@ -161,10 +166,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
   },
 
-  async saveSkills(id, skills) {
+  async saveSkills(id, skills, skillOverrides) {
     set({ loading: true, error: null });
     try {
-      await setAgentSkills(id, skills);
+      // Phase-4: pass per-skill overrides through in the same atomic call
+      // so the skills page never has to fire two requests.
+      await setAgentSkills(id, skills, skillOverrides);
       const refreshed = await getAgent(id);
       if (refreshed) {
         set({

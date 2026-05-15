@@ -3,6 +3,9 @@ import { broadcastAuthEvent } from "./auth-events";
 
 const ACCESS_TOKEN_KEY = "access_token";
 const USER_CACHE_KEY = "cached_user";
+const IS_OWNER_KEY = "auth_is_owner";
+const PERMISSION_KEYS_KEY = "auth_permission_keys";
+const DEFAULT_BUSINESS_ID_KEY = "auth_default_business_id";
 
 function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -51,6 +54,70 @@ function persistUser(user: User): void {
   }
 }
 
+function getStoredIsOwner(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return sessionStorage.getItem(IS_OWNER_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function persistIsOwner(value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(IS_OWNER_KEY, value ? "true" : "false");
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function getStoredPermissionKeys(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(PERMISSION_KEYS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistPermissionKeys(keys: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(PERMISSION_KEYS_KEY, JSON.stringify(keys));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function getStoredDefaultBusinessId(): number | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(DEFAULT_BUSINESS_ID_KEY);
+    if (!raw) return null;
+    const n = parseInt(raw, 10);
+    return isNaN(n) ? null : n;
+  } catch {
+    return null;
+  }
+}
+
+function persistDefaultBusinessId(id: number | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (id != null) {
+      sessionStorage.setItem(DEFAULT_BUSINESS_ID_KEY, String(id));
+    } else {
+      sessionStorage.removeItem(DEFAULT_BUSINESS_ID_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export type User = Record<string, unknown> | null;
 export type DefaultRole = "owner" | "manager" | "executive" | null;
 
@@ -89,12 +156,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: getStoredAccessToken(),
   user: null,
   onboardingRequired: false,
-  defaultBusinessId: null,
+  defaultBusinessId: getStoredDefaultBusinessId(),
   defaultRole: null,
   hasActiveBusinessAccess: true,
   isInitialized: false,
-  permissionKeys: [],
-  isOwner: false,
+  permissionKeys: getStoredPermissionKeys(),
+  isOwner: getStoredIsOwner(),
   planSlug: null,
   planLoaded: false,
   setAccessToken: (token: string | null) => {
@@ -106,12 +173,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ user });
   },
   setOnboardingRequired: (value: boolean) => set({ onboardingRequired: value }),
-  setDefaultBusinessId: (value: number | null) => set({ defaultBusinessId: value }),
+  setDefaultBusinessId: (value: number | null) => {
+    persistDefaultBusinessId(value);
+    set({ defaultBusinessId: value });
+  },
   setDefaultRole: (value: DefaultRole) => set({ defaultRole: value }),
   setHasActiveBusinessAccess: (value: boolean) => set({ hasActiveBusinessAccess: value }),
   setInitialized: (value: boolean) => set({ isInitialized: value }),
-  setPermissionKeys: (keys: string[]) => set({ permissionKeys: keys }),
-  setIsOwner: (value: boolean) => set({ isOwner: value }),
+  setPermissionKeys: (keys: string[]) => {
+    persistPermissionKeys(keys);
+    set({ permissionKeys: keys });
+  },
+  setIsOwner: (value: boolean) => {
+    persistIsOwner(value);
+    set({ isOwner: value });
+  },
   setPlanSlug: (slug: string) => set({ planSlug: slug, planLoaded: true }),
   hasPermission: (key: string) => {
     const s = get();
@@ -121,6 +197,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: (broadcast: boolean = true) => {
     persistAccessToken(null);
     persistUser(null);
+    persistIsOwner(false);
+    persistPermissionKeys([]);
+    persistDefaultBusinessId(null);
     set({
       accessToken: null,
       user: null,

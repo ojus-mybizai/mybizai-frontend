@@ -608,7 +608,7 @@ export default function CustomerProfilePage() {
                 {latestConvId && (
                   <button
                     type="button"
-                    onClick={() => router.push(`/conversations/${latestConvId}`)}
+                    onClick={() => router.push(`/inbox/${latestConvId}`)}
                     className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
                   >
                     Open chat
@@ -1029,7 +1029,7 @@ export default function CustomerProfilePage() {
                       <div className="flex justify-end">
                         <button
                           type="button"
-                          onClick={() => router.push(`/conversations/${latestConvId}`)}
+                          onClick={() => router.push(`/inbox/${latestConvId}`)}
                           className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
                         >
                           Open latest
@@ -1081,7 +1081,7 @@ export default function CustomerProfilePage() {
                         ) : null}
                         <ConversationList
                           conversations={conversations}
-                          onOpen={(convId) => router.push(`/conversations/${convId}`)}
+                          onOpen={(convId) => router.push(`/inbox/${convId}`)}
                           onToggle={(convId, status) => toggleMode(convId, status)}
                         />
                       </>
@@ -1628,7 +1628,7 @@ export default function CustomerProfilePage() {
                                   {conversationAnalytics.map((row) => (
                                     <tr key={row.id} className="hover:bg-bg-secondary/50">
                                       <td className="px-3 py-2 text-text-primary">
-                                        <Link href={`/conversations/${row.conversation_id}`} className="font-semibold text-accent hover:underline">
+                                        <Link href={`/inbox/${row.conversation_id}`} className="font-semibold text-accent hover:underline">
                                           #{row.conversation_id}
                                         </Link>
                                       </td>

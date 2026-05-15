@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, MouseEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, MouseEvent, useEffect, useRef, useState, useCallback } from 'react';
 import { ChatBubble } from '@/components/agents/chat-bubble';
 import { EmptyState } from '@/components/agents/empty-state';
 import { useAgentStore } from '@/lib/agent-store';
@@ -20,6 +20,12 @@ export default function AgentTestPage() {
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  // Stable session ID for this conversation — new ID on mount and on clear
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
+
+  const resetSession = useCallback(() => {
+    sessionIdRef.current = crypto.randomUUID();
+  }, []);
 
   const SUGGESTIONS: string[] = [
     'Hi, can you help me?',
@@ -38,6 +44,7 @@ export default function AgentTestPage() {
   const clearConversation = () => {
     setMessages([]);
     setError(null);
+    resetSession();
   };
 
   const handleSuggestionClick = async (e: MouseEvent<HTMLButtonElement>, suggestion: string) => {
@@ -58,7 +65,7 @@ export default function AgentTestPage() {
     setIsTyping(true);
 
     try {
-      const replyText = await testAgent(current.id, trimmed);
+      const replyText = await testAgent(String(current.id), trimmed, sessionIdRef.current);
       const reply: TestMessage = { id: crypto.randomUUID(), role: 'assistant', content: replyText };
       setMessages((prev) => [...prev, reply]);
     } catch (err) {

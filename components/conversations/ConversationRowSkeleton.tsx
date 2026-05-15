@@ -2,8 +2,8 @@
 
 export function ConversationRowSkeleton() {
   return (
-    <li className="py-1">
-      <div className="flex items-start gap-3 rounded-lg px-4 py-3 min-h-[60px]">
+    <li className="border-b border-border-color">
+      <div className="flex items-start gap-3 px-3 py-2.5 min-h-[60px]">
         <div className="h-9 w-9 shrink-0 rounded-full bg-bg-secondary animate-pulse" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">

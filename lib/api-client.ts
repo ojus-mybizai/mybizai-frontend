@@ -280,12 +280,26 @@ export async function apiFetch<T>(
   // Build deduplication key for GET requests
   const dedupeKey = method === 'GET' ? `${url}||${token ?? ''}` : null;
 
+  // Auto-serialize plain objects to JSON (fetch() won't do this automatically)
+  const serializedBody =
+    rest.body !== undefined &&
+    rest.body !== null &&
+    typeof rest.body === "object" &&
+    !(rest.body instanceof FormData) &&
+    !(rest.body instanceof URLSearchParams) &&
+    !(rest.body instanceof Blob) &&
+    !(rest.body instanceof ArrayBuffer) &&
+    !(rest.body instanceof ReadableStream)
+      ? JSON.stringify(rest.body)
+      : rest.body;
+
   // Core fetch logic — wrapped so we can register the promise in inflightGets
   const doFetch = async (): Promise<T> => {
     let response: Response;
     try {
       response = await fetch(url, {
         ...rest,
+        body: serializedBody,
         headers,
         credentials: "include",
       });

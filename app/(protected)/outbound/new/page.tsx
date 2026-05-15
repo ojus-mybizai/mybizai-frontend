@@ -22,18 +22,18 @@ import {
 import { AIAudienceChat } from "@/components/outbound/AIAudienceChat";
 import { LeadSelector } from "@/components/outbound/LeadSelector";
 import { FileImportAudience } from "@/components/outbound/FileImportAudience";
+import { SegmentSelector } from "@/components/outbound/SegmentSelector";
 import {
   createCampaign,
   estimateCost,
+  getCampaign,
   launchCampaign,
   previewAudience,
   getWallet,
-  listSegments,
   type AudienceFilter,
   type AudiencePreview,
   type Campaign,
   type CampaignCategory,
-  type Segment,
   type ScheduleType,
   type Wallet,
 } from "@/services/outbound";
@@ -94,10 +94,12 @@ function CampaignWizardInner() {
   const searchParams = useSearchParams();
   const initialCategory =
     (searchParams?.get("category") as CampaignCategory) || "marketing";
+  const repeatId = searchParams?.get("repeat") ? Number(searchParams.get("repeat")) : null;
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [repeatLoading, setRepeatLoading] = useState(!!repeatId);
 
   // Step 1
   const [category, setCategory] = useState<CampaignCategory>(initialCategory);
@@ -129,7 +131,6 @@ function CampaignWizardInner() {
   // Data from server
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [segments, setSegments] = useState<Segment[]>([]);
   const [wallet, setWallet] = useState<Wallet | null>(null);
 
   // Load base data — each call is independent so one failing doesn't block others
@@ -167,14 +168,6 @@ function CampaignWizardInner() {
         errors.push("channels");
       }
 
-      // Segments (optional — new feature, may not exist yet)
-      try {
-        const segs = await listSegments();
-        setSegments(segs);
-      } catch {
-        // Silently ignore — segments table may not exist yet
-      }
-
       // Wallet (optional — may not exist yet)
       try {
         const w = await getWallet();
@@ -190,6 +183,67 @@ function CampaignWizardInner() {
       }
     })();
   }, []);
+
+  // ── Repeat campaign: prefill all fields from an existing campaign ──────────
+  useEffect(() => {
+    if (!repeatId) return;
+    // Wait until templates + channels are loaded (both arrays non-empty or a tick
+    // has passed), then fetch the source campaign and prefill.
+    if (templates.length === 0 && channels.length === 0) return; // not ready yet
+
+    void (async () => {
+      try {
+        setRepeatLoading(true);
+        const src = await getCampaign(repeatId);
+
+        // Step 1 fields
+        setName(`${src.name} (repeat)`);
+        setCategory(src.category as CampaignCategory);
+        setTemplateId(src.template_id);
+        if (src.channel_id) setChannelId(src.channel_id);
+
+        // Step 3 fields
+        setThrottle(src.throttle_per_minute ?? 10);
+        // Keep schedule_type as "now" regardless of original — repeat = send fresh
+
+        // Step 2 fields — decode audience_config
+        const cfg = (src.audience_config ?? {}) as Record<string, unknown>;
+        if (src.audience_type === "manual") {
+          const leadIds = Array.isArray(cfg.lead_ids) ? (cfg.lead_ids as number[]) : [];
+          const phones = Array.isArray(cfg.phones) ? (cfg.phones as string[]) : [];
+          if (leadIds.length > 0) {
+            setAudienceType("leads");
+            setSelectedLeadIds(leadIds);
+            // Set a preview count estimate so canProceedStep2 passes
+            setPreview({ count: leadIds.length, sample_leads: [], warnings: [] });
+          } else if (phones.length > 0) {
+            setAudienceType("manual");
+            setManualPhones(phones.join("\n"));
+            setPreview({ count: phones.length, sample_leads: [], warnings: [] });
+          }
+        } else if (src.audience_type === "segment") {
+          const sid = typeof cfg.segment_id === "number" ? cfg.segment_id : null;
+          if (sid) {
+            setAudienceType("segment");
+            setSegmentId(sid);
+            setPreview({ count: src.total_recipients, sample_leads: [], warnings: [] });
+          }
+        } else if (src.audience_type === "ai_filter") {
+          setAudienceType("ai_filter");
+          setAiFilter(cfg as AudienceFilter);
+          setPreview({ count: src.total_recipients, sample_leads: [], warnings: [] });
+        }
+
+        // Jump straight to review step
+        setStep(3);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load campaign for repeat");
+      } finally {
+        setRepeatLoading(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repeatId, templates.length, channels.length]);
 
   const selectedTemplate = useMemo(
     () => templates.find((t) => t.id === templateId) ?? null,
@@ -404,8 +458,26 @@ function CampaignWizardInner() {
           >
             ← Back to Outbound Hub
           </Link>
-          <h1 className="text-2xl font-semibold mt-2">New Campaign</h1>
+          <h1 className="text-2xl font-semibold mt-2">
+            {repeatId ? "Repeat Campaign" : "New Campaign"}
+          </h1>
+          {repeatId && (
+            <p className="text-sm text-gray-500 mt-1">
+              Pre-filled from the original campaign — review the settings and launch.
+            </p>
+          )}
         </div>
+
+        {/* Loading overlay while fetching repeat campaign data */}
+        {repeatLoading && (
+          <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg mb-4 text-sm text-blue-700 dark:text-blue-300">
+            <svg className="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            Loading campaign details…
+          </div>
+        )}
 
         {/* Stepper */}
         <div className="flex items-center gap-3 mb-6">
@@ -439,12 +511,6 @@ function CampaignWizardInner() {
         )}
 
         <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg p-6 text-foreground">
-          {/* Debug: ensure rendering */}
-          <p className="text-xs text-gray-400 mb-2">
-            Step: {step} | Templates: {templates.length} | Channels:{" "}
-            {channels.length}
-          </p>
-
           {/* ────── STEP 1 ──────────────────────────────────── */}
           {step === 1 && (
             <div className="space-y-5">
@@ -596,7 +662,7 @@ function CampaignWizardInner() {
                 <div className="grid grid-cols-5 gap-1.5">
                   {(
                     [
-                      { key: "leads", icon: "👥", label: "Select Leads" },
+                      { key: "leads", icon: "👥", label: "Contacts" },
                       { key: "import", icon: "📄", label: "Import File" },
                       { key: "ai_filter", icon: "🤖", label: "AI Filter" },
                       { key: "segment", icon: "📑", label: "Segment" },
@@ -620,11 +686,11 @@ function CampaignWizardInner() {
                 </div>
               </div>
 
-              {/* ── Select Leads from CRM ─────────────────────────── */}
+              {/* ── Select Contacts from CRM ─────────────────────── */}
               {audienceType === "leads" && (
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    Select leads from your CRM
+                    Select contacts from your CRM
                   </label>
                   <LeadSelector
                     selectedLeadIds={selectedLeadIds}
@@ -637,12 +703,12 @@ function CampaignWizardInner() {
               {audienceType === "import" && (
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    Import leads from Excel / CSV
+                    Import contacts from Excel / CSV
                   </label>
                   <FileImportAudience onImported={handleFileImported} />
                   {selectedLeadIds.length > 0 && (
                     <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md text-sm text-green-800 dark:text-green-200">
-                      ✓ {selectedLeadIds.length} lead
+                      ✓ {selectedLeadIds.length} contact
                       {selectedLeadIds.length !== 1 ? "s" : ""} imported and
                       selected
                     </div>
@@ -681,33 +747,12 @@ function CampaignWizardInner() {
               {audienceType === "segment" && (
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    Segment
+                    Saved Segment
                   </label>
-                  <select
-                    value={segmentId ?? ""}
-                    onChange={(e) =>
-                      setSegmentId(
-                        e.target.value ? Number(e.target.value) : null,
-                      )
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-900"
-                  >
-                    <option value="">— Select a segment —</option>
-                    {segments.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                        {s.cached_count !== null
-                          ? ` (${s.cached_count} leads)`
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
-                  {segments.length === 0 && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      No saved segments. Use manual list for now — AI-powered
-                      segment builder ships in Phase 4.
-                    </p>
-                  )}
+                  <SegmentSelector
+                    selectedId={segmentId}
+                    onChange={setSegmentId}
+                  />
                 </div>
               )}
 
@@ -715,31 +760,31 @@ function CampaignWizardInner() {
                 type="button"
                 onClick={runPreview}
                 disabled={previewing}
-                className="px-3 py-2 border border-gray-300 dark:border-neutral-700 rounded-md text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+                className="flex items-center gap-2 px-4 py-2 border border-border-color rounded-lg text-sm text-text-secondary hover:bg-bg-secondary hover:text-text-primary disabled:opacity-40 transition-colors"
               >
                 {previewing ? "Checking…" : "🔍 Preview Audience"}
               </button>
 
               {preview && (
-                <div className="bg-gray-50 dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-md p-4">
-                  <div className="text-2xl font-bold">
-                    {preview.count} recipients
+                <div className="bg-bg-secondary border border-border-color rounded-xl p-4 space-y-2">
+                  <div className="text-2xl font-bold text-text-primary">
+                    {preview.count.toLocaleString()} contact{preview.count !== 1 ? "s" : ""}
                   </div>
                   {preview.warnings.length > 0 && (
-                    <ul className="mt-2 text-xs text-amber-600 list-disc list-inside">
+                    <ul className="text-xs text-amber-600 dark:text-amber-400 list-disc list-inside space-y-0.5">
                       {preview.warnings.map((w, i) => (
                         <li key={i}>{w}</li>
                       ))}
                     </ul>
                   )}
                   {preview.sample_leads.length > 0 && (
-                    <div className="mt-3">
-                      <div className="text-xs font-medium text-gray-500 mb-1">
+                    <div className="pt-1">
+                      <div className="text-xs font-medium text-text-secondary mb-1">
                         Sample:
                       </div>
-                      <ul className="text-sm space-y-0.5">
+                      <ul className="space-y-0.5">
                         {preview.sample_leads.slice(0, 5).map((l, i) => (
-                          <li key={i} className="font-mono text-xs">
+                          <li key={i} className="font-mono text-xs text-text-secondary">
                             {l.name ? `${l.name} — ` : ""}
                             {l.phone}
                           </li>
@@ -986,7 +1031,9 @@ function CampaignWizardInner() {
                     ? "Launching…"
                     : scheduleType === "scheduled"
                       ? "🗓️ Schedule Campaign"
-                      : "🚀 Launch Campaign"}
+                      : repeatId
+                        ? "🔁 Repeat Campaign"
+                        : "🚀 Launch Campaign"}
                 </button>
               </div>
             </div>

@@ -13,7 +13,6 @@ const RELATION_KINDS = [
 const CURRENCY_CODES = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY'];
 
 const BUILTIN_RELATION_OPTIONS = [
-  { value: '__builtin_leads', label: 'Leads' },
   { value: '__builtin_contacts', label: 'Contacts' },
   { value: '__builtin_users', label: 'Employees' },
   { value: '__builtin_work', label: 'Work Items' },

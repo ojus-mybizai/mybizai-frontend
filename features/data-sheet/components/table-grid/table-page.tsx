@@ -48,6 +48,36 @@ import type { DynamicField } from '@/services/dynamic-data';
 type SortRule = { field: string; direction: string };
 
 function parseAddRowValue(field: DynamicField, raw: unknown): unknown {
+  // Multi-select: value is an array of strings — handle BEFORE the null/string coercion below
+  if (field.field_type === 'multi_select') {
+    if (Array.isArray(raw)) {
+      const cleaned = raw.map((x) => String(x)).filter((s) => s.trim() !== '');
+      return cleaned.length ? cleaned : null;
+    }
+    if (raw == null || raw === '') return null;
+    // Tolerate JSON or comma-separated string fallbacks
+    try {
+      const parsed = JSON.parse(String(raw));
+      if (Array.isArray(parsed)) return parsed.length ? parsed : null;
+    } catch {
+      // ignore
+    }
+    const parts = String(raw).split(',').map((s) => s.trim()).filter(Boolean);
+    return parts.length ? parts : null;
+  }
+  // Relation: value is a number or array of numbers
+  if (field.field_type === 'relation') {
+    if (raw == null || raw === '') return null;
+    if (Array.isArray(raw)) {
+      const ids = raw.map((x) => Number(x)).filter(Number.isFinite);
+      return ids.length ? ids : null;
+    }
+    const id = Number(raw);
+    return Number.isFinite(id) ? id : null;
+  }
+  // Computed: never sent from the client
+  if (field.field_type === 'computed') return null;
+
   if (raw === '' || raw === undefined || raw === null) return null;
   const str = String(raw).trim();
   if (str === '' || str === '—') return null;
@@ -61,12 +91,11 @@ function parseAddRowValue(field: DynamicField, raw: unknown): unknown {
       if (/^(false|0|no)$/i.test(str)) return false;
       return null;
     case 'date':
+    case 'time':
+    case 'phone':
+    case 'text':
+    case 'long_text':
       return str;
-    case 'relation':
-      if (raw == null) return null;
-      if (Array.isArray(raw)) return raw.map((x) => Number(x)).filter(Number.isFinite);
-      const id = Number(raw);
-      return Number.isFinite(id) ? id : null;
     case 'image':
     case 'file':
       return null;
@@ -1264,6 +1293,7 @@ function AddRowRelationField({
   const isMany = field.relation_kind === 'many_to_many';
   const currentIds: number[] = Array.isArray(value) ? value.map(Number) : value != null ? [Number(value)] : [];
   const builtinModel = field.relation_builtin_model;
+  const hasTarget = Boolean(builtinModel || field.relation_model_id);
 
   // Sync initial options
   useEffect(() => { if (allOptions.length) setLiveOpts(allOptions); }, [allOptions]);
@@ -1320,6 +1350,17 @@ function AddRowRelationField({
   const modelLabel = builtinModel
     ? { leads: 'lead', users: 'employee', contacts: 'contact', work: 'work item' }[builtinModel] || 'record'
     : 'record';
+
+  if (!hasTarget) {
+    return (
+      <div key={field.id} className="relative">
+        <label className="block text-xs font-medium text-text-secondary">{field.display_name}</label>
+        <div className="mt-1 flex w-full items-center gap-2 rounded border border-dashed border-border-color bg-bg-secondary/40 px-2 py-1.5 text-left text-xs text-text-secondary">
+          Relation target not configured. Open field settings to pick a model.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div key={field.id} ref={containerRef} className="relative">
@@ -1486,6 +1527,19 @@ function AddRowModal({
             const value = addRowData[f.name];
             const setValue = (v: unknown) => setAddRowData((prev) => ({ ...prev, [f.name]: v }));
 
+            // Computed fields are auto-calculated by the backend — never user-editable.
+            if (f.field_type === 'computed') {
+              return (
+                <div key={f.id}>
+                  <label className="block text-xs font-medium text-text-secondary">
+                    {f.display_name}
+                    <span className="ml-1 inline-block rounded bg-bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">fx auto</span>
+                  </label>
+                  <div className={`${inputClass} cursor-not-allowed text-text-secondary`}>Calculated automatically</div>
+                </div>
+              );
+            }
+
             if (f.field_type === 'boolean') {
               const str = value === true ? 'true' : value === false ? 'false' : '';
               return (
@@ -1517,7 +1571,7 @@ function AddRowModal({
                 </div>
               );
             }
-            if (f.field_type === 'number' || f.field_type === 'currency') {
+            if (f.field_type === 'number') {
               const num = typeof value === 'number' && Number.isFinite(value) ? value : '';
               return (
                 <div key={f.id}>
@@ -1531,6 +1585,99 @@ function AddRowModal({
                     }}
                     className={inputClass}
                   />
+                </div>
+              );
+            }
+            if (f.field_type === 'currency') {
+              const num = typeof value === 'number' && Number.isFinite(value) ? value : '';
+              const currencyCode = (f.config?.currency_code as string) ?? 'USD';
+              return (
+                <div key={f.id}>
+                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
+                  <div className="mt-1 flex items-stretch overflow-hidden rounded border border-border-color bg-bg-primary">
+                    <span className="flex items-center bg-bg-secondary px-2 text-xs font-medium text-text-secondary">{currencyCode}</span>
+                    <input
+                      type="number"
+                      value={num}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setValue(v === '' ? null : Number(v));
+                      }}
+                      className="w-full bg-transparent px-2 py-1.5 text-sm text-text-primary focus:outline-none"
+                    />
+                  </div>
+                </div>
+              );
+            }
+            if (f.field_type === 'time') {
+              const str = typeof value === 'string' && value ? value : '';
+              return (
+                <div key={f.id}>
+                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
+                  <input
+                    type="time"
+                    value={str}
+                    onChange={(e) => setValue(e.target.value || null)}
+                    className={inputClass}
+                  />
+                </div>
+              );
+            }
+            if (f.field_type === 'phone') {
+              const str = typeof value === 'string' ? value : '';
+              const defaultCountryCode = (f.config?.default_country_code as string) ?? '+91';
+              return (
+                <div key={f.id}>
+                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
+                  <input
+                    type="tel"
+                    value={str}
+                    onChange={(e) => setValue(e.target.value || null)}
+                    placeholder={`${defaultCountryCode} 98765 43210`}
+                    className={inputClass}
+                  />
+                </div>
+              );
+            }
+            if (f.field_type === 'multi_select') {
+              const options = (f.config?.options as string[]) ?? [];
+              const selected: string[] = Array.isArray(value)
+                ? (value as unknown[]).map(String)
+                : typeof value === 'string' && value
+                  ? value.split(',').map((s) => s.trim()).filter(Boolean)
+                  : [];
+              const remaining = options.filter((o) => !selected.includes(o));
+              return (
+                <div key={f.id}>
+                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
+                  <div className={`${inputClass} flex min-h-[36px] flex-wrap items-center gap-1`}>
+                    {selected.map((v, i) => (
+                      <span key={`${v}-${i}`} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20">
+                        {v}
+                        <button
+                          type="button"
+                          onClick={() => setValue(selected.filter((_, idx) => idx !== i))}
+                          className="ml-0.5 text-accent/70 hover:text-accent"
+                          aria-label={`Remove ${v}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    <select
+                      className="min-w-[80px] flex-1 border-none bg-transparent text-sm text-text-primary focus:outline-none"
+                      value=""
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v && !selected.includes(v)) setValue([...selected, v]);
+                      }}
+                    >
+                      <option value="">{remaining.length ? '+ Add…' : 'All selected'}</option>
+                      {remaining.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               );
             }
@@ -1555,7 +1702,7 @@ function AddRowModal({
                 </div>
               );
             }
-            if (f.field_type === 'relation' && (f.relation_model_id || f.relation_builtin_model)) {
+            if (f.field_type === 'relation') {
               return (
                 <AddRowRelationField
                   key={f.id}

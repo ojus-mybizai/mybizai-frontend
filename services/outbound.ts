@@ -71,16 +71,37 @@ export interface CostEstimate {
 }
 
 export interface AudienceFilter {
-  intents?: string[];
-  pipeline_stage_ids?: number[];
-  exclude_pipeline_stage_ids?: number[];
-  source_channels?: string[];
-  last_messaged_within_days?: number;
-  not_messaged_within_days?: number;
-  tags?: string[];
-  priority?: string[];
-  custom_field_filters?: Record<string, unknown>;
-  semantic_query?: string;
+  // ── Primary filters (applied by backend _apply_contact_filter) ───────────
+  group_ids?: number[];                 // ContactGroup IDs — contacts in ANY of these
+  tag_ids?: number[];                   // ContactTagDef IDs — contacts with ANY of these
+  source_channels?: string[];           // contact.source: whatsapp / instagram / manual / …
+  priority?: string[];                  // hot | high | medium | low
+  last_messaged_within_days?: number;   // updated_at >= now - N days
+  not_messaged_within_days?: number;    // updated_at < now - N days
+  created_after?: string;               // ISO date "YYYY-MM-DD"
+  created_before?: string;              // ISO date "YYYY-MM-DD"
+
+  // ── Backward-compat only (never shown in UI, silently ignored by backend) ─
+  contact_type_ids?: number[];          // removed — contact types no longer exist
+  tags?: string[];                      // legacy tag names — superseded by tag_ids
+}
+
+// ── Filter options (picklist data for FilterBuilder UI) ─────────────────
+
+export interface FilterPickItem {
+  id: number;
+  name: string;
+  color: string;
+  group_id?: number | null;             // tags only — null/undefined = global tag
+}
+export interface SourceOption {
+  value: string;
+  label: string;
+}
+export interface FilterOptions {
+  groups: FilterPickItem[];             // primary organisation unit
+  tags: FilterPickItem[];               // includes group_id for scope display
+  sources: SourceOption[];
 }
 
 export interface AudiencePreview {
@@ -89,7 +110,6 @@ export interface AudiencePreview {
     id: number | null;
     name: string | null;
     phone: string;
-    stage: number | null;
   }>;
   warnings: string[];
 }
@@ -103,6 +123,7 @@ export interface Campaign {
   template_id: number;
   channel_id: number;
   audience_type: AudienceType;
+  audience_config: Record<string, unknown> | null;
   total_recipients: number;
   estimated_cost: string;
   actual_cost: string;
@@ -127,6 +148,7 @@ export interface CampaignRecipient {
   id: number;
   campaign_id: number;
   lead_id: number | null;
+  lead_name: string | null;
   phone: string;
   status: string;
   scheduled_fire_at: string | null;
@@ -139,6 +161,11 @@ export interface CampaignRecipient {
   error_message: string | null;
   cost: string;
   wa_message_id: string | null;
+  resolved_params: {
+    header?: string[];
+    body?: string[];
+    button?: [number, string][];
+  } | null;
 }
 
 export interface Segment {
@@ -295,6 +322,10 @@ export async function listCampaignRecipients(
 // Segments
 // ────────────────────────────────────────────────────────────────────────────
 
+export async function getFilterOptions(): Promise<FilterOptions> {
+  return apiFetch<FilterOptions>('/segments/filter-options', { method: 'GET' });
+}
+
 export async function listSegments(): Promise<Segment[]> {
   return apiFetch<Segment[]>('/segments', { method: 'GET' });
 }
@@ -307,6 +338,16 @@ export async function createSegment(payload: {
 }): Promise<Segment> {
   return apiFetch<Segment>('/segments', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateSegment(
+  id: number,
+  payload: { name?: string; description?: string; filter_config?: AudienceFilter },
+): Promise<Segment> {
+  return apiFetch<Segment>(`/segments/${id}`, {
+    method: 'PUT',
     body: JSON.stringify(payload),
   });
 }

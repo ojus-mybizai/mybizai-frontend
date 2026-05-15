@@ -83,6 +83,12 @@ body {
   to   { opacity: 0; transform: translateY(-8px) scale(0.96); }
 }
 
+/* ── Shimmer (contacts load-more top bar) ─────────────────────────────────── */
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
 html { scrollbar-gutter: stable; }
 

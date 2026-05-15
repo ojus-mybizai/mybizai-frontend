@@ -1,49 +1,43 @@
 'use client';
 
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
-  FileText,
-  Users,
   MessageSquare,
-  Target,
-  Briefcase,
-  ClipboardList,
-  UserCog,
   Bot,
+  Radio,
+  Megaphone,
+  Zap,
+  UserCheck,
+  MessageCircle,
+  FileText,
   LogOut,
   Settings,
-  MessagesSquare,
-  BarChart2,
-  Home,
-  CheckSquare,
   CreditCard,
-  MapPin,
-  Phone,
-  TrendingUp,
-  Clipboard,
-  List,
-  UserPlus,
-  DollarSign,
-  Package,
-  Calendar,
-  BookOpen,
-  Radio,
-  Zap,
-  Sparkles,
+  UsersRound,
+  Users,
+  Filter,
+  Repeat,
+  Workflow,
+  Briefcase,
   Send,
-  GitBranch,
-  Flame,
+  ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
+  MousePointer2,
+  Database,
+  GraduationCap,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { performLogout } from '@/lib/auth-actions';
 import { useThemeStore } from '@/lib/theme-store';
-import { useAgentStore } from '@/lib/agent-store';
 import { useTourStore } from '@/lib/tour-store';
+import { useUIStore } from '@/lib/ui-store';
 import { DataSheetNav } from '@/components/data-sheet-nav';
 import NotificationBell from '@/components/notifications/notification-bell';
+import { GlobalSearch } from '@/components/global-search';
 import { TourOverlay } from '@/components/tour/tour-overlay';
 import { OnboardingChecklist } from '@/components/tour/onboarding-checklist';
 
@@ -53,27 +47,27 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-interface NavChild {
-  label: string;
-  href: string;
-  group?: 'manage' | 'workspace' | 'analytics';
-  isLastAgent?: boolean;
-}
-
 interface NavItem {
   kind?: never;
   label: string;
   href: string;
   icon: LucideIcon;
-  children?: NavChild[];
 }
 
-type NavSection = { kind: 'section'; label: string };
-type DataSheetSlot = { kind: 'datasheet' };
-type NavEntry = NavItem | NavSection | DataSheetSlot;
+interface NavGroup {
+  kind: 'group';
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  children: NavItem[];
+}
 
-function isNavItem(e: NavEntry): e is NavItem {
-  return !('kind' in e) || e.kind === undefined;
+type NavSection    = { kind: 'section'; label: string };
+type DataSheetSlot = { kind: 'datasheet' };
+type NavEntry      = NavItem | NavGroup | NavSection | DataSheetSlot;
+
+function isNavGroup(e: NavEntry): e is NavGroup {
+  return (e as NavGroup).kind === 'group';
 }
 function isSection(e: NavEntry): e is NavSection {
   return (e as NavSection).kind === 'section';
@@ -82,212 +76,99 @@ function isDataSheetSlot(e: NavEntry): e is DataSheetSlot {
   return (e as DataSheetSlot).kind === 'datasheet';
 }
 
-/* ─── Nav builder ─────────────────────────────────────────────────────────── */
+/* ─── Nav definitions ────────────────────────────────────────────────────── */
 
-function buildNavItems(
-  _lmsEnabled: boolean,
-  _agentsEnabled: boolean,
-  hasPermission: (key: string) => boolean,
-): NavEntry[] {
-  const items: NavEntry[] = [
-    { label: 'Home',           href: '/home',           icon: Home },
-    { label: 'Dashboard',      href: '/new_dashboard',  icon: LayoutDashboard },
-    { label: 'Leads',         href: '/leads',         icon: Users },
-    { label: 'Nurture',       href: '/nurture',       icon: Flame },
-    { label: 'AI Agent',      href: '/agents',        icon: Bot },
-    { label: 'Lite Agent',   href: '/lite-agents',   icon: Zap },
-    { label: 'Conversations', href: '/conversations', icon: MessageSquare },
-    { label: 'Outbound',       href: '/outbound',      icon: Send },
-    { label: 'Channels',       href: '/channels',      icon: Radio },
+/** Full nav for business owners */
+const OWNER_NAV: NavEntry[] = [
+  { label: 'Dashboard', href: '/new_dashboard', icon: LayoutDashboard },
 
-    { kind: 'section', label: 'Data & Insights' },
-    { kind: 'datasheet' as const },
-    { label: 'Reports',    href: '/reports',    icon: BarChart2 },
-    { label: 'Automation', href: '/automation', icon: Zap },
-  ];
+  { kind: 'section', label: 'CRM' },
+  { label: 'Inbox',    href: '/inbox',    icon: MessageSquare },
+  { label: 'Contacts', href: '/contacts', icon: UserCheck },
+  {
+    kind: 'group',
+    label: 'Campaigns',
+    href: '/outbound',
+    icon: Megaphone,
+    children: [
+      { label: 'Segments', href: '/outbound/segments', icon: Filter },
+    ],
+  },
 
-  return items;
-}
+  { kind: 'section', label: 'Messaging' },
+  { label: 'Channels',      href: '/channels',          icon: Radio },
+  { label: 'Msg Templates', href: '/message-templates', icon: MessageCircle },
 
-/* ─── Icon resolver for blueprint nav ───────────────────────────────────── */
+  { kind: 'section', label: 'AI & Automation' },
+  { label: 'Agents',     href: '/agents',     icon: Bot },
+  { label: 'Sequences',  href: '/nurture',    icon: Repeat },
+  { label: 'Automation', href: '/automation', icon: Zap },
 
-const ICON_MAP: Record<string, LucideIcon> = {
-  'layout-dashboard': LayoutDashboard,
-  'dashboard': LayoutDashboard,
-  'users': Users,
-  'user-plus': UserPlus,
-  'user-cog': UserCog,
-  'message-square': MessageSquare,
-  'messages-square': MessagesSquare,
-  'target': Target,
-  'briefcase': Briefcase,
-  'clipboard-list': ClipboardList,
-  'clipboard': Clipboard,
-  'list': List,
-  'file-text': FileText,
-  'bar-chart-2': BarChart2,
-  'bot': Bot,
-  'settings': Settings,
-  'home': Home,
-  'check-square': CheckSquare,
-  'credit-card': CreditCard,
-  'map-pin': MapPin,
-  'phone': Phone,
-  'trending-up': TrendingUp,
-  'dollar-sign': DollarSign,
-  'package': Package,
-  'calendar': Calendar,
-  'book-open': BookOpen,
-  'radio': Radio,
-  'zap': Zap,
-};
+  // ── Work management (WA team + internal) ─────────────────────────────────
+  { kind: 'section', label: 'Work' },
+  { label: 'Employees',       href: '/wa-employees', icon: UsersRound },
+  { label: 'Tasks',           href: '/wa-work',      icon: Send },
+  { label: 'Work Templates',  href: '/wa-templates', icon: FileText },
+  { label: 'Work Board',      href: '/work',         icon: Briefcase },
+  { label: 'Processes',       href: '/processes',    icon: Workflow },
 
-function resolveIcon(iconName?: string): LucideIcon {
-  if (!iconName) return FileText;
-  return ICON_MAP[iconName] || FileText;
-}
+  { kind: 'section', label: 'Data Sheets' },
+  { kind: 'datasheet' },
 
-/* ─── Builtin target → URL mapping ──────────────────────────────────────── */
+  { kind: 'section', label: 'Account' },
+  // /employees manages who can log into the dashboard (platform RBAC),
+  // not the WhatsApp team — so it lives in Account, not Team.
+  { label: 'Team Access', href: '/employees',       icon: Users },
+  { label: 'Settings',    href: '/settings',         icon: Settings },
+  { label: 'Billing',     href: '/settings/billing', icon: CreditCard },
+];
 
-const BUILTIN_TARGETS: Record<string, string> = {
-  dashboard: '/home',
-  leads: '/leads',
-  customers: '/leads',
-  conversations: '/conversations',
-  workstation: '/employee-dashboard',
-  work: '/work',
-  employees: '/employees',
-  chats: '/chats',
-  reports: '/reports',
-  settings: '/settings',
-  'lead-sources': '/lead-sources',
-  agents: '/agents',
-  automation: '/automation',
-};
+/** Simplified nav for team members / employees */
+const EMPLOYEE_NAV: NavEntry[] = [
+  { label: 'Dashboard', href: '/new_dashboard', icon: LayoutDashboard },
 
-/* ─── Build nav from navigation_config ──────────────────────────────────── */
+  { kind: 'section', label: 'Work' },
+  { label: 'Inbox',     href: '/inbox',     icon: MessageSquare },
+  { label: 'Work',      href: '/work',      icon: Briefcase },
+  { label: 'Contacts',  href: '/contacts',  icon: UserCheck },
+  { label: 'Processes', href: '/processes', icon: Workflow },
 
-interface NavConfigGroup {
-  group: string;
-  icon?: string;
-  items: Array<{
-    label: string;
-    type: string;
-    target?: string;
-    url?: string;
-    icon?: string;
-    permission?: string;
-    filter?: string;
-  }>;
-}
+  { kind: 'section', label: 'Data Sheets' },
+  { kind: 'datasheet' },
 
-function buildCustomNavItems(
-  navConfig: NavConfigGroup[],
-  hasPermission: (key: string) => boolean,
-  agentsEnabled: boolean,
-): NavEntry[] {
-  const items: NavEntry[] = [];
-
-  // Always show dashboard first
-  items.push({ label: 'Home', href: '/home', icon: Home });
-
-  for (const group of navConfig) {
-    const groupItems: NavEntry[] = [];
-
-    for (const item of group.items) {
-      // Check permission
-      if (item.permission && !hasPermission(item.permission)) continue;
-
-      let href: string;
-      const icon = resolveIcon(item.icon);
-
-      // If url is directly provided, use it
-      if (item.url) {
-        href = item.url;
-      } else {
-        switch (item.type) {
-          case 'builtin':
-            href = BUILTIN_TARGETS[item.target ?? ''] || `/${item.target ?? ''}`;
-            break;
-          case 'datasheet':
-            href = `/data-sheet/${item.target}`;
-            break;
-          case 'work_template':
-            href = `/work?template=${item.target}`;
-            break;
-          case 'agent_conversations':
-            href = `/conversations?agent=${encodeURIComponent(item.target ?? '')}`;
-            break;
-          case 'internal_agent':
-            href = `/agent-chat/${encodeURIComponent(item.target ?? '')}`;
-            break;
-          default:
-            href = `/${item.target || ''}`;
-        }
-      }
-
-      groupItems.push({ label: item.label, href, icon });
-    }
-
-    if (groupItems.length > 0) {
-      items.push({ kind: 'section', label: group.group });
-      items.push(...groupItems);
-    }
-  }
-
-  // Always add Data & Insights section with DataSheet dropdown for advanced users
-  items.push({ kind: 'section', label: 'Data & Insights' });
-  items.push({ kind: 'datasheet' });
-  if (hasPermission('view_reports')) {
-    items.push({ label: 'Reports', href: '/reports', icon: BarChart2 });
-  }
-
-  // Automation
-  if (hasPermission('manage_settings')) {
-    items.push({ label: 'Automation', href: '/automation', icon: Zap });
-  }
-
-  // Always add Modules section if agents enabled
-  if (agentsEnabled && hasPermission('manage_agents')) {
-    items.push({ kind: 'section', label: 'Modules' });
-    items.push({
-      label: 'AI Agents',
-      href: '/agents',
-      icon: Bot,
-      children: [
-        { label: 'All Agents',          href: '/agents',            group: 'manage' },
-        { label: 'New Agent',           href: '/agents/new',        group: 'manage' },
-        { label: 'Last Opened Agent',   href: '/agents',            group: 'workspace', isLastAgent: true },
-        { label: 'Lead Templates',      href: '/lead-templates',    group: 'analytics' },
-        { label: 'Agent Analytics',     href: '/analytics',         group: 'analytics' },
-        { label: 'Message Templates',   href: '/message-templates',  group: 'analytics' },
-      ],
-    });
-  }
-
-  return items;
-}
+  { kind: 'section', label: 'Account' },
+  { label: 'Settings', href: '/settings', icon: Settings },
+];
 
 /* ─── Page title resolver ────────────────────────────────────────────────── */
 
 const TITLE_MAP: Record<string, string> = {
-  '/home':               'Home',
-  '/employee-dashboard': 'My Workstation',
-  '/work':               'Work & Tasks',
-  '/chats':              'Team Chats',
-  '/agent-chat':         'AI Assistants',
-  '/leads':              'Leads',
-  '/conversations':      'Conversations',
-  '/lead-sources':       'Lead Sources',
-  '/data-sheet':         'Data Sheet',
-  '/reports':            'Reports',
-  '/employees':          'Employees',
-  '/agents':             'AI Agents',
-  '/lead-templates':     'Lead Templates',
-  '/analytics':          'Agent Analytics',
-  '/settings':           'Settings',
-  '/settings/billing':   'Billing & Plans',
-  '/automation':         'Automation',
+  '/new_dashboard':       'Dashboard',
+  '/home':                'Dashboard',
+  '/contacts':            'Contacts',
+  '/contacts/import':     'Import Contacts',
+  '/inbox':               'Inbox',
+  '/outbound':            'Campaigns',
+  '/outbound/segments':   'Segments',
+  '/message-templates':   'Message Templates',
+  '/wa-templates':        'Work Templates',
+  '/wa-templates/new':    'New Work Template',
+  '/channels':            'Channels',
+  '/agents':              'Agents',
+  '/agent-chat':          'AI Chat',
+  '/nurture':             'Sequences',
+  '/automation':          'Automation',
+  '/wa-work':             'Tasks',           // WhatsApp task dispatch (primary task system)
+  '/wa-employees':        'Employees',       // WhatsApp team (was "Members")
+  '/work':                'Work Board',      // Platform internal kanban
+  '/work/templates':      'Work Templates',
+  '/employees':           'Team Access',     // Platform RBAC (was "Employees")
+  '/processes':           'Processes',
+  '/data-sheet':          'Data Sheets',
+  '/settings':            'Settings',
+  '/settings/billing':    'Billing & Plans',
+  '/integrations/meta':   'Meta Ads',
+  '/analytics':           'Analytics',
 };
 
 function getTitle(pathname: string | null): string {
@@ -300,20 +181,80 @@ function getTitle(pathname: string | null): string {
   return 'MyBizAI';
 }
 
+/* Routes that should always start with a collapsed sidebar (info-dense screens). */
+const FORCE_COLLAPSED_ROUTES = ['/inbox'];
+
+function isForceCollapsedRoute(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return FORCE_COLLAPSED_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
+}
+
 /* ─── AppShell ───────────────────────────────────────────────────────────── */
 
 export default function AppShell({ children }: AppShellProps) {
-  const router = useRouter();
+  const router   = useRouter();
   const pathname = usePathname();
-  const user = useAuthStore((s) => s.user as any);
+  const user     = useAuthStore((s) => s.user as any);
+  const isOwner  = useAuthStore((s) => s.isOwner);
   const business = user?.businesses?.[0];
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  const navItems = buildNavItems(false, false, hasPermission);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [mounted,     setMounted]     = useState(false);
+  const [openGroups,  setOpenGroups]  = useState<Set<string>>(new Set());
+
+  /* Sidebar collapse / hover-expand state (persisted via UIController) */
+  const sidebarMode        = useUIStore((s) => s.sidebarMode);
+  const hoverExpandEnabled = useUIStore((s) => s.hoverExpandEnabled);
+  const isHoverExpanded    = useUIStore((s) => s.isHoverExpanded);
+  const setHoverExpanded   = useUIStore((s) => s.setHoverExpanded);
+  const toggleSidebar      = useUIStore((s) => s.toggleSidebar);
+  const setSidebarMode     = useUIStore((s) => s.setSidebarMode);
+  const setHoverExpandPref = useUIStore((s) => s.setHoverExpandEnabled);
+  const uiHydrated         = useUIStore((s) => s.hydrated);
+
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => { setMounted(true); }, []);
-  const theme     = useThemeStore((s) => s.theme);
+
+  /* Force-collapse on info-dense routes; restore on leave. We track this in a
+     ref so the user can still toggle while on the route (their toggle wins
+     until they navigate to a different route).                                */
+  const lastForceCollapsedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (!uiHydrated) return;
+    const forceCollapsed = isForceCollapsedRoute(pathname);
+    if (forceCollapsed && !lastForceCollapsedRef.current) {
+      // entering a force-collapsed route — collapse if not already
+      if (sidebarMode !== 'collapsed') setSidebarMode('collapsed');
+    }
+    lastForceCollapsedRef.current = forceCollapsed;
+    // We deliberately do NOT depend on sidebarMode here so user toggles during
+    // the route aren't fought by this effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, uiHydrated]);
+
+  // Defer nav selection until after mount so SSR output (no auth state) matches
+  // the client's initial render. Zustand restores isOwner from localStorage
+  // synchronously, causing a server/client mismatch without this guard.
+  const NAV_ITEMS = mounted ? (isOwner ? OWNER_NAV : EMPLOYEE_NAV) : EMPLOYEE_NAV;
+
+  /* Auto-open any group whose child matches the current pathname */
+  useEffect(() => {
+    if (!pathname) return;
+    const toOpen: string[] = [];
+    for (const entry of NAV_ITEMS) {
+      if (isNavGroup(entry)) {
+        if (entry.children.some((c) => pathname.startsWith(c.href))) {
+          toOpen.push(entry.href);
+        }
+      }
+    }
+    if (toOpen.length) {
+      setOpenGroups((prev) => new Set([...prev, ...toOpen]));
+    }
+  }, [pathname, isOwner]);
+
+  const theme       = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
 
   const handleNavigate = (href: string) => {
@@ -327,169 +268,358 @@ export default function AppShell({ children }: AppShellProps) {
     router.replace('/login');
   };
 
+  const toggleGroup = useCallback((href: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(href)) next.delete(href); else next.add(href);
+      return next;
+    });
+  }, []);
+
   const isActive = (href: string) => {
     if (!pathname) return false;
-    if (href === '/home') return pathname === '/home';
+    if (href === '/new_dashboard') return pathname === '/new_dashboard' || pathname === '/home';
+    if (href === '/outbound')      return pathname === '/outbound' || (pathname.startsWith('/outbound/') && !pathname.startsWith('/outbound/segments'));
+    if (href === '/settings')      return pathname === '/settings';
     return pathname.startsWith(href);
   };
 
   const title = getTitle(pathname);
 
-  // User avatar initials
   const userDisplay = user?.name || user?.email || '';
   const initials = userDisplay
     ? userDisplay.split(/[\s@.]/).filter(Boolean).slice(0, 2).map((s: string) => s[0].toUpperCase()).join('')
     : '?';
 
-  /* ── Sidebar nav item render ─────────────────────────────────────────── */
-  const renderNavItem = (item: NavItem) => {
+  /* Effective visual mode = pinned mode unless collapsed-and-being-hovered    */
+  const isCollapsed       = sidebarMode === 'collapsed';
+  const isVisuallyExpanded = !isCollapsed || isHoverExpanded;
+
+  const onSidebarEnter = useCallback(() => {
+    if (!isCollapsed || !hoverExpandEnabled) return;
+    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+    setHoverExpanded(true);
+  }, [isCollapsed, hoverExpandEnabled, setHoverExpanded]);
+
+  const onSidebarLeave = useCallback(() => {
+    if (!isCollapsed) return;
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    // small grace period so users cursoring across to content don't snap shut mid-click
+    hoverTimerRef.current = setTimeout(() => setHoverExpanded(false), 220);
+  }, [isCollapsed, setHoverExpanded]);
+
+  useEffect(() => () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); }, []);
+  // Cancel hover-expand whenever the user pins the sidebar open.
+  useEffect(() => { if (!isCollapsed) setHoverExpanded(false); }, [isCollapsed, setHoverExpanded]);
+
+  /* ── Flat nav item ───────────────────────────────────────────────────── */
+  const renderNavItem = (item: NavItem, compact = false, expanded = true) => {
     const active = isActive(item.href);
     const tourId = item.href.replace(/^\//, '').replace(/\//g, '-') || 'home';
-
     return (
       <button
-        key={item.href || item.label}
+        key={item.href}
         type="button"
         data-tour={`nav-${tourId}`}
         onClick={() => handleNavigate(item.href)}
-        className={`group flex w-full items-center rounded-lg px-2.5 py-2 text-sm text-left transition-all ${
-          active
+        title={!expanded ? item.label : undefined}
+        aria-label={!expanded ? item.label : undefined}
+        className={`group flex w-full items-center rounded-lg text-left transition-all
+          ${expanded
+            ? (compact ? 'px-2.5 py-1.5 text-[13px]' : 'px-2.5 py-2 text-sm')
+            : 'h-9 justify-center px-0'}
+          ${active
             ? 'bg-accent/10 text-accent font-medium'
             : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
-        }`}
+          }`}
       >
         <item.icon
-          className={`h-4 w-4 shrink-0 transition-colors mr-2.5 ${
-            active ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'
-          }`}
+          className={`shrink-0 transition-colors
+            ${expanded ? 'mr-2' : ''}
+            ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'}
+            ${active ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'}`}
           aria-hidden
         />
-        <span className="truncate">{item.label}</span>
+        {expanded && <span className="truncate">{item.label}</span>}
       </button>
     );
   };
 
+  /* ── Collapsible group ───────────────────────────────────────────────── */
+  const renderNavGroup = (group: NavGroup, expanded: boolean) => {
+    // When the sidebar is collapsed, a group degrades to its parent icon —
+    // children become inaccessible until the user hover-expands or pins open.
+    if (!expanded) {
+      return renderNavItem(
+        { label: group.label, href: group.href, icon: group.icon } as NavItem,
+        false,
+        false,
+      );
+    }
+
+    const isOpen      = openGroups.has(group.href);
+    const parentMatch = isActive(group.href);
+    const childMatch  = group.children.some((c) => pathname?.startsWith(c.href));
+    const highlighted = parentMatch || childMatch;
+
+    return (
+      <div key={group.href}>
+        <button
+          type="button"
+          onClick={() => {
+            handleNavigate(group.href);
+            toggleGroup(group.href);
+          }}
+          className={`group flex w-full items-center rounded-lg px-2.5 py-2 text-sm text-left transition-all
+            ${highlighted
+              ? 'bg-accent/10 text-accent font-medium'
+              : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+            }`}
+        >
+          <group.icon
+            className={`h-4 w-4 shrink-0 mr-2.5 transition-colors
+              ${highlighted ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'}`}
+            aria-hidden
+          />
+          <span className="flex-1 truncate">{group.label}</span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200
+              ${isOpen ? 'rotate-180' : ''}
+              ${highlighted ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'}`}
+            aria-hidden
+          />
+        </button>
+
+        {isOpen && (
+          <div className="mt-0.5 ml-[11px] border-l border-border-color pl-3 pb-0.5 space-y-0.5">
+            {group.children.map((child) => renderNavItem(child, true, true))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /* ── Section header / divider ────────────────────────────────────────── */
+  const renderSection = (label: string, key: string, expanded: boolean) => {
+    if (expanded) {
+      return (
+        <div
+          key={key}
+          className="px-2.5 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary/70"
+        >
+          {label}
+        </div>
+      );
+    }
+    return <div key={key} className="my-1.5 mx-2 border-t border-border-color" aria-hidden />;
+  };
+
   /* ── Sidebar content ─────────────────────────────────────────────────── */
-  const SidebarContent = (
+  const renderSidebarContent = (expanded: boolean) => (
     <div className="flex h-full flex-col bg-bg-primary border-r border-border-color">
 
-      {/* Brand header */}
-      <div className="flex h-14 shrink-0 items-center gap-3 px-4 border-b border-border-color">
+      {/* Brand header + collapse toggle */}
+      <div
+        className={`flex h-14 shrink-0 items-center border-b border-border-color ${
+          expanded ? 'gap-3 px-3' : 'flex-col gap-1 py-2 px-2'
+        }`}
+      >
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent">
           <span className="text-xs font-bold text-white leading-none">M</span>
         </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-text-primary truncate leading-tight">MyBizAI</p>
-          {business?.name && (
-            <p className="text-[11px] text-text-secondary truncate leading-tight">{business.name}</p>
-          )}
-        </div>
+        {expanded && (
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-text-primary truncate leading-tight">MyBizAI</p>
+            {business?.name && (
+              <p className="text-[11px] text-text-secondary truncate leading-tight">{business.name}</p>
+            )}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          title={isCollapsed ? 'Pin sidebar open' : 'Collapse sidebar'}
+          aria-label={isCollapsed ? 'Pin sidebar open' : 'Collapse sidebar'}
+          className={`shrink-0 inline-flex items-center justify-center rounded-md text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors ${
+            expanded ? 'h-7 w-7' : 'h-6 w-6'
+          }`}
+        >
+          {isCollapsed
+            ? <PanelLeftOpen className="h-3.5 w-3.5" aria-hidden />
+            : <PanelLeftClose className="h-4 w-4" aria-hidden />}
+        </button>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
-        {navItems.map((entry, idx) => {
+      <nav className={`flex-1 overflow-y-auto py-2 space-y-0.5 ${expanded ? 'px-2' : 'px-1.5'}`}>
+        {NAV_ITEMS.map((entry, idx) => {
           if (isDataSheetSlot(entry)) {
-            return (
-              <DataSheetNav key="datasheet" onNavigate={() => setSidebarOpen(false)} />
+            if (expanded) {
+              return <DataSheetNav key="datasheet" onNavigate={() => setSidebarOpen(false)} />;
+            }
+            // Collapsed: degrade to a single icon button that navigates to /data-sheet
+            return renderNavItem(
+              { label: 'Data Sheets', href: '/data-sheet', icon: Database } as NavItem,
+              false,
+              false,
             );
           }
-          if (isSection(entry)) {
-            return (
-              <div
-                key={`section-${idx}-${entry.label}`}
-                className="px-2.5 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary/70"
-              >
-                {entry.label}
-              </div>
-            );
-          }
-          return renderNavItem(entry);
+          if (isSection(entry))         return renderSection(entry.label, `section-${idx}`, expanded);
+          if (isNavGroup(entry))        return renderNavGroup(entry, expanded);
+          return renderNavItem(entry, false, expanded);
         })}
       </nav>
 
-      {/* Footer — user info + settings/logout */}
+      {/* Footer */}
       <div className="shrink-0 border-t border-border-color">
-        {/* User identity row */}
-        <div className="flex items-center gap-2.5 px-3 py-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/20 text-accent text-xs font-bold">
+        {/* User info — full row when expanded, avatar-only when collapsed */}
+        <div className={`flex items-center ${expanded ? 'gap-2.5 px-3 py-3' : 'justify-center py-2.5'}`}>
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/20 text-accent text-xs font-bold"
+            title={!expanded ? (user?.name || user?.email || 'Account') : undefined}
+          >
             {initials}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium text-text-primary leading-tight">
-              {user?.name || user?.email?.split('@')[0] || 'Account'}
-            </p>
-            {user?.email && user?.name && (
-              <p className="truncate text-[10px] text-text-secondary leading-tight">{user.email}</p>
-            )}
-          </div>
+          {expanded && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium text-text-primary leading-tight">
+                {user?.name || user?.email?.split('@')[0] || 'Account'}
+              </p>
+              <p className="text-[10px] leading-tight mt-0.5">
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ${
+                  isOwner ? 'bg-accent/10 text-accent' : 'bg-bg-secondary text-text-secondary'
+                }`}>
+                  {isOwner ? 'Owner' : 'Team Member'}
+                </span>
+              </p>
+            </div>
+          )}
         </div>
+
         {/* Action row */}
-        <div className="flex items-center gap-1 px-3 pb-3">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border-color py-1.5 text-xs text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-          >
-            <span>{theme === 'dark' ? '🌙' : '☀️'}</span>
-            <span className="hidden lg:inline">{theme === 'dark' ? 'Dark' : 'Light'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSidebarOpen(false);
-              useTourStore.getState().toggleChecklist();
-            }}
-            title="Tour & Onboarding"
-            className="flex items-center justify-center rounded-md border border-border-color p-1.5 text-text-secondary hover:bg-primary/10 hover:text-primary transition-colors"
-          >
-            <span className="text-sm" aria-hidden>🎓</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setSidebarOpen(false); router.push('/settings/billing'); }}
-            title="Billing & Plans"
-            className="flex items-center justify-center rounded-md border border-border-color p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-          >
-            <CreditCard className="h-4 w-4" aria-hidden />
-          </button>
-          <button
-            type="button"
-            onClick={() => { setSidebarOpen(false); router.push('/settings'); }}
-            title="Settings"
-            className="flex items-center justify-center rounded-md border border-border-color p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-          >
-            <Settings className="h-4 w-4" aria-hidden />
-          </button>
-          <button
-            type="button"
-            onClick={handleLogout}
-            title="Logout"
-            className="flex items-center justify-center rounded-md border border-border-color p-1.5 text-text-secondary hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 transition-colors"
-          >
-            <LogOut className="h-4 w-4" aria-hidden />
-          </button>
-        </div>
+        {expanded ? (
+          <div className="flex items-center gap-1 px-2 pb-2.5">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+              className="flex flex-1 items-center justify-center gap-1 rounded-md border border-border-color py-1.5 text-xs text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+            >
+              <span>{theme === 'dark' ? '🌙' : '☀️'}</span>
+              <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setHoverExpandPref(!hoverExpandEnabled)}
+              title={hoverExpandEnabled ? 'Disable hover-expand' : 'Enable hover-expand (sidebar grows when you hover it)'}
+              aria-pressed={hoverExpandEnabled}
+              className={`inline-flex h-[30px] w-[30px] items-center justify-center rounded-md border transition-colors ${
+                hoverExpandEnabled
+                  ? 'border-accent/40 bg-accent/10 text-accent'
+                  : 'border-border-color text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+              }`}
+            >
+              <MousePointer2 className="h-3.5 w-3.5" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSidebarOpen(false); useTourStore.getState().toggleChecklist(); }}
+              title="Tour & Onboarding"
+              className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border-color text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
+            >
+              <GraduationCap className="h-3.5 w-3.5" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Logout"
+              className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border-color text-text-secondary hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1 pb-2">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+            >
+              <span aria-hidden>{theme === 'dark' ? '🌙' : '☀️'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setHoverExpandPref(!hoverExpandEnabled)}
+              title={hoverExpandEnabled ? 'Hover-expand: on (click to disable)' : 'Hover-expand: off (click to enable)'}
+              aria-pressed={hoverExpandEnabled}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                hoverExpandEnabled
+                  ? 'text-accent bg-accent/10'
+                  : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+              }`}
+            >
+              <MousePointer2 className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSidebarOpen(false); useTourStore.getState().toggleChecklist(); }}
+              title="Tour & Onboarding"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
+            >
+              <GraduationCap className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Logout"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 transition-colors"
+            >
+              <LogOut className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 
   /* ── Shell layout ────────────────────────────────────────────────────── */
+  // Pre-render mobile drawer always expanded; desktop respects collapsed state.
+  const desktopAsideWidth = isCollapsed ? 'md:w-14' : 'md:w-52 lg:w-60';
+  const showHoverOverlay  = isCollapsed && isHoverExpanded;
+
   return (
     <div className="h-screen overflow-hidden bg-bg-secondary text-text-primary flex">
 
-      {/* Desktop sidebar */}
-      <aside className="hidden md:block md:w-52 lg:w-60 shrink-0">
-        {SidebarContent}
+      {/* Desktop sidebar — reserves the collapsed footprint; hover-expand floats over content */}
+      <aside
+        className={`hidden md:block shrink-0 relative ${desktopAsideWidth} transition-[width] duration-200`}
+        onMouseEnter={onSidebarEnter}
+        onMouseLeave={onSidebarLeave}
+      >
+        {/* Pinned sidebar — always renders so layout is stable */}
+        <div className="h-full">
+          {renderSidebarContent(!isCollapsed)}
+        </div>
+
+        {/* Hover-expanded overlay — sits on top of the collapsed rail and over the page */}
+        {showHoverOverlay && (
+          <div
+            className="absolute inset-y-0 left-0 z-30 w-60 shadow-2xl ring-1 ring-black/5 animate-in fade-in slide-in-from-left-2 duration-150"
+            onMouseEnter={onSidebarEnter}
+            onMouseLeave={onSidebarLeave}
+          >
+            {renderSidebarContent(true)}
+          </div>
+        )}
       </aside>
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">
           <div className="w-60 max-w-[80vw] bg-bg-primary border-r border-border-color overflow-hidden">
-            {SidebarContent}
+            {renderSidebarContent(true)}
           </div>
           <button
             type="button"
@@ -504,9 +634,8 @@ export default function AppShell({ children }: AppShellProps) {
       <div className="flex min-w-0 min-h-0 flex-1 flex-col">
 
         {/* Topbar */}
-        <header className="h-14 shrink-0 border-b border-border-color bg-bg-primary px-4 md:px-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            {/* Mobile menu toggle */}
+        <header className="h-14 shrink-0 border-b border-border-color bg-bg-primary px-4 md:px-6 flex items-center gap-4">
+          <div className="flex items-center gap-3 shrink-0">
             <button
               type="button"
               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border-color bg-bg-secondary text-text-secondary hover:text-text-primary md:hidden shrink-0"
@@ -517,27 +646,15 @@ export default function AppShell({ children }: AppShellProps) {
                 <path d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <h1 className="text-sm font-semibold text-text-primary truncate">{title}</h1>
+            <h1 className="text-sm font-semibold text-text-primary truncate hidden sm:block">{title}</h1>
+          </div>
+
+          <div className="flex-1 flex justify-center">
+            <GlobalSearch />
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Theme toggle — desktop only (also in sidebar) */}
-            <button
-              type="button"
-              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-              onClick={toggleTheme}
-              className="hidden md:inline-flex h-9 items-center gap-1.5 rounded-full border border-border-color bg-bg-secondary px-3 text-xs font-medium text-text-secondary hover:bg-accent-soft hover:text-text-primary transition-colors"
-            >
-              <span aria-hidden>{theme === 'dark' ? '🌙' : '☀️'}</span>
-              <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
-            </button>
-            {/* Notification bell */}
             <NotificationBell />
-            {user && (
-              <span className="hidden sm:block text-xs text-text-secondary max-w-[160px] truncate">
-                {user.email || user.username || ''}
-              </span>
-            )}
           </div>
         </header>
 
@@ -545,8 +662,8 @@ export default function AppShell({ children }: AppShellProps) {
         <main
           key={pathname}
           className={`${mounted ? 'animate-page-in' : ''} ${
-            pathname?.startsWith('/conversations') || pathname?.startsWith('/chats') || pathname === '/home'
-              ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-2 md:p-3'
+            pathname?.startsWith('/inbox') || pathname === '/home' || pathname?.startsWith('/wa-work')
+              ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
               : pathname?.match(/^\/data-sheet\/[^/]+(\/)?$/)
                 ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-2 md:px-3 py-4 md:py-5'
                 : 'min-h-0 flex-1 overflow-y-auto px-2 md:px-3 py-4 md:py-5'
@@ -556,7 +673,6 @@ export default function AppShell({ children }: AppShellProps) {
         </main>
       </div>
 
-      {/* Tour overlay + onboarding checklist */}
       <TourOverlay />
       <OnboardingChecklist />
     </div>

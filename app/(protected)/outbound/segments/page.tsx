@@ -1,19 +1,26 @@
 'use client';
 
 /**
- * Segments manager — list, create, preview-count, delete saved audiences.
+ * Segments — saved audience filter library.
  *
- * Saved segments are reusable across campaigns: once a business defines
- * "Mumbai high-priority leads not messaged for 14 days", they can drop that
- * segment into any number of campaigns without rebuilding the filter.
+ * Each segment is a named AudienceFilter that can be selected as the
+ * audience for any campaign, instead of rebuilding filters from scratch.
+ *
+ * Features:
+ *   - List all saved segments with cached contact count
+ *   - Create new segment with full FilterBuilder + live preview count
+ *   - Edit existing segment (name, description, filter)
+ *   - Delete segment (with confirmation)
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Plus, Pencil, Trash2, Users, X, ChevronDown } from 'lucide-react';
 import PermissionGuard from '@/components/permission-guard';
 import { FilterBuilder } from '@/components/outbound/FilterBuilder';
 import {
   createSegment,
+  updateSegment,
   deleteSegment,
   listSegments,
   previewAudience,
@@ -21,204 +28,389 @@ import {
   type Segment,
 } from '@/services/outbound';
 
-export default function SegmentsPage() {
-  const [segments, setSegments] = useState<Segment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showNew, setShowNew] = useState(false);
+/* ── Empty filter ──────────────────────────────────────────────────────── */
+const EMPTY_FILTER: AudienceFilter = {};
 
-  // New segment form
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [filter, setFilter] = useState<AudienceFilter>({});
-  const [previewCount, setPreviewCount] = useState<number | null>(null);
-  const [previewing, setPreviewing] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await listSegments();
-      setSegments(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load segments');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+/* ── Segment form (shared for create + edit) ───────────────────────────── */
+function SegmentForm({
+  initial,
+  onSave,
+  onCancel,
+  title,
+}: {
+  initial: { name: string; description: string; filter: AudienceFilter };
+  onSave: (name: string, description: string, filter: AudienceFilter) => Promise<void>;
+  onCancel: () => void;
+  title: string;
+}) {
+  const [name,        setName]        = useState(initial.name);
+  const [description, setDescription] = useState(initial.description);
+  const [filter,      setFilter]      = useState<AudienceFilter>(initial.filter);
+  const [preview,     setPreview]     = useState<number | null>(null);
+  const [previewing,  setPreviewing]  = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState('');
 
   const handlePreview = async () => {
     setPreviewing(true);
-    setError(null);
+    setError('');
     try {
       const res = await previewAudience({ audience_type: 'ai_filter', filter });
-      setPreviewCount(res.count);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Preview failed');
+      setPreview(res.count);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Preview failed');
     } finally {
       setPreviewing(false);
     }
   };
 
   const handleSave = async () => {
-    if (!name.trim()) {
-      setError('Name is required');
-      return;
-    }
+    if (!name.trim()) { setError('Name is required'); return; }
     setSaving(true);
-    setError(null);
+    setError('');
     try {
-      await createSegment({ name, description: description || undefined, filter_config: filter });
-      setShowNew(false);
-      setName('');
-      setDescription('');
-      setFilter({});
-      setPreviewCount(null);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
-    } finally {
+      await onSave(name.trim(), description.trim(), filter);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this segment? Campaigns using it will not be affected retroactively.'))
-      return;
-    try {
-      await deleteSegment(id);
-      await load();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Delete failed');
-    }
+  // Reset preview whenever filter changes
+  const handleFilterChange = (next: AudienceFilter) => {
+    setFilter(next);
+    setPreview(null);
   };
 
+  const hasFilter = Object.values(filter).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v != null,
+  );
+
   return (
-    <PermissionGuard permission="manage_channels">
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
-        <div>
-          <Link href="/outbound" className="text-sm text-gray-500 hover:text-primary">
-            ← Back to Outbound Hub
-          </Link>
-          <div className="flex items-center justify-between mt-2">
-            <div>
-              <h1 className="text-2xl font-semibold">Saved Segments</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Reusable audience filters for campaigns.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowNew((v) => !v)}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium"
-            >
-              {showNew ? 'Cancel' : '+ New Segment'}
-            </button>
+    <div className="border border-border-color rounded-xl bg-bg-primary">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border-color">
+        <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex items-center justify-center h-7 w-7 rounded-md text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Name + description */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">
+              Segment name <span className="text-red-500">*</span>
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. High-priority — silent 14d"
+              className="w-full px-3 py-2 text-sm border border-border-color rounded-lg bg-bg-primary text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">
+              Description (optional)
+            </label>
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What this audience is for"
+              className="w-full px-3 py-2 text-sm border border-border-color rounded-lg bg-bg-primary text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent"
+            />
           </div>
         </div>
 
+        {/* Filter builder */}
+        <div>
+          <p className="text-xs font-medium text-text-secondary mb-2">
+            Filter criteria — who should be in this segment
+          </p>
+          <FilterBuilder value={filter} onChange={handleFilterChange} />
+        </div>
+
+        {/* Error */}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+          <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+
+        {/* Footer: preview + save */}
+        <div className="flex items-center justify-between pt-2 border-t border-border-color">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handlePreview}
+              disabled={previewing || !hasFilter}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border-color rounded-lg text-text-secondary hover:bg-bg-secondary hover:text-text-primary disabled:opacity-40 transition-colors"
+            >
+              <Users className="h-3.5 w-3.5" />
+              {previewing ? 'Counting…' : 'Preview count'}
+            </button>
+            {preview !== null && (
+              <span className="text-sm font-semibold text-accent">
+                {preview.toLocaleString()} contact{preview !== 1 ? 's' : ''}
+              </span>
+            )}
+            {!hasFilter && (
+              <span className="text-xs text-text-secondary italic">
+                Add at least one filter to preview
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-3 py-1.5 text-sm border border-border-color rounded-lg text-text-secondary hover:bg-bg-secondary transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !name.trim()}
+              className="px-4 py-1.5 text-sm bg-accent text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {saving ? 'Saving…' : 'Save segment'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Filter summary (read-only display on list card) ───────────────────── */
+function FilterSummaryBadges({ filter }: { filter: AudienceFilter }) {
+  const parts: string[] = [];
+  if ((filter.group_ids ?? []).length) parts.push(`${filter.group_ids!.length} group(s)`);
+  if ((filter.tag_ids ?? []).length) parts.push(`${filter.tag_ids!.length} tag(s)`);
+  if ((filter.source_channels ?? []).length) parts.push((filter.source_channels!).join(', '));
+  if ((filter.priority ?? []).length) parts.push((filter.priority!).join(' / ') + ' priority');
+  if (filter.last_messaged_within_days) parts.push(`active ≤${filter.last_messaged_within_days}d`);
+  if (filter.not_messaged_within_days) parts.push(`silent ≥${filter.not_messaged_within_days}d`);
+  if (filter.created_after) parts.push(`after ${filter.created_after}`);
+  if (filter.created_before) parts.push(`before ${filter.created_before}`);
+
+  if (parts.length === 0)
+    return <span className="text-xs text-text-secondary italic">No filters set</span>;
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {parts.map((p, i) => (
+        <span
+          key={i}
+          className="rounded-full bg-bg-secondary border border-border-color px-2 py-0.5 text-[11px] text-text-secondary"
+        >
+          {p}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/* ── Page ──────────────────────────────────────────────────────────────── */
+
+export default function SegmentsPage() {
+  const [segments,   setSegments]   = useState<Segment[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState<string | null>(null);
+
+  // Create form
+  const [showCreate, setShowCreate] = useState(false);
+
+  // Edit form
+  const [editId,     setEditId]     = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setSegments(await listSegments());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load segments');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const handleCreate = async (name: string, description: string, filter: AudienceFilter) => {
+    await createSegment({ name, description: description || undefined, filter_config: filter });
+    setShowCreate(false);
+    await load();
+  };
+
+  const handleEdit = async (name: string, description: string, filter: AudienceFilter) => {
+    if (!editId) return;
+    await updateSegment(editId, { name, description: description || undefined, filter_config: filter });
+    setEditId(null);
+    await load();
+  };
+
+  const handleDelete = async (id: number, name: string) => {
+    if (!confirm(`Delete segment "${name}"? Campaigns already using it are not affected.`)) return;
+    try {
+      await deleteSegment(id);
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Delete failed');
+    }
+  };
+
+  const editingSegment = segments.find((s) => s.id === editId);
+
+  return (
+    <PermissionGuard permission="manage_channels">
+      <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-5">
+
+        {/* ── Header ─────────────────────────────────────────────── */}
+        <div>
+          <Link
+            href="/outbound"
+            className="text-xs text-text-secondary hover:text-accent transition-colors"
+          >
+            ← Back to Campaigns
+          </Link>
+          <div className="flex items-start justify-between mt-2 gap-4">
+            <div>
+              <h1 className="text-xl font-semibold text-text-primary">Saved Segments</h1>
+              <p className="text-sm text-text-secondary mt-0.5">
+                Reusable audience filters — build once, use across any campaign.
+              </p>
+            </div>
+            {!showCreate && !editId && (
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                className="flex shrink-0 items-center gap-1.5 px-3 py-1.5 bg-accent text-white text-sm font-medium rounded-lg hover:opacity-90 transition-opacity"
+              >
+                <Plus className="h-4 w-4" />
+                New segment
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── Global error ──────────────────────────────────────── */}
+        {error && (
+          <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
             {error}
           </div>
         )}
 
-        {showNew && (
-          <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg p-6 space-y-4">
-            <h2 className="font-semibold">New Segment</h2>
-            <div>
-              <label className="block text-sm font-medium mb-1">Name</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. High-priority Mumbai leads"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-900"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Description (optional)</label>
-              <input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-900"
-              />
-            </div>
-
-            <div className="border-t border-gray-200 dark:border-neutral-800 pt-4">
-              <h3 className="text-sm font-medium mb-3">Filter Criteria</h3>
-              <FilterBuilder value={filter} onChange={setFilter} />
-            </div>
-
-            <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-neutral-800">
-              <button
-                type="button"
-                onClick={handlePreview}
-                disabled={previewing}
-                className="px-3 py-2 border border-gray-300 dark:border-neutral-700 rounded-md text-sm"
-              >
-                {previewing ? 'Checking…' : '🔍 Preview Count'}
-              </button>
-              {previewCount !== null && (
-                <span className="text-sm">
-                  Matches: <span className="font-bold">{previewCount}</span> lead
-                  {previewCount !== 1 ? 's' : ''}
-                </span>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={saving || !name.trim()}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md disabled:opacity-50"
-              >
-                {saving ? 'Saving…' : 'Save Segment'}
-              </button>
-            </div>
-          </div>
+        {/* ── Create form ────────────────────────────────────────── */}
+        {showCreate && (
+          <SegmentForm
+            title="New Segment"
+            initial={{ name: '', description: '', filter: EMPTY_FILTER }}
+            onSave={handleCreate}
+            onCancel={() => setShowCreate(false)}
+          />
         )}
 
-        {/* List */}
-        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg">
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading…</div>
-          ) : segments.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              No saved segments yet. Create one to reuse across campaigns.
-            </div>
-          ) : (
-            <ul className="divide-y divide-gray-200 dark:divide-neutral-800">
-              {segments.map((s) => (
-                <li key={s.id} className="p-4 flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{s.name}</span>
-                      {s.created_by_ai && (
-                        <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
-                          🤖 AI
+        {/* ── Edit form ──────────────────────────────────────────── */}
+        {editId && editingSegment && (
+          <SegmentForm
+            title={`Edit — ${editingSegment.name}`}
+            initial={{
+              name: editingSegment.name,
+              description: editingSegment.description ?? '',
+              filter: (editingSegment.filter_config as AudienceFilter) ?? EMPTY_FILTER,
+            }}
+            onSave={handleEdit}
+            onCancel={() => setEditId(null)}
+          />
+        )}
+
+        {/* ── Segments list ─────────────────────────────────────── */}
+        {loading ? (
+          <div className="py-12 text-center text-sm text-text-secondary animate-pulse">
+            Loading segments…
+          </div>
+        ) : segments.length === 0 && !showCreate ? (
+          <div className="py-16 text-center border border-dashed border-border-color rounded-xl">
+            <div className="text-3xl mb-3">🎯</div>
+            <p className="text-sm font-medium text-text-primary">No segments yet</p>
+            <p className="text-xs text-text-secondary mt-1 mb-4">
+              Create a segment to save an audience filter and reuse it across campaigns.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:opacity-90 transition-opacity"
+            >
+              <Plus className="h-4 w-4" />
+              Create your first segment
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {segments.map((seg) => (
+              <div
+                key={seg.id}
+                className={`rounded-xl border bg-bg-primary transition-colors
+                  ${editId === seg.id ? 'border-accent/40' : 'border-border-color hover:border-border-color/80'}`}
+              >
+                <div className="flex items-start gap-3 p-4">
+                  {/* Left: info */}
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-text-primary">
+                        {seg.name}
+                      </span>
+                      {seg.created_by_ai && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded-full font-medium">
+                          AI generated
                         </span>
                       )}
-                      {s.cached_count !== null && (
-                        <span className="text-xs text-gray-500">
-                          · {s.cached_count} leads
+                      {seg.cached_count !== null && (
+                        <span className="flex items-center gap-1 text-[11px] text-text-secondary">
+                          <Users className="h-3 w-3" />
+                          {seg.cached_count.toLocaleString()} contacts
                         </span>
                       )}
                     </div>
-                    {s.description && (
-                      <p className="text-sm text-gray-500 mt-0.5">{s.description}</p>
+                    {seg.description && (
+                      <p className="text-xs text-text-secondary">{seg.description}</p>
                     )}
+                    <FilterSummaryBadges filter={(seg.filter_config as AudienceFilter) ?? {}} />
                   </div>
-                  <button
-                    onClick={() => handleDelete(s.id)}
-                    className="text-sm text-red-600 hover:underline"
-                  >
-                    Delete
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+
+                  {/* Right: actions */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditId(seg.id === editId ? null : seg.id)}
+                      title="Edit segment"
+                      className="flex items-center justify-center h-7 w-7 rounded-md text-text-secondary hover:bg-bg-secondary hover:text-accent transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(seg.id, seg.name)}
+                      title="Delete segment"
+                      className="flex items-center justify-center h-7 w-7 rounded-md text-text-secondary hover:bg-red-50 dark:hover:bg-red-950/20 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
       </div>
     </PermissionGuard>
   );

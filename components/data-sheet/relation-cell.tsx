@@ -94,12 +94,30 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
   const currentIds = Array.isArray(value) ? value.map(Number) : value != null && value !== '' ? [Number(value)] : [];
   const missingLabels = currentIds.filter((id) => !options.some((x) => x.id === id));
   const [labelsLoading, setLabelsLoading] = useState(false);
+  // Resolve labels for specific IDs — fetch by exact ID so position in the
+  // list never matters. Track attempted keys to avoid looping on stale IDs.
+  const resolvedAttempts = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (hasTarget && missingLabels.length > 0 && !loading) {
-      setLabelsLoading(true);
-      void loadOptions('').finally(() => setLabelsLoading(false));
-    }
-  }, [hasTarget, missingLabels.length, loadOptions, loading]);
+    if (!hasTarget || loading || missingLabels.length === 0) return;
+    const key = [...missingLabels].sort().join(',');
+    if (resolvedAttempts.current.has(key)) return;
+    resolvedAttempts.current.add(key);
+    setLabelsLoading(true);
+    const fetch = builtinModel
+      ? searchBuiltinModel(builtinModel, '', 1, missingLabels.length, missingLabels).then((res) => {
+          setOptions((prev) => {
+            const merged = [...prev];
+            for (const item of res.items) {
+              if (!merged.some((x) => x.id === item.id)) {
+                merged.push({ id: item.id, record_key: String(item.id), label: item.label });
+              }
+            }
+            return merged;
+          });
+        })
+      : loadOptions('');
+    void fetch.finally(() => setLabelsLoading(false));
+  }, [hasTarget, missingLabels.length, loadOptions, loading, builtinModel]);
 
   const currentLabels = currentIds.map((id) => {
     const o = options.find((x) => x.id === id);

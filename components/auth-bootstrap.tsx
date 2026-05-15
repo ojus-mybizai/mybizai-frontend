@@ -50,6 +50,8 @@ export default function AuthBootstrap({ children }: Props) {
         }
 
         const current = useAuthStore.getState();
+        // isOwner, permissionKeys, and defaultBusinessId are now loaded from sessionStorage
+        // directly in the store initializer, so no manual restore needed here.
         if (!current.accessToken) {
           try {
             const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
@@ -114,6 +116,10 @@ export default function AuthBootstrap({ children }: Props) {
         }
 
         const withToken = useAuthStore.getState();
+        // Fetch /auth/users/me when:
+        //  - we have an access token, AND
+        //  - either we have no user object yet, OR isOwner/permissionKeys came only from
+        //    sessionStorage cache (user is null means they haven't been fetched this session)
         if (withToken.accessToken && !withToken.user) {
           try {
             const me = await apiFetch<Record<string, unknown>>('/auth/users/me', { method: 'GET' });
@@ -121,6 +127,7 @@ export default function AuthBootstrap({ children }: Props) {
               setUser(me);
               const businesses = me.businesses as Array<{ id?: number; is_owner?: boolean; permission_keys?: string[] }> | undefined;
               const defaultId = withToken.defaultBusinessId;
+              // owned businesses are listed first from the backend; prefer matching defaultBusinessId
               const currentBusiness =
                 Array.isArray(businesses) && businesses.length > 0
                   ? (defaultId != null ? businesses.find((b) => b.id === defaultId) : null) ?? businesses[0]
@@ -128,10 +135,14 @@ export default function AuthBootstrap({ children }: Props) {
               if (currentBusiness) {
                 setIsOwner(Boolean(currentBusiness.is_owner));
                 setPermissionKeys(Array.isArray(currentBusiness.permission_keys) ? currentBusiness.permission_keys : []);
+              } else if (Array.isArray(businesses) && businesses.length === 0) {
+                // User has no businesses — treat as owner pending onboarding
+                setIsOwner(true);
+                setPermissionKeys([]);
               }
             }
           } catch {
-            // ignore errors from /auth/users/me
+            // /auth/users/me failed — rely on sessionStorage-restored isOwner/permissionKeys
           }
         }
       } finally {

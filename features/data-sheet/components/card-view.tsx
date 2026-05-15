@@ -4,62 +4,9 @@ import { useMemo, useState } from 'react';
 import type { DynamicField } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { CardViewConfig } from '@/features/data-sheet/state/view-state';
+import { FieldLabelValue } from '@/components/data-sheet/field-display';
 
 type RecordItem = QueryResponse['items'][number];
-
-function formatCellValue(field: DynamicField, value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
-  switch (field.field_type) {
-    case 'boolean':
-      return value === true || value === 'true' || value === 1 ? 'Yes' : 'No';
-    case 'currency': {
-      const code = (field.config?.currency_code as string) || 'USD';
-      const num = Number(value);
-      if (!Number.isFinite(num)) return String(value);
-      try {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(num);
-      } catch {
-        return `${code} ${num.toFixed(2)}`;
-      }
-    }
-    case 'number': {
-      const n = Number(value);
-      return Number.isFinite(n) ? n.toLocaleString() : String(value);
-    }
-    case 'date': {
-      try {
-        const d = new Date(String(value));
-        return isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
-      } catch {
-        return String(value);
-      }
-    }
-    case 'enum':
-      return String(value);
-    case 'relation':
-      if (Array.isArray(value)) return `${value.length} linked`;
-      return value ? '1 linked' : '—';
-    case 'image':
-    case 'file':
-      return 'Attachment';
-    default:
-      return String(value).length > 120 ? String(value).slice(0, 120) + '...' : String(value);
-  }
-}
-
-function getEnumColor(value: string): string {
-  const colors = [
-    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
-    'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
-  ];
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
-  return colors[Math.abs(hash) % colors.length];
-}
 
 interface CardViewProps {
   items: RecordItem[];
@@ -94,12 +41,6 @@ export function CardView({
   const titleField = useMemo(() => {
     return fields.find((f) => f.field_type === 'text') || fields[0] || null;
   }, [fields]);
-
-  // Enum fields for badge display
-  const enumFieldNames = useMemo(
-    () => new Set(fields.filter((f) => f.field_type === 'enum').map((f) => f.name)),
-    [fields],
-  );
 
   const gridClass =
     config.gridCols === 2
@@ -161,39 +102,14 @@ export function CardView({
             <div className="flex-1 space-y-2 px-4 py-3">
               {cardFields.map((field) => {
                 if (field.name === titleField?.name) return null;
-                const value = data[field.name];
-                const isEnum = enumFieldNames.has(field.name);
-
                 return (
-                  <div key={field.id} className="flex items-baseline justify-between gap-2">
-                    <span className="shrink-0 text-xs font-medium text-text-secondary">
-                      {field.display_name}
-                    </span>
-                    {isEnum && value ? (
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${getEnumColor(String(value))}`}
-                      >
-                        {String(value)}
-                      </span>
-                    ) : field.field_type === 'boolean' ? (
-                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${
-                        value === true || value === 'true' || value === 1
-                          ? 'text-green-600 dark:text-green-400'
-                          : 'text-text-secondary'
-                      }`}>
-                        <span className={`inline-block h-2 w-2 rounded-full ${
-                          value === true || value === 'true' || value === 1
-                            ? 'bg-green-500'
-                            : 'bg-gray-300 dark:bg-gray-600'
-                        }`} />
-                        {formatCellValue(field, value)}
-                      </span>
-                    ) : (
-                      <span className="truncate text-right text-xs text-text-primary" title={formatCellValue(field, value)}>
-                        {formatCellValue(field, value)}
-                      </span>
-                    )}
-                  </div>
+                  <FieldLabelValue
+                    key={field.id}
+                    field={field}
+                    value={data[field.name]}
+                    density="comfortable"
+                    layout="inline"
+                  />
                 );
               })}
             </div>

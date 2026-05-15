@@ -14,10 +14,14 @@ export interface NotificationState {
   notifications: NotificationItem[];
   isOpen: boolean;
   isLoading: boolean;
+  isLoadingMore: boolean;
+  page: number;
+  hasMore: boolean;
 
   /* Actions */
   fetchUnreadCount: () => Promise<void>;
   fetchNotifications: () => Promise<void>;
+  loadMore: () => Promise<void>;
   markAsRead: (id: number) => Promise<void>;
   markAllRead: () => Promise<void>;
   togglePanel: () => void;
@@ -28,11 +32,13 @@ export interface NotificationState {
   disconnectSSE: () => void;
 }
 
+const PER_PAGE = 30;
+
 /* ── SSE connection state (outside Zustand to avoid reactivity overhead) ── */
 let eventSource: EventSource | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_DELAY = 30_000; // 30s cap
+const MAX_RECONNECT_DELAY = 30_000;
 
 function clearReconnectTimer() {
   if (reconnectTimer) {
@@ -46,6 +52,9 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   isOpen: false,
   isLoading: false,
+  isLoadingMore: false,
+  page: 1,
+  hasMore: false,
 
   fetchUnreadCount: async () => {
     try {
@@ -57,17 +66,40 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   fetchNotifications: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true, page: 1 });
     try {
-      const res = await listNotifications(1, 20);
-      set({ notifications: res.items, unreadCount: res.unread_count, isLoading: false });
+      const res = await listNotifications(1, PER_PAGE);
+      set({
+        notifications: res.items,
+        unreadCount: res.unread_count,
+        isLoading: false,
+        page: 1,
+        hasMore: res.total > PER_PAGE,
+      });
     } catch {
       set({ isLoading: false });
     }
   },
 
+  loadMore: async () => {
+    const { page, notifications, isLoadingMore } = get();
+    if (isLoadingMore) return;
+    const nextPage = page + 1;
+    set({ isLoadingMore: true });
+    try {
+      const res = await listNotifications(nextPage, PER_PAGE);
+      set((s) => ({
+        notifications: [...s.notifications, ...res.items],
+        isLoadingMore: false,
+        page: nextPage,
+        hasMore: s.notifications.length + res.items.length < res.total,
+      }));
+    } catch {
+      set({ isLoadingMore: false });
+    }
+  },
+
   markAsRead: async (id: number) => {
-    // Optimistic update
     set((s) => ({
       notifications: s.notifications.map((n) =>
         n.id === id ? { ...n, is_read: true } : n,
@@ -77,13 +109,11 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     try {
       await apiMarkAsRead(id);
     } catch {
-      // Revert on failure
       get().fetchNotifications();
     }
   },
 
   markAllRead: async () => {
-    // Optimistic update
     const prevNotifications = get().notifications;
     set((s) => ({
       notifications: s.notifications.map((n) => ({ ...n, is_read: true })),
@@ -92,7 +122,6 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     try {
       await apiMarkAllRead();
     } catch {
-      // Revert on failure
       set({ notifications: prevNotifications });
       get().fetchUnreadCount();
     }
@@ -108,15 +137,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   closePanel: () => set({ isOpen: false }),
 
-  /* ─────────────────────────────────────────────────────────
-   * SSE — Server-Sent Events connection management
-   *
-   * EventSource doesn't support Authorization headers natively.
-   * We pass the token as a query parameter. The backend accepts
-   * both header and query-based auth for the SSE endpoint.
-   * ───────────────────────────────────────────────────────── */
   connectSSE: () => {
-    // Avoid duplicate connections
     if (eventSource) return;
 
     const token = useAuthStore.getState().accessToken;
@@ -125,7 +146,6 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     clearReconnectTimer();
 
     const url = `${API_BASE_URL}/notifications/stream?token=${encodeURIComponent(token)}`;
-
     const es = new EventSource(url);
     eventSource = es;
 
@@ -133,16 +153,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       try {
         const notification: NotificationItem = JSON.parse(e.data);
         set((s) => ({
-          // Prepend new notification to list (if panel was loaded)
           notifications:
             s.notifications.length > 0
-              ? [notification, ...s.notifications].slice(0, 50)
+              ? [notification, ...s.notifications]
               : s.notifications,
-          // Increment unread count
           unreadCount: s.unreadCount + 1,
         }));
       } catch {
-        // Malformed SSE data — ignore
+        // malformed SSE data — ignore
       }
     });
 
@@ -158,23 +176,17 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     });
 
     es.onopen = () => {
-      reconnectAttempts = 0; // Reset backoff on successful connection
+      reconnectAttempts = 0;
     };
 
     es.onerror = () => {
-      // EventSource auto-reconnects on transient errors, but if it
-      // enters CLOSED state we need to manually reconnect with backoff.
       if (es.readyState === EventSource.CLOSED) {
         eventSource = null;
         es.close();
-
-        // Exponential backoff: 1s, 2s, 4s, 8s ... capped at 30s
         reconnectAttempts++;
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY);
-
         clearReconnectTimer();
         reconnectTimer = setTimeout(() => {
-          // Only reconnect if user is still authenticated
           const currentToken = useAuthStore.getState().accessToken;
           if (currentToken) {
             get().connectSSE();

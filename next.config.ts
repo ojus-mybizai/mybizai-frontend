@@ -15,10 +15,6 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  turbopack: {
-    root: ".",
-  },
-
   experimental: {
     optimizePackageImports: [
       "lucide-react",
@@ -28,6 +24,14 @@ const nextConfig: NextConfig = {
       "@dnd-kit/utilities",
       "xlsx",
     ],
+  },
+
+  async redirects() {
+    return [
+      // Legacy /conversations route renamed to /inbox (kept for bookmarks & deep links)
+      { source: "/conversations", destination: "/inbox", permanent: false },
+      { source: "/conversations/:path*", destination: "/inbox/:path*", permanent: false },
+    ];
   },
 
   async headers() {

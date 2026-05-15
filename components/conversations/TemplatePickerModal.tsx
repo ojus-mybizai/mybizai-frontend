@@ -10,7 +10,7 @@ import {
   type ParameterMapping,
   type SendConvoTemplateData,
 } from '@/services/message-templates';
-import { getCustomer, type Customer } from '@/services/customers';
+import { contactsV2Service, type Contact } from '@/services/contacts-v2';
 import { queryRecords } from '@/services/dynamic-data';
 import type { Message } from '@/services/customers';
 
@@ -95,7 +95,7 @@ export function TemplatePickerModal({ conversationId, channelType, leadId, onClo
   // ── Parameter fill ──
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [recordContext, setRecordContext] = useState<Record<string, number>>({});
-  const [lead, setLead] = useState<Customer | null>(null);
+  const [lead, setLead] = useState<Contact | null>(null);
 
   // ── Datasheet record search ──
   const [dsSearches, setDsSearches] = useState<Record<number, string>>({});
@@ -126,7 +126,7 @@ export function TemplatePickerModal({ conversationId, channelType, leadId, onClo
   // ── Fetch lead data when entering fill step ──
   useEffect(() => {
     if (step !== 'fill' || lead) return;
-    getCustomer(leadId).then(setLead).catch(() => {});
+    contactsV2Service.get(Number(leadId)).then(setLead).catch(() => {});
   }, [step, leadId, lead]);
 
   // ── Auto-fill lead/business params from lead data ──

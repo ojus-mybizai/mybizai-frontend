@@ -19,12 +19,46 @@ export interface ParameterMapping {
   source: string;
   label: string;
   button_index?: number;
+  /** For non-lead-linked datasheet sources: the specific record to use for all recipients. */
+  default_record_id?: number | null;
+}
+
+// ─── Datasheet Sources (variable picker) ──
+
+export interface DatasheetSourceField {
+  name: string;
+  display_name: string;
+  field_type: string;
+}
+
+export interface DatasheetSource {
+  model_id: number;
+  display_name: string;
+  has_lead_relation: boolean;
+  lead_relation_field: string | null;
+  fields: DatasheetSourceField[];
+}
+
+export interface CampaignValidationWarning {
+  source: string;
+  display: string;
+  type: "static_fallback" | "no_lead_relation_match";
+  affected_count: number;
+  total_count: number;
+  message: string;
+}
+
+export interface CampaignValidationResult {
+  valid: boolean;
+  warnings: CampaignValidationWarning[];
+  errors: Array<{ message: string }>;
 }
 
 export interface MessageTemplate {
   id: number;
   business_id: number;
   agent_id: number | null;
+  channel_id: number | null;
   name: string;
   description: string | null;
   channel: MessageChannel | string;
@@ -46,6 +80,7 @@ export interface MessageTemplate {
   rejection_reason: string | null;
   parameter_mapping: ParameterMapping[] | null;
   example_values: Record<string, string[]> | null;
+  meta_waba_id: string | null;
   submitted_at: string | null;
   approved_at: string | null;
   created_at: string;
@@ -54,6 +89,7 @@ export interface MessageTemplate {
 
 export interface MessageTemplateCreate {
   agent_id?: number | null;
+  channel_id?: number | null;
   name: string;
   description?: string | null;
   channel: MessageChannel | string;
@@ -138,14 +174,103 @@ export async function submitTemplateToMeta(id: number): Promise<MessageTemplate>
   return apiFetch<MessageTemplate>(`/message-templates/${id}/submit-to-meta`, { method: "POST" });
 }
 
-export async function syncMetaTemplateStatus(): Promise<{ synced: number; total_checked?: number }> {
-  return apiFetch<{ synced: number; total_checked?: number }>("/message-templates/sync-meta-status", { method: "POST" });
+export async function syncMetaTemplateStatus(): Promise<{ synced: number; total_checked?: number; wabas_checked?: number }> {
+  return apiFetch<{ synced: number; total_checked?: number; wabas_checked?: number }>("/message-templates/sync-meta-status", { method: "POST" });
 }
 
 // ─── Send Template ──
 
 export async function sendTemplateMessage(id: number, data: SendTemplateRequest): Promise<{ status: string; message_id?: string }> {
   return apiFetch<{ status: string; message_id?: string }>(`/message-templates/${id}/send`, { method: "POST", body: JSON.stringify(data) });
+}
+
+// ─── Datasheet Sources (variable picker) ──
+
+export async function getTemplateDatasheetSources(): Promise<DatasheetSource[]> {
+  return apiFetch<DatasheetSource[]>("/message-templates/datasheet-sources", { method: "GET" });
+}
+
+// ─── AI Template Generation ──
+
+export interface TemplateAIGenerateRequest {
+  user_prompt: string;
+  category_hint?: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' | null;
+  language?: string;
+}
+
+export interface TemplateAIGenerateResult {
+  name: string;
+  meta_template_name: string;
+  meta_category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  language: string;
+  intent_key: string | null;
+  header_type: HeaderType | null;
+  header_content: string | null;
+  body: string;
+  footer: string | null;
+  buttons: TemplateButton[] | null;
+  parameter_mapping: ParameterMapping[] | null;
+  example_values: Record<string, string[]> | null;
+  suggested_use_case: string;
+}
+
+export async function generateTemplateWithAI(
+  data: TemplateAIGenerateRequest,
+): Promise<TemplateAIGenerateResult> {
+  return apiFetch<TemplateAIGenerateResult>('/message-templates/ai-generate', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// ─── Import from WhatsApp Manager ──
+
+export interface MetaAvailableTemplate {
+  meta_template_id: string;
+  meta_template_name: string;
+  display_name: string;
+  meta_status: string;
+  meta_category: MetaCategory;
+  language: string;
+  components: unknown[];
+  waba_id: string;
+  channel_id: number;
+  channel_label: string;
+  phone_display: string;
+  already_imported: boolean;
+  rejected_reason: string | null;
+  has_header: boolean;
+  has_buttons: boolean;
+  button_count: number;
+  body_preview: string;
+}
+
+export interface MetaImportItem {
+  meta_template_id: string;
+  meta_template_name: string;
+  meta_status: string;
+  meta_category: string;
+  language: string;
+  components: unknown[];
+  waba_id: string;
+  channel_id: number;
+}
+
+export async function listMetaAvailableTemplates(): Promise<MetaAvailableTemplate[]> {
+  return apiFetch<MetaAvailableTemplate[]>("/message-templates/meta-available", { method: "GET" });
+}
+
+export async function importFromMeta(templates: MetaImportItem[]): Promise<MessageTemplate[]> {
+  return apiFetch<MessageTemplate[]>("/message-templates/import-from-meta", {
+    method: "POST",
+    body: JSON.stringify({ templates }),
+  });
+}
+
+// ─── Campaign Validation ──
+
+export async function validateCampaign(campaignId: number): Promise<CampaignValidationResult> {
+  return apiFetch<CampaignValidationResult>(`/campaigns/${campaignId}/validate`, { method: "POST" });
 }
 
 // ─── Send Template within a Conversation ──
