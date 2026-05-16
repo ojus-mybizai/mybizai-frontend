@@ -1,12 +1,81 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, ImageOff } from 'lucide-react';
 import type { DynamicField } from '@/services/dynamic-data';
+import { listAttachments } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { CardViewConfig } from '@/features/data-sheet/state/view-state';
 import { FieldLabelValue } from '@/components/data-sheet/field-display';
 
 type RecordItem = QueryResponse['items'][number];
+
+type CardAttachment = { id: number; field_id: number; signed_url?: string; original_file_name?: string };
+
+/** In-card image carousel. Auto-hides controls when there's only one image. */
+function CardCover({ attachments }: { attachments: CardAttachment[] }) {
+  const [idx, setIdx] = useState(0);
+  const total = attachments.length;
+
+  useEffect(() => { if (idx >= total && total > 0) setIdx(0); }, [total, idx]);
+
+  if (total === 0) {
+    return (
+      <div className="flex h-32 w-full items-center justify-center bg-bg-secondary/60 text-text-muted">
+        <ImageOff className="h-6 w-6" />
+      </div>
+    );
+  }
+
+  const current = attachments[idx];
+
+  return (
+    <div className="relative h-32 w-full overflow-hidden bg-bg-secondary/40">
+      {current.signed_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={current.signed_url}
+          alt={current.original_file_name ?? ''}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-text-muted">
+          <ImageOff className="h-6 w-6" />
+        </div>
+      )}
+
+      {total > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIdx((i) => (i - 1 + total) % total); }}
+            className="absolute left-1 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-1 text-white opacity-0 group-hover:opacity-100 hover:bg-black/60 transition-opacity"
+            aria-label="Previous image"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIdx((i) => (i + 1) % total); }}
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-1 text-white opacity-0 group-hover:opacity-100 hover:bg-black/60 transition-opacity"
+            aria-label="Next image"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-1">
+            {attachments.map((_, i) => (
+              <span
+                key={i}
+                className={`h-1 w-1.5 rounded-full transition-all ${i === idx ? 'w-3 bg-white' : 'bg-white/50'}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 interface CardViewProps {
   items: RecordItem[];
@@ -42,6 +111,41 @@ export function CardView({
     return fields.find((f) => f.field_type === 'text') || fields[0] || null;
   }, [fields]);
 
+  // Resolve which image field acts as the card cover. Priority: config.imageField → first image field.
+  const coverImageField = useMemo(() => {
+    if (config.imageField) {
+      return fields.find((f) => f.name === config.imageField && f.field_type === 'image') ?? null;
+    }
+    return fields.find((f) => f.field_type === 'image') ?? null;
+  }, [config.imageField, fields]);
+
+  // Per-record attachments for the cover image field.
+  // Fetched in a single effect on items change; one network round-trip per visible card (batched via Promise.all).
+  const [attachmentsByRecord, setAttachmentsByRecord] = useState<Record<number, CardAttachment[]>>({});
+  useEffect(() => {
+    if (!coverImageField || items.length === 0) {
+      setAttachmentsByRecord({});
+      return;
+    }
+    let cancelled = false;
+    const fieldId = coverImageField.id;
+    void Promise.allSettled(
+      items.map(async (row) => {
+        const id = Number(row.id);
+        const list = (await listAttachments(id)) as CardAttachment[];
+        return { id, list: list.filter((a) => a.field_id === fieldId) };
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<number, CardAttachment[]> = {};
+      for (const r of results) {
+        if (r.status === 'fulfilled') next[r.value.id] = r.value.list;
+      }
+      setAttachmentsByRecord(next);
+    });
+    return () => { cancelled = true; };
+  }, [items, coverImageField]);
+
   const gridClass =
     config.gridCols === 2
       ? 'grid-cols-1 sm:grid-cols-2'
@@ -69,12 +173,22 @@ export function CardView({
         return (
           <div
             key={recordId}
-            className={`group relative flex flex-col rounded-xl border bg-card-bg shadow-sm transition-all hover:shadow-md ${
+            className={`group relative flex flex-col overflow-hidden rounded-xl border bg-card-bg shadow-sm transition-all hover:shadow-md ${
               isSelected
                 ? 'border-accent ring-2 ring-accent/20'
                 : 'border-border-color hover:border-accent/40'
             }`}
           >
+            {/* Cover image carousel */}
+            {coverImageField && (
+              <div
+                onClick={() => onViewDetail({ id: recordId, data, recordKey: String(row.record_key ?? row.id) })}
+                className="cursor-pointer"
+              >
+                <CardCover attachments={attachmentsByRecord[recordId] ?? []} />
+              </div>
+            )}
+
             {/* Header */}
             <div className="flex items-start gap-3 border-b border-border-color px-4 py-3">
               <input

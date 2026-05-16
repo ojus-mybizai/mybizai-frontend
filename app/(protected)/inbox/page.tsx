@@ -34,6 +34,7 @@ import {
   type ConversationSavedViewUpdate,
 } from '@/services/conversationViews';
 import { contactGroupsService, type ContactGroup } from '@/services/contactGroups';
+import { listChannels, type Channel as BusinessChannel } from '@/services/channels';
 import { useDebounce } from '@/lib/use-debounce';
 
 function formatTime(dateStr: string | undefined): string {
@@ -218,6 +219,7 @@ function FiltersPopover({
   intentFilter, setIntentFilter,
   contactGroupId, setContactGroupId,
   contactGroups, clearActiveView,
+  channelInstanceId, setChannelInstanceId, channelInstances,
   intentSuggestions, activeCount,
 }: {
   modeFilter: string;
@@ -230,6 +232,9 @@ function FiltersPopover({
   setContactGroupId: (id: number | null) => void;
   contactGroups: ContactGroup[];
   clearActiveView: () => void;
+  channelInstanceId: number | null;
+  setChannelInstanceId: (id: number | null) => void;
+  channelInstances: BusinessChannel[];
   intentSuggestions: string[];
   activeCount: number;
 }) {
@@ -250,6 +255,7 @@ function FiltersPopover({
     setUnreadOnly(false);
     setIntentFilter('');
     setContactGroupId(null);
+    setChannelInstanceId(null);
     clearActiveView();
   };
 
@@ -342,6 +348,29 @@ function FiltersPopover({
             />
           </div>
 
+          {/* Channel instance */}
+          {channelInstances.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary mb-1">Channel</p>
+              <select
+                value={channelInstanceId ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setChannelInstanceId(v ? Number(v) : null);
+                  clearActiveView();
+                }}
+                className="w-full rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                <option value="">All channels</option>
+                {channelInstances.map((ch) => (
+                  <option key={ch.id} value={ch.id}>
+                    {ch.name} ({ch.type})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Contact group */}
           {contactGroups.length > 0 && (
             <div>
@@ -405,6 +434,8 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
   const [activeViewId, setActiveViewId] = useState<number | null>(null);
   const [contactGroupId, setContactGroupId] = useState<number | null>(null);
   const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
+  const [channelInstanceId, setChannelInstanceId] = useState<number | null>(null);
+  const [channelInstances, setChannelInstances] = useState<BusinessChannel[]>([]);
   const [showViewsPanel, setShowViewsPanel] = useState(false);
   const { data: agentsData } = useQuery({
     queryKey: ['agents-summary'],
@@ -450,6 +481,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
       }
     }).catch(() => {});
     contactGroupsService.list().then(setContactGroups).catch(() => {});
+    listChannels().then((chs) => setChannelInstances(chs.filter((c) => c.isConnected))).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -472,6 +504,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
       if (!silent) setLoadingList(true);
       const filters: ConversationListFilters = {
         channel_type: channelFilter || undefined,
+        channel_id: channelInstanceId ?? undefined,
         mode: modeFilter || undefined,
         intent: debouncedIntent.trim() || undefined,
         unread_only: unreadOnly || undefined,
@@ -482,7 +515,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
         .then((list) => setConversations(list))
         .finally(() => { if (!silent) setLoadingList(false); });
     },
-    [channelFilter, modeFilter, debouncedIntent, unreadOnly, agentFilter, contactGroupId],
+    [channelFilter, channelInstanceId, modeFilter, debouncedIntent, unreadOnly, agentFilter, contactGroupId],
   );
 
   /* Initial load */
@@ -687,7 +720,8 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
     (modeFilter ? 1 : 0) +
     (unreadOnly ? 1 : 0) +
     (intentFilter.trim() ? 1 : 0) +
-    (contactGroupId != null ? 1 : 0);
+    (contactGroupId != null ? 1 : 0) +
+    (channelInstanceId != null ? 1 : 0);
 
   const sortedConversations = [...conversations]
     .filter((c) => {
@@ -816,6 +850,9 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                   contactGroupId={contactGroupId}
                   setContactGroupId={setContactGroupId}
                   contactGroups={contactGroups}
+                  channelInstanceId={channelInstanceId}
+                  setChannelInstanceId={setChannelInstanceId}
+                  channelInstances={channelInstances}
                   clearActiveView={() => setActiveViewId(null)}
                   intentSuggestions={intentSuggestions}
                   activeCount={activeFilterCount}
@@ -854,6 +891,15 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                     className="inline-flex items-center gap-1 rounded-full bg-accent/10 text-accent px-2 py-0.5 text-[10px] font-semibold hover:bg-accent/20"
                   >
                     Group: {contactGroups.find((g) => g.id === contactGroupId)?.name ?? '—'} <X className="h-2.5 w-2.5" />
+                  </button>
+                )}
+                {channelInstanceId != null && (
+                  <button
+                    type="button"
+                    onClick={() => { setChannelInstanceId(null); setActiveViewId(null); }}
+                    className="inline-flex items-center gap-1 rounded-full bg-accent/10 text-accent px-2 py-0.5 text-[10px] font-semibold hover:bg-accent/20"
+                  >
+                    Channel: {channelInstances.find((c) => Number(c.id) === channelInstanceId)?.name ?? '—'} <X className="h-2.5 w-2.5" />
                   </button>
                 )}
               </div>

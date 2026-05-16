@@ -5,9 +5,10 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   Plus, Check, GripVertical,
-  TrendingUp, Users, MessageSquare, Clock, BarChart3,
+  TrendingUp, TrendingDown, Users, MessageSquare, Clock, BarChart3,
   X, ArrowUpRight, Zap, Database, LayoutGrid,
-  UsersRound, Send, CalendarCheck, CheckCircle2, RefreshCw,
+  UsersRound, Send,
+  Wallet, Bot, Activity, Megaphone, Mail, Phone, ListChecks, Radio, Tag,
 } from 'lucide-react';
 import {
   DndContext,
@@ -27,8 +28,9 @@ import { CSS } from '@dnd-kit/utilities';
 import { apiFetch } from '@/lib/api-client';
 import { useDateRangeStore } from '@/lib/stores/date-range-store';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { getWorkStats as getWaWorkStats } from '@/services/waWork';
-import { listEmployees as listWaEmployees, getAttendance } from '@/services/waEmployees';
+import { TrendCard, TimeSeriesCard, GaugeCard, FunnelCard, TableCard } from './components/AdvancedWidgets';
+import { LayoutSwitcher, type Layout } from './components/LayoutSwitcher';
+import { useDashboardStream } from './hooks/useDashboardStream';
 
 // ── Recharts donut (single lazy bundle — keeps Recharts component identity intact) ─
 const DonutChart = dynamic(() => import('./donut-chart'), {
@@ -52,7 +54,10 @@ interface WidgetDataItem {
   count: number;
   color?: string;
   href?: string;
+  subtitle?: string;
 }
+
+interface SeriesPoint { date: string; value: number; }
 
 interface WidgetData {
   widget_id: number;
@@ -61,7 +66,13 @@ interface WidgetData {
   display_type: string;
   value?: number;
   href?: string;
+  prev_value?: number | null;
+  delta_pct?: number | null;
   items?: WidgetDataItem[];
+  series?: SeriesPoint[];
+  series_label?: string;
+  target?: number;
+  unit?: string;
 }
 
 interface WidgetOption {
@@ -78,17 +89,24 @@ interface WidgetOption {
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 
-const fetchWidgets = () => apiFetch<WidgetMeta[]>('/widgets');
+const fetchWidgets = (layoutId?: number | null) => {
+  const qs = layoutId ? `?layout_id=${layoutId}` : '';
+  return apiFetch<WidgetMeta[]>(`/widgets${qs}`);
+};
 
-const fetchAllData = async (startDate?: string, endDate?: string) => {
+const fetchAllData = async (startDate?: string, endDate?: string, layoutId?: number | null) => {
   const params = new URLSearchParams();
   if (startDate) params.set('start_date', startDate);
   if (endDate)   params.set('end_date',   endDate);
+  if (layoutId)  params.set('layout_id',  String(layoutId));
   const qs = params.toString() ? `?${params.toString()}` : '';
   return (await apiFetch<{ widgets: WidgetData[] }>(`/widgets/data${qs}`)).widgets;
 };
 
+const fetchLayouts = () => apiFetch<Layout[]>('/widgets/layouts');
+
 const fetchOptions = async () => (await apiFetch<{ options: WidgetOption[] }>('/widgets/options')).options;
+
 const deleteWidget   = (id: number) => apiFetch<void>(`/widgets/${id}`, { method: 'DELETE' });
 const reorderWidgets = (ids: number[]) =>
   apiFetch<void>('/widgets/reorder', { method: 'PATCH', body: JSON.stringify({ ordered_ids: ids }) });
@@ -121,6 +139,39 @@ const SOURCE_CONFIG: Record<string, { icon: React.ElementType; bg: string; icon_
   datasheet_breakdown:    { icon: BarChart3,     bg: 'bg-violet-100 dark:bg-violet-500/15',   icon_color: 'text-violet-500'  },
   datasheet_count_date:   { icon: Clock,         bg: 'bg-sky-100 dark:bg-sky-500/15',         icon_color: 'text-sky-500'     },
   datasheet_number:       { icon: TrendingUp,    bg: 'bg-amber-100 dark:bg-amber-500/15',     icon_color: 'text-amber-500'   },
+  wallet_balance:         { icon: Wallet,        bg: 'bg-green-100 dark:bg-green-500/15',     icon_color: 'text-green-500'   },
+  wallet_spend:           { icon: Wallet,        bg: 'bg-rose-100 dark:bg-rose-500/15',       icon_color: 'text-rose-500'    },
+  agents_active:          { icon: Bot,           bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
+  recent_activity:        { icon: Activity,      bg: 'bg-cyan-100 dark:bg-cyan-500/15',       icon_color: 'text-cyan-500'    },
+  // P4 sources
+  agents_runs_today:      { icon: Bot,           bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
+  agents_by_status:       { icon: Bot,           bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
+  ai_vs_manual_split:     { icon: MessageSquare, bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
+  campaigns_active:       { icon: Megaphone,     bg: 'bg-pink-100 dark:bg-pink-500/15',       icon_color: 'text-pink-500'    },
+  campaigns_sent:         { icon: Send,          bg: 'bg-pink-100 dark:bg-pink-500/15',       icon_color: 'text-pink-500'    },
+  campaigns_delivery_rate:{ icon: Megaphone,     bg: 'bg-pink-100 dark:bg-pink-500/15',       icon_color: 'text-pink-500'    },
+  campaigns_by_status:    { icon: Megaphone,     bg: 'bg-pink-100 dark:bg-pink-500/15',       icon_color: 'text-pink-500'    },
+  nurture_active:         { icon: Mail,          bg: 'bg-fuchsia-100 dark:bg-fuchsia-500/15', icon_color: 'text-fuchsia-500' },
+  nurture_completion_rate:{ icon: Mail,          bg: 'bg-fuchsia-100 dark:bg-fuchsia-500/15', icon_color: 'text-fuchsia-500' },
+  messages_by_channel:    { icon: Radio,         bg: 'bg-teal-100 dark:bg-teal-500/15',       icon_color: 'text-teal-500'    },
+  unknown_senders:        { icon: MessageSquare, bg: 'bg-orange-100 dark:bg-orange-500/15',   icon_color: 'text-orange-500'  },
+  work_by_status:         { icon: ListChecks,    bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
+  work_overdue:           { icon: Clock,         bg: 'bg-red-100 dark:bg-red-500/15',         icon_color: 'text-red-500'     },
+  work_by_priority:       { icon: ListChecks,    bg: 'bg-amber-100 dark:bg-amber-500/15',     icon_color: 'text-amber-500'   },
+  calls_total:            { icon: Phone,         bg: 'bg-green-100 dark:bg-green-500/15',     icon_color: 'text-green-500'   },
+  calls_missed:           { icon: Phone,         bg: 'bg-red-100 dark:bg-red-500/15',         icon_color: 'text-red-500'     },
+  leads_by_meta_campaign: { icon: Zap,           bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
+  leads_timeseries:       { icon: TrendingUp,    bg: 'bg-sky-100 dark:bg-sky-500/15',         icon_color: 'text-sky-500'     },
+  contacts_total:         { icon: Users,         bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
+  contacts_by_tag:        { icon: Tag,           bg: 'bg-violet-100 dark:bg-violet-500/15',   icon_color: 'text-violet-500'  },
+  contacts_by_group:      { icon: UsersRound,    bg: 'bg-indigo-100 dark:bg-indigo-500/15',   icon_color: 'text-indigo-500'  },
+  // Team Pulse / Channels / Insights replacements
+  team_active_employees:  { icon: UsersRound,    bg: 'bg-green-100 dark:bg-green-500/15',     icon_color: 'text-green-500'   },
+  team_attendance:        { icon: UsersRound,    bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
+  team_live_tasks:        { icon: ListChecks,    bg: 'bg-orange-100 dark:bg-orange-500/15',   icon_color: 'text-orange-500'  },
+  team_completion_rate:   { icon: ListChecks,    bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
+  channels_health:        { icon: Radio,         bg: 'bg-teal-100 dark:bg-teal-500/15',       icon_color: 'text-teal-500'    },
+  ai_insights:            { icon: Activity,      bg: 'bg-indigo-100 dark:bg-indigo-500/15',   icon_color: 'text-indigo-500'  },
 };
 
 function getSourceConfig(st: string) {
@@ -155,9 +206,31 @@ function DeleteBtn({ onClick }: { onClick: () => void }) {
 
 // ── StatCard ─────────────────────────────────────────────────────────────────
 
+function DeltaBadge({ delta }: { delta: number }) {
+  if (delta === 0) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-bg-secondary text-text-secondary">
+        0%
+      </span>
+    );
+  }
+  const positive = delta > 0;
+  const Icon = positive ? TrendingUp : TrendingDown;
+  const cls = positive
+    ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+    : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400';
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md tabular-nums ${cls}`}>
+      <Icon size={10} />
+      {positive ? '+' : ''}{delta.toFixed(1)}%
+    </span>
+  );
+}
+
 function StatCard({ data, editing, onDelete }: { data: WidgetData; editing: boolean; onDelete: () => void }) {
   const cfg = getSourceConfig(data.source_type);
   const Icon = cfg.icon;
+  const hasDelta = data.delta_pct !== null && data.delta_pct !== undefined;
 
   const inner = (
     <div className="relative p-5">
@@ -178,10 +251,13 @@ function StatCard({ data, editing, onDelete }: { data: WidgetData; editing: bool
         {(data.value ?? 0).toLocaleString()}
       </p>
 
-      {/* Label */}
-      <p className="text-xs font-medium text-text-secondary leading-snug">
-        {data.title}
-      </p>
+      {/* Label + delta */}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-text-secondary leading-snug truncate">
+          {data.title}
+        </p>
+        {hasDelta && <DeltaBadge delta={data.delta_pct as number} />}
+      </div>
     </div>
   );
 
@@ -325,10 +401,12 @@ function ListWidget({ data, editing, onDelete }: { data: WidgetData; editing: bo
 
 // ── SortableWidget wrapper ────────────────────────────────────────────────────
 
-function colSpan(size: string): React.CSSProperties['gridColumn'] {
+function colSpan(size: string, displayType?: string): React.CSSProperties['gridColumn'] {
+  // Time-series + funnel widgets always span 3 columns for readability
+  if (displayType === 'timeseries' || displayType === 'funnel') return 'span 3';
   if (size === 'small') return undefined;    // 1 col
   if (size === 'medium') return 'span 2';   // 2 cols
-  if (size === 'large') return 'span 2';    // 2 cols
+  if (size === 'large') return 'span 3';    // 3 cols (we have 3-col inner grid)
   return undefined;
 }
 
@@ -345,7 +423,7 @@ function SortableWidget({
     transition,
     opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 50 : undefined,
-    gridColumn: colSpan(meta.size),
+    gridColumn: colSpan(meta.size, data?.display_type),
   };
 
   if (!data) {
@@ -371,9 +449,14 @@ function SortableWidget({
         </div>
       )}
 
-      {data.display_type === 'stat'      && <StatCard       data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
-      {data.display_type === 'breakdown' && <BreakdownWidget data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
-      {data.display_type === 'list'      && <ListWidget      data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
+      {data.display_type === 'stat'       && <StatCard        data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
+      {data.display_type === 'breakdown'  && <BreakdownWidget data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
+      {data.display_type === 'list'       && <ListWidget      data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
+      {data.display_type === 'trend'      && <TrendCard       data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
+      {data.display_type === 'timeseries' && <TimeSeriesCard  data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
+      {data.display_type === 'gauge'      && <GaugeCard       data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
+      {data.display_type === 'funnel'     && <FunnelCard      data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
+      {data.display_type === 'table'      && <TableCard       data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
     </div>
   );
 }
@@ -388,13 +471,57 @@ function getSourceCategory(opt: WidgetOption): string {
     case 'leads_by_stage':
     case 'leads_by_source':
     case 'recent_leads':
+    case 'leads_trend':
+    case 'leads_timeseries':
+    case 'leads_by_meta_campaign':
+    case 'pipeline_funnel':
       return 'Leads';
     case 'conversations_unread':
     case 'conversations_today':
     case 'recent_conversations':
+    case 'conversations_timeseries':
+    case 'ai_vs_manual_split':
+    case 'messages_by_channel':
+    case 'unknown_senders':
       return 'Conversations';
     case 'followups_due':
       return 'Follow-ups';
+    case 'agents_active':
+    case 'agents_runs_today':
+    case 'agents_by_status':
+    case 'top_agents':
+      return 'AI Agents';
+    case 'campaigns_active':
+    case 'campaigns_sent':
+    case 'campaigns_delivery_rate':
+    case 'campaigns_by_status':
+    case 'nurture_active':
+    case 'nurture_completion_rate':
+      return 'Campaigns';
+    case 'work_by_status':
+    case 'work_overdue':
+    case 'work_by_priority':
+    case 'calls_total':
+    case 'calls_missed':
+      return 'Work';
+    case 'wallet_balance':
+    case 'wallet_spend':
+    case 'wallet_usage_gauge':
+      return 'Wallet';
+    case 'contacts_total':
+    case 'contacts_by_tag':
+    case 'contacts_by_group':
+      return 'Contacts';
+    case 'recent_activity':
+    case 'ai_insights':
+      return 'Activity';
+    case 'team_active_employees':
+    case 'team_attendance':
+    case 'team_live_tasks':
+    case 'team_completion_rate':
+      return 'Team';
+    case 'channels_health':
+      return 'Conversations';
     // All datasheet-derived source types use source_name as the tab label
     case 'datasheet_count':
     case 'datasheet_recent':
@@ -412,6 +539,13 @@ const CATEGORY_META: Record<string, { icon: React.ElementType; color: string; bg
   'Leads':         { icon: Users,         color: 'text-blue-600 dark:text-blue-400',       bg: 'bg-blue-50 dark:bg-blue-900/30'       },
   'Conversations': { icon: MessageSquare, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
   'Follow-ups':    { icon: Clock,         color: 'text-violet-600 dark:text-violet-400',   bg: 'bg-violet-50 dark:bg-violet-900/30'   },
+  'AI Agents':     { icon: Bot,           color: 'text-purple-600 dark:text-purple-400',   bg: 'bg-purple-50 dark:bg-purple-900/30'   },
+  'Campaigns':     { icon: Megaphone,     color: 'text-pink-600 dark:text-pink-400',       bg: 'bg-pink-50 dark:bg-pink-900/30'       },
+  'Work':          { icon: ListChecks,    color: 'text-amber-600 dark:text-amber-400',     bg: 'bg-amber-50 dark:bg-amber-900/30'     },
+  'Wallet':        { icon: Wallet,        color: 'text-green-600 dark:text-green-400',     bg: 'bg-green-50 dark:bg-green-900/30'     },
+  'Contacts':      { icon: Users,         color: 'text-indigo-600 dark:text-indigo-400',   bg: 'bg-indigo-50 dark:bg-indigo-900/30'   },
+  'Activity':      { icon: Activity,      color: 'text-cyan-600 dark:text-cyan-400',       bg: 'bg-cyan-50 dark:bg-cyan-900/30'       },
+  'Team':          { icon: UsersRound,    color: 'text-green-600 dark:text-green-400',     bg: 'bg-green-50 dark:bg-green-900/30'     },
 };
 function getCategoryMeta(cat: string) {
   return CATEGORY_META[cat] ?? {
@@ -423,9 +557,14 @@ function getCategoryMeta(cat: string) {
 
 /* Display-type badge colours */
 const TYPE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  stat:      { bg: 'bg-blue-50 dark:bg-blue-900/30',       text: 'text-blue-600 dark:text-blue-400',       label: 'Stat'  },
-  breakdown: { bg: 'bg-violet-50 dark:bg-violet-900/30',   text: 'text-violet-600 dark:text-violet-400',   label: 'Chart' },
-  list:      { bg: 'bg-emerald-50 dark:bg-emerald-900/30', text: 'text-emerald-600 dark:text-emerald-400', label: 'List'  },
+  stat:       { bg: 'bg-blue-50 dark:bg-blue-900/30',       text: 'text-blue-600 dark:text-blue-400',       label: 'Stat'   },
+  breakdown:  { bg: 'bg-violet-50 dark:bg-violet-900/30',   text: 'text-violet-600 dark:text-violet-400',   label: 'Chart'  },
+  list:       { bg: 'bg-emerald-50 dark:bg-emerald-900/30', text: 'text-emerald-600 dark:text-emerald-400', label: 'List'   },
+  trend:      { bg: 'bg-sky-50 dark:bg-sky-900/30',         text: 'text-sky-600 dark:text-sky-400',         label: 'Trend'  },
+  timeseries: { bg: 'bg-indigo-50 dark:bg-indigo-900/30',   text: 'text-indigo-600 dark:text-indigo-400',   label: 'Series' },
+  gauge:      { bg: 'bg-rose-50 dark:bg-rose-900/30',       text: 'text-rose-600 dark:text-rose-400',       label: 'Gauge'  },
+  funnel:     { bg: 'bg-purple-50 dark:bg-purple-900/30',   text: 'text-purple-600 dark:text-purple-400',   label: 'Funnel' },
+  table:      { bg: 'bg-amber-50 dark:bg-amber-900/30',     text: 'text-amber-600 dark:text-amber-400',     label: 'Table'  },
 };
 
 function AddWidgetModal({
@@ -443,7 +582,7 @@ function AddWidgetModal({
     const seen = new Set<string>();
     const result: string[] = [];
     // Fixed order for core sources first
-    for (const cat of ['Leads', 'Conversations', 'Follow-ups']) {
+    for (const cat of ['Leads', 'Contacts', 'Conversations', 'AI Agents', 'Campaigns', 'Work', 'Team', 'Follow-ups', 'Wallet', 'Activity']) {
       if (options.some(o => getSourceCategory(o) === cat)) {
         seen.add(cat);
         result.push(cat);
@@ -467,9 +606,14 @@ function AddWidgetModal({
 
   /* Sub-group filtered options by display type */
   const groups = useMemo(() => [
-    { key: 'stat',      label: 'Stats',  items: filtered.filter(o => o.display_type === 'stat')      },
-    { key: 'breakdown', label: 'Charts', items: filtered.filter(o => o.display_type === 'breakdown') },
-    { key: 'list',      label: 'Lists',  items: filtered.filter(o => o.display_type === 'list')      },
+    { key: 'stat',       label: 'Stats',   items: filtered.filter(o => o.display_type === 'stat')       },
+    { key: 'trend',      label: 'Trends',  items: filtered.filter(o => o.display_type === 'trend')      },
+    { key: 'gauge',      label: 'Gauges',  items: filtered.filter(o => o.display_type === 'gauge')      },
+    { key: 'breakdown',  label: 'Charts',  items: filtered.filter(o => o.display_type === 'breakdown')  },
+    { key: 'timeseries', label: 'Series',  items: filtered.filter(o => o.display_type === 'timeseries') },
+    { key: 'funnel',     label: 'Funnels', items: filtered.filter(o => o.display_type === 'funnel')     },
+    { key: 'table',      label: 'Tables',  items: filtered.filter(o => o.display_type === 'table')      },
+    { key: 'list',       label: 'Lists',   items: filtered.filter(o => o.display_type === 'list')       },
   ].filter(g => g.items.length > 0), [filtered]);
 
   async function handleAdd(opt: WidgetOption) {
@@ -639,182 +783,8 @@ function Skeleton() {
   );
 }
 
-// ── Team Pulse ────────────────────────────────────────────────────────────────
-
-interface TeamPulseData {
-  activeEmployees: number;
-  attendedToday: number;
-  liveTasks: number;
-  completionRate: number;
-  loading: boolean;
-  lastUpdated: Date | null;
-}
-
-function TeamPulseCard({ pulse, onRefresh }: { pulse: TeamPulseData; onRefresh: () => void }) {
-  const attendanceRate =
-    pulse.activeEmployees > 0
-      ? Math.round((pulse.attendedToday / pulse.activeEmployees) * 100)
-      : 0;
-
-  const stats: Array<{
-    label: string;
-    value: string | number;
-    sub?: string;
-    icon: React.ElementType;
-    bg: string;
-    iconCls: string;
-    href: string;
-    barPct?: number;
-    barCls?: string;
-  }> = [
-    {
-      label: 'Active Employees',
-      value: pulse.activeEmployees,
-      icon: UsersRound,
-      bg: 'bg-green-100 dark:bg-green-500/15',
-      iconCls: 'text-green-600 dark:text-green-400',
-      href: '/wa-employees',
-    },
-    {
-      label: "Today's Attendance",
-      value: `${pulse.attendedToday} / ${pulse.activeEmployees}`,
-      sub: `${attendanceRate}% checked in`,
-      icon: CalendarCheck,
-      bg: 'bg-blue-100 dark:bg-blue-500/15',
-      iconCls: 'text-blue-600 dark:text-blue-400',
-      href: '/wa-employees',
-      barPct: attendanceRate,
-      barCls:
-        attendanceRate >= 80
-          ? 'bg-green-500'
-          : attendanceRate >= 50
-          ? 'bg-yellow-400'
-          : 'bg-orange-400',
-    },
-    {
-      label: 'Live Tasks',
-      value: pulse.liveTasks,
-      sub: 'pending + awaiting',
-      icon: Send,
-      bg: 'bg-orange-100 dark:bg-orange-500/15',
-      iconCls: 'text-orange-600 dark:text-orange-400',
-      href: '/wa-work',
-    },
-    {
-      label: 'Task Completion',
-      value: `${pulse.completionRate}%`,
-      sub: 'overall',
-      icon: CheckCircle2,
-      bg: 'bg-purple-100 dark:bg-purple-500/15',
-      iconCls: 'text-purple-600 dark:text-purple-400',
-      href: '/wa-work',
-      barPct: pulse.completionRate,
-      barCls:
-        pulse.completionRate >= 80
-          ? 'bg-green-500'
-          : pulse.completionRate >= 50
-          ? 'bg-yellow-400'
-          : 'bg-orange-400',
-    },
-  ];
-
-  return (
-    <div className="mb-7">
-      {/* Section header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-5 rounded-full bg-green-500" />
-          <h2 className="text-sm font-semibold text-text-primary">Team Pulse</h2>
-          <span className="text-[10px] text-text-secondary font-medium bg-bg-secondary px-2 py-0.5 rounded-full">
-            Today
-          </span>
-          {pulse.lastUpdated && !pulse.loading && (
-            <span className="text-[10px] text-text-secondary opacity-60">
-              · updated {pulse.lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onRefresh}
-            disabled={pulse.loading}
-            title="Refresh Team Pulse"
-            className="text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
-          >
-            <RefreshCw size={13} className={pulse.loading ? 'animate-spin' : ''} />
-          </button>
-          <Link
-            href="/wa-employees"
-            className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
-          >
-            View Team <ArrowUpRight size={12} />
-          </Link>
-          <Link
-            href="/wa-work"
-            className="text-xs font-semibold text-accent hover:underline flex items-center gap-1"
-          >
-            View Tasks <ArrowUpRight size={12} />
-          </Link>
-        </div>
-      </div>
-
-      {/* Stat cards row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {stats.map((s) => {
-          const Icon = s.icon;
-          const inner = (
-            <div className="bg-card-bg border border-border-color rounded-2xl p-4 h-full flex flex-col gap-3 hover:shadow-md transition-shadow">
-              {/* Icon + label */}
-              <div className="flex items-center justify-between">
-                <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center`}>
-                  {pulse.loading ? (
-                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin opacity-40" />
-                  ) : (
-                    <Icon size={16} className={s.iconCls} />
-                  )}
-                </div>
-                <ArrowUpRight size={13} className="text-text-secondary opacity-30 group-hover:opacity-70 transition-opacity" />
-              </div>
-
-              {/* Value */}
-              {pulse.loading ? (
-                <div className="h-6 w-16 bg-bg-secondary rounded-lg animate-pulse" />
-              ) : (
-                <p className="text-2xl font-bold text-text-primary tracking-tight leading-none">
-                  {s.value}
-                </p>
-              )}
-
-              {/* Label + sub */}
-              <div>
-                <p className="text-xs font-medium text-text-secondary">{s.label}</p>
-                {s.sub && (
-                  <p className="text-[10px] text-text-secondary opacity-60 mt-0.5">{s.sub}</p>
-                )}
-              </div>
-
-              {/* Optional progress bar */}
-              {s.barPct !== undefined && !pulse.loading && (
-                <div className="h-1 bg-bg-secondary rounded-full overflow-hidden -mt-1">
-                  <div
-                    className={`h-full rounded-full transition-all ${s.barCls}`}
-                    style={{ width: `${Math.min(100, s.barPct)}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          );
-
-          return (
-            <Link key={s.label} href={s.href} className="block group">
-              {inner}
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+// Team Pulse hardcoded section removed — equivalent widgets are now in the modal:
+// team_active_employees, team_attendance, team_live_tasks, team_completion_rate.
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
@@ -826,52 +796,34 @@ export default function NewDashboardPage() {
   const [editing,   setEditing]   = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
+  const [layouts,   setLayouts]   = useState<Layout[]>([]);
+  const activeLayoutId = layouts.find((l) => l.is_active)?.id ?? null;
 
-  /* ── Team Pulse state ── */
-  const [pulse, setPulse] = useState<TeamPulseData>({
-    activeEmployees: 0,
-    attendedToday: 0,
-    liveTasks: 0,
-    completionRate: 0,
-    loading: true,
-    lastUpdated: null,
-  });
+  // Team Pulse state removed — now exposed via team_* widgets users can add.
 
   const startDate = useDateRangeStore((s) => s.startDate);
   const endDate   = useDateRangeStore((s) => s.endDate);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  /* Load Team Pulse data independently (fire-and-forget from main load) */
-  const loadTeamPulse = useCallback(async () => {
-    setPulse((p) => ({ ...p, loading: true }));
+  const loadLayouts = useCallback(async () => {
     try {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const [workStats, employees, attendance] = await Promise.all([
-        getWaWorkStats(),
-        listWaEmployees({ status: 'active' }),
-        getAttendance({ date: todayStr }),
-      ]);
-      const activeEmployees = employees.filter((e) => e.is_active).length;
-      const attendedToday   = attendance.length;
-      // "live" = total_assignments - done
-      const liveTasks = Math.max(0, workStats.total_assignments - workStats.done);
-      setPulse({
-        activeEmployees,
-        attendedToday,
-        liveTasks,
-        completionRate: Math.round(workStats.completion_rate),
-        loading: false,
-        lastUpdated: new Date(),
-      });
+      const ls = await fetchLayouts();
+      setLayouts(ls);
+      return ls;
     } catch {
-      setPulse((p) => ({ ...p, loading: false }));
+      return [] as Layout[];
     }
   }, []);
 
   const loadAll = useCallback(async () => {
     try {
-      const [metas, allData] = await Promise.all([fetchWidgets(), fetchAllData(startDate, endDate)]);
+      const ls = await loadLayouts();
+      const active = ls.find((l) => l.is_active)?.id ?? null;
+      const [metas, allData] = await Promise.all([
+        fetchWidgets(active),
+        fetchAllData(startDate, endDate, active),
+      ]);
       setWidgets(metas);
       const map = new Map<number, WidgetData>();
       allData.forEach((d) => map.set(d.widget_id, d));
@@ -883,20 +835,38 @@ export default function NewDashboardPage() {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
-  useEffect(() => { loadTeamPulse(); }, [loadTeamPulse]);
 
-  // Re-fetch only widget data when date range changes (widget list stays the same)
+  // Re-fetch widget list + data whenever the active layout changes
   useEffect(() => {
+    if (activeLayoutId === null) return;
     setDataLoading(true);
-    fetchAllData(startDate, endDate)
-      .then((allData) => {
+    Promise.all([
+      fetchWidgets(activeLayoutId),
+      fetchAllData(startDate, endDate, activeLayoutId),
+    ])
+      .then(([metas, allData]) => {
+        setWidgets(metas);
         const map = new Map<number, WidgetData>();
         allData.forEach((d) => map.set(d.widget_id, d));
         setDataMap(map);
       })
       .catch(() => {})
       .finally(() => setDataLoading(false));
-  }, [startDate, endDate]);
+  }, [activeLayoutId, startDate, endDate]);
+
+  // SSE live refresh — re-fetch widgets and layouts on tick
+  useDashboardStream(useCallback(() => {
+    loadLayouts();
+    if (activeLayoutId !== null) {
+      fetchAllData(startDate, endDate, activeLayoutId)
+        .then((allData) => {
+          const map = new Map<number, WidgetData>();
+          allData.forEach((d) => map.set(d.widget_id, d));
+          setDataMap(map);
+        })
+        .catch(() => {});
+    }
+  }, [activeLayoutId, startDate, endDate, loadLayouts]));
 
   async function loadOptions() {
     if (options.length === 0) setOptions(await fetchOptions());
@@ -923,10 +893,11 @@ export default function NewDashboardPage() {
       source_id: opt.source_id, field_id: opt.field_id, aggregation: opt.aggregation,
     });
     setWidgets(prev => [...prev, w]);
-    const allData = await fetchAllData(startDate, endDate);
+    const allData = await fetchAllData(startDate, endDate, activeLayoutId);
     const map = new Map<number, WidgetData>();
     allData.forEach(d => map.set(d.widget_id, d));
     setDataMap(map);
+    loadLayouts(); // refresh widget_count in switcher
   }
 
   async function handleEditToggle() {
@@ -973,6 +944,14 @@ export default function NewDashboardPage() {
             <p className="text-sm text-text-secondary mt-0.5 font-medium">Your business at a glance</p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Layout switcher */}
+            {layouts.length > 0 && (
+              <LayoutSwitcher
+                layouts={layouts}
+                activeId={activeLayoutId}
+                onChange={loadLayouts}
+              />
+            )}
             {/* Date range picker — controls all widget data */}
             <div className="relative">
               <DateRangePicker />
@@ -991,8 +970,13 @@ export default function NewDashboardPage() {
           </div>
         </div>
 
-        {/* ── Team Pulse ── */}
-        <TeamPulseCard pulse={pulse} onRefresh={loadTeamPulse} />
+        {/* Hardcoded P2 rows removed — every previous row is now an addable widget:
+            • AI insights → "Needs Attention" (list)
+            • Headline KPIs → individual stats (leads_today, conversations_today, …)
+            • Team Pulse → team_active_employees / team_attendance / team_live_tasks / team_completion_rate
+            • Channels health → channels_health (table)
+            • Activity feed → recent_activity (list)
+            The dashboard is empty until the user adds widgets from the modal. */}
 
         {/* ── Widget grid ── */}
         {widgets.length === 0 ? (

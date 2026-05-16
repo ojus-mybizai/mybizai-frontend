@@ -1204,6 +1204,24 @@ export function TablePage() {
                         ))}
                       </div>
                     </div>
+                    {/* Cover image field selector — only if at least one image field exists */}
+                    {fields.some((f) => f.field_type === 'image') && (
+                      <div className="mt-3">
+                        <label className="text-xs text-text-secondary">Cover image field</label>
+                        <select
+                          value={cardConfig.imageField ?? ''}
+                          onChange={(e) => setCardConfig((c) => ({ ...c, imageField: e.target.value || null }))}
+                          className="mt-1 w-full rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-xs text-text-primary"
+                        >
+                          <option value="">None</option>
+                          {fields.filter((f) => f.field_type === 'image').map((f) => (
+                            <option key={f.id} value={f.name}>
+                              {f.display_name}{f.config?.multiple ? ' (multiple)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="mt-3">
                       <label className="text-xs text-text-secondary">Card fields</label>
                       <div className="mt-1 max-h-[140px] space-y-0.5 overflow-y-auto">
@@ -1261,6 +1279,56 @@ export function TablePage() {
                           </label>
                         ))}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border-color" />
+
+                  {/* Calendar config */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-text-primary uppercase tracking-wide">Calendar View</h4>
+                    <p className="mt-0.5 text-[10px] text-text-secondary">Controls what appears on each pill so records aren't shown as just IDs.</p>
+                    <div className="mt-2">
+                      <label className="text-xs text-text-secondary">Date field <span className="text-text-muted">(positions records on the grid)</span></label>
+                      <select
+                        value={calendarConfig.dateField ?? ''}
+                        onChange={(e) => setCalendarConfig((c) => ({ ...c, dateField: e.target.value || null }))}
+                        className="mt-1 w-full rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-xs text-text-primary"
+                      >
+                        <option value="">— Select a date field —</option>
+                        {fields.filter((f) => f.field_type === 'date').map((f) => (
+                          <option key={f.id} value={f.name}>{f.display_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mt-3">
+                      <label className="text-xs text-text-secondary">Title (top line on pill)</label>
+                      <select
+                        value={calendarConfig.titleField ?? ''}
+                        onChange={(e) => setCalendarConfig((c) => ({ ...c, titleField: e.target.value || null }))}
+                        className="mt-1 w-full rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-xs text-text-primary"
+                      >
+                        <option value="">Auto (smart pick)</option>
+                        {fields.filter((f) => ['text', 'long_text', 'enum', 'number', 'currency'].includes(f.field_type)).map((f) => (
+                          <option key={f.id} value={f.name}>{f.display_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mt-3">
+                      <label className="text-xs text-text-secondary">Secondary (subtitle + color)</label>
+                      <select
+                        value={calendarConfig.secondaryField ?? ''}
+                        onChange={(e) => setCalendarConfig((c) => ({ ...c, secondaryField: e.target.value || null }))}
+                        className="mt-1 w-full rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-xs text-text-primary"
+                      >
+                        <option value="">Auto (first status field)</option>
+                        {fields.filter((f) => ['enum', 'text', 'time', 'phone'].includes(f.field_type) && f.name !== calendarConfig.titleField).map((f) => (
+                          <option key={f.id} value={f.name}>
+                            {f.display_name}{f.field_type === 'enum' ? ' (colors pill)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-[10px] text-text-muted">If this is an enum field, its value also colors the pill (status-aware).</p>
                     </div>
                   </div>
                 </div>

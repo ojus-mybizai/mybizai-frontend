@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 import type { DynamicField } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { CalendarViewConfig } from '@/features/data-sheet/state/view-state';
+import { colorForOption, pickTitleField, pickSecondaryField } from '@/components/data-sheet/field-display';
 
 type RecordItem = QueryResponse['items'][number];
 
@@ -89,54 +90,85 @@ function buildCalendarGrid(year: number, month: number): CalendarCell[] {
 
 function RecordPill({
   record,
-  pillFields,
+  titleField,
+  secondaryField,
   fields,
   compact,
   onClick,
 }: {
   record: RecordItem;
-  pillFields: string[];
+  titleField: DynamicField | null;
+  secondaryField: DynamicField | null;
   fields: DynamicField[];
   compact: boolean;
   onClick: (row: RecordItem) => void;
 }) {
-  const label: string = (() => {
-    const data = (record.data ?? {}) as Record<string, unknown>;
-    for (const fn of pillFields) {
-      const val = data[fn];
-      if (val !== null && val !== undefined && val !== '') return String(val);
+  const data = (record.data ?? {}) as Record<string, unknown>;
+
+  // Resolve title: configured titleField → first non-empty text-ish field → record_key
+  const title: string = useMemo(() => {
+    if (titleField) {
+      const v = data[titleField.name];
+      if (v !== null && v !== undefined && v !== '') return String(v);
     }
     for (const f of fields) {
-      if (['text', 'enum'].includes(f.field_type)) {
+      if (['text', 'long_text', 'enum'].includes(f.field_type)) {
         const val = data[f.name];
-        if (val) return String(val);
+        if (val !== null && val !== undefined && val !== '') return String(val);
       }
     }
     return String(record.record_key || `#${record.id}`);
-  })();
+  }, [data, titleField, fields, record.record_key, record.id]);
 
-  const colorClass = getPillColor(String(label));
+  // Resolve secondary value (if configured)
+  const secondaryValue = secondaryField ? data[secondaryField.name] : null;
+  const hasSecondary = secondaryValue !== null && secondaryValue !== undefined && secondaryValue !== '';
+  const secondaryString = hasSecondary ? String(secondaryValue) : '';
+
+  // Pill border / background: if secondary is an enum with a status color, use that. Otherwise hash from title.
+  const colorClass = useMemo(() => {
+    if (hasSecondary && secondaryField && secondaryField.field_type === 'enum') {
+      // Convert chip-style classes to pill-style (border + bg)
+      const chipCls = colorForOption(secondaryField, secondaryString);
+      // chipCls looks like 'bg-green-100 text-green-700 ring-green-200/60 ...'
+      // For pill: keep bg-*, replace ring-* with a stronger border. Easiest: just append a border-l accent.
+      return chipCls;
+    }
+    return getPillColor(title);
+  }, [hasSecondary, secondaryField, secondaryString, title]);
 
   if (compact) {
+    // Mobile dot — use accent color from the colorClass
+    const bgClass = colorClass.match(/bg-[a-z]+-\d+/)?.[0] ?? 'bg-accent';
     return (
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onClick(record); }}
-        className={`inline-block h-2 w-2 shrink-0 rounded-full ${colorClass.split(' ')[0]?.replace('border-', 'bg-') || 'bg-accent'}`}
-        title={label}
+        className={`inline-block h-2 w-2 shrink-0 rounded-full ${bgClass}`}
+        title={`${title}${hasSecondary ? ` · ${secondaryString}` : ''}`}
       />
     );
   }
+
+  // Strip the ring-* and dark:ring-* classes that don't make sense on a pill background
+  const bgOnly = colorClass.replace(/ring-\S+/g, '').replace(/dark:ring-\S+/g, '').trim();
 
   return (
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick(record); }}
-      className={`w-full truncate rounded border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight
-        text-text-primary hover:brightness-95 transition-colors ${colorClass}`}
-      title={label}
+      className={`group w-full rounded border-l-2 border-current px-1.5 py-0.5 text-left leading-tight
+        hover:brightness-95 transition-all overflow-hidden ${bgOnly}`}
+      title={`${title}${hasSecondary ? ` · ${secondaryString}` : ''}`}
     >
-      {label.length > 18 ? `${label.slice(0, 18)}...` : label}
+      <div className="flex items-baseline gap-1.5">
+        <span className="truncate text-[11px] font-medium">{title.length > 22 ? `${title.slice(0, 22)}…` : title}</span>
+      </div>
+      {hasSecondary && (
+        <span className="block truncate text-[9px] font-medium uppercase tracking-wider opacity-75">
+          {secondaryString.length > 24 ? `${secondaryString.slice(0, 24)}…` : secondaryString}
+        </span>
+      )}
     </button>
   );
 }
@@ -148,14 +180,16 @@ function RecordPill({
 function DayCell({
   cell,
   records,
-  pillFields,
+  titleField,
+  secondaryField,
   fields,
   isToday,
   onRecordClick,
 }: {
   cell: CalendarCell;
   records: RecordItem[];
-  pillFields: string[];
+  titleField: DynamicField | null;
+  secondaryField: DynamicField | null;
   fields: DynamicField[];
   isToday: boolean;
   onRecordClick: (row: RecordItem) => void;
@@ -165,7 +199,7 @@ function DayCell({
 
   return (
     <div
-      className={`relative flex flex-col border border-border-color min-h-[60px] md:min-h-[100px] p-1
+      className={`relative flex flex-col border border-border-color min-h-[60px] md:min-h-[110px] p-1
         ${cell.inCurrentMonth ? 'bg-card-bg' : 'bg-bg-secondary/50 opacity-50'}
         ${isToday ? 'ring-2 ring-accent ring-inset' : ''}`}
     >
@@ -174,9 +208,17 @@ function DayCell({
       </span>
 
       {/* Desktop: pills */}
-      <div className="hidden flex-col gap-0.5 sm:flex">
+      <div className="hidden flex-col gap-1 sm:flex">
         {visible.map((r) => (
-          <RecordPill key={String(r.id)} record={r} pillFields={pillFields} fields={fields} compact={false} onClick={onRecordClick} />
+          <RecordPill
+            key={String(r.id)}
+            record={r}
+            titleField={titleField}
+            secondaryField={secondaryField}
+            fields={fields}
+            compact={false}
+            onClick={onRecordClick}
+          />
         ))}
         {overflow > 0 && (
           <span className="mt-0.5 text-[10px] font-medium text-accent cursor-default">+{overflow} more</span>
@@ -186,7 +228,15 @@ function DayCell({
       {/* Mobile: dots */}
       <div className="flex flex-wrap gap-0.5 sm:hidden">
         {visible.map((r) => (
-          <RecordPill key={String(r.id)} record={r} pillFields={pillFields} fields={fields} compact onClick={onRecordClick} />
+          <RecordPill
+            key={String(r.id)}
+            record={r}
+            titleField={titleField}
+            secondaryField={secondaryField}
+            fields={fields}
+            compact
+            onClick={onRecordClick}
+          />
         ))}
         {overflow > 0 && <span className="text-[9px] text-accent">+{overflow}</span>}
       </div>
@@ -219,14 +269,26 @@ export default function CalendarView({
 
   const dateFields = useMemo(() => fields.filter((f) => f.field_type === 'date'), [fields]);
 
-  const pillFields = useMemo(() => {
-    if (config.pillFields && config.pillFields.length > 0) return config.pillFields;
-    // Default: first 2 text/enum fields
-    return fields
-      .filter((f) => ['text', 'enum'].includes(f.field_type))
-      .slice(0, 2)
-      .map((f) => f.name);
-  }, [config.pillFields, fields]);
+  // Resolve title field for pills. Priority: explicit config.titleField → first of legacy config.pillFields → smart heuristic.
+  const titleField: DynamicField | null = useMemo(() => {
+    if (config.titleField) {
+      return fields.find((f) => f.name === config.titleField) ?? null;
+    }
+    const legacyFirst = config.pillFields?.[0];
+    if (legacyFirst) {
+      const f = fields.find((ff) => ff.name === legacyFirst);
+      if (f) return f;
+    }
+    return pickTitleField(fields);
+  }, [config.titleField, config.pillFields, fields]);
+
+  // Resolve secondary field. Priority: explicit config.secondaryField → first status-like enum that isn't the title.
+  const secondaryField: DynamicField | null = useMemo(() => {
+    if (config.secondaryField) {
+      return fields.find((f) => f.name === config.secondaryField) ?? null;
+    }
+    return pickSecondaryField(fields, titleField?.name ?? null);
+  }, [config.secondaryField, fields, titleField]);
 
   // Build calendar grid
   const cells = useMemo(() => buildCalendarGrid(currentYear, currentMonth), [currentYear, currentMonth]);
@@ -350,7 +412,8 @@ export default function CalendarView({
               key={key}
               cell={cell}
               records={records}
-              pillFields={pillFields}
+              titleField={titleField}
+              secondaryField={secondaryField}
               fields={fields}
               isToday={cellIsToday}
               onRecordClick={handleRecordClick}

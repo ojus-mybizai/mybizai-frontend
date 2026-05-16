@@ -206,6 +206,7 @@ type ConvoOut = {
   contact_name?: string | null;
   owner_type?: string | null;
   owner_name?: string | null;
+  channel_id?: number | null;
   channel_name?: string | null;
   channel_type?: string | null;
   lead_status?: string | null;
@@ -219,6 +220,7 @@ type ConvoOut = {
 
 export interface ConversationListFilters {
   channel_type?: string;
+  channel_id?: number;
   mode?: string;
   lead_status?: string;
   intent?: string;
@@ -501,6 +503,7 @@ export interface InboxConversation extends Conversation {
   ownerName?: string;
   ownerType?: 'lead' | 'contact';
   contactId?: number | null;
+  channelId?: number | null;
   channelName?: string;
   channelType?: string;
   leadStatus?: string;
@@ -522,6 +525,7 @@ function mapConvosToInboxConversations(convos: ConvoOut[]): InboxConversation[] 
     contactName: c.contact_name ?? undefined,
     ownerName: c.owner_name ?? c.lead_name ?? c.contact_name ?? undefined,
     ownerType: (c.owner_type as 'lead' | 'contact') ?? (c.lead_id ? 'lead' : 'contact'),
+    channelId: c.channel_id ?? null,
     channelName: c.channel_name ?? undefined,
     channelType: c.channel_type ?? undefined,
     leadStatus: c.lead_status ?? undefined,
@@ -535,6 +539,7 @@ export async function listAllConversations(
 ): Promise<InboxConversation[]> {
   const params = new URLSearchParams();
   if (filters?.channel_type) params.set('channel_type', filters.channel_type);
+  if (filters?.channel_id) params.set('channel_id', String(filters.channel_id));
   if (filters?.mode) params.set('mode', filters.mode);
   if (filters?.lead_status) params.set('lead_status', filters.lead_status);
   if (filters?.intent) params.set('intent', filters.intent);

@@ -485,12 +485,14 @@ export default function AppShell({ children }: AppShellProps) {
               <p className="truncate text-xs font-medium text-text-primary leading-tight">
                 {user?.name || user?.email?.split('@')[0] || 'Account'}
               </p>
-              <p className="text-[10px] leading-tight mt-0.5">
-                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ${
-                  isOwner ? 'bg-accent/10 text-accent' : 'bg-bg-secondary text-text-secondary'
-                }`}>
-                  {isOwner ? 'Owner' : 'Team Member'}
-                </span>
+              <p className="text-[10px] leading-tight mt-0.5" suppressHydrationWarning>
+                {mounted && (
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ${
+                    isOwner ? 'bg-accent/10 text-accent' : 'bg-bg-secondary text-text-secondary'
+                  }`}>
+                    {isOwner ? 'Owner' : 'Team Member'}
+                  </span>
+                )}
               </p>
             </div>
           )}

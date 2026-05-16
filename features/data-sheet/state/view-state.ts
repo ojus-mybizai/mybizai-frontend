@@ -12,6 +12,8 @@ export interface CardViewConfig {
   cardFields: string[] | null;
   /** Number of columns in card grid (2, 3, 4) */
   gridCols: 2 | 3 | 4;
+  /** Which image field's attachments to show at the top of each card (null = first image field, or none) */
+  imageField?: string | null;
 }
 
 export interface ListViewConfig {
@@ -24,8 +26,12 @@ export interface ListViewConfig {
 export interface CalendarViewConfig {
   /** Field name of type 'date' used to place records on calendar dates */
   dateField: string | null;
-  /** Field names shown on calendar pills (null = first 2 text fields) */
+  /** Field names shown on calendar pills (null = smart auto-detect) — kept for back-compat */
   pillFields: string[] | null;
+  /** Primary line on each calendar pill (overrides pillFields[0]) */
+  titleField?: string | null;
+  /** Secondary line on each calendar pill — usually an enum/status; gets a colored chip */
+  secondaryField?: string | null;
 }
 
 export interface KanbanViewConfig {

@@ -94,7 +94,7 @@ function hashColor(s: string): string {
   return HASH_COLORS[Math.abs(hash) % HASH_COLORS.length];
 }
 
-function colorForOption(field: DynamicField, value: string): string {
+export function colorForOption(field: DynamicField, value: string): string {
   const userColors = field.config?.option_colors as Record<string, string> | undefined;
   if (userColors && userColors[value]) return userColors[value];
   if (STATUS_FIELD_RE.test(field.name) || STATUS_FIELD_RE.test(field.display_name)) {
@@ -103,6 +103,37 @@ function colorForOption(field: DynamicField, value: string): string {
     }
   }
   return hashColor(value);
+}
+
+/** Smart heuristic: pick the best field to use as a "title" for a record (calendar pills, list items, etc.). */
+const TITLE_FIELD_RE = /(name|title|subject|topic|summary|meeting|event|label|heading)/i;
+export function pickTitleField(fields: DynamicField[]): DynamicField | null {
+  if (!fields.length) return null;
+  // 1. Field whose name matches the title regex AND is a text-ish type
+  const namedMatch = fields.find((f) =>
+    ['text', 'long_text', 'enum'].includes(f.field_type) && (TITLE_FIELD_RE.test(f.name) || TITLE_FIELD_RE.test(f.display_name)),
+  );
+  if (namedMatch) return namedMatch;
+  // 2. First text field
+  const firstText = fields.find((f) => f.field_type === 'text');
+  if (firstText) return firstText;
+  // 3. First long_text
+  const firstLong = fields.find((f) => f.field_type === 'long_text');
+  if (firstLong) return firstLong;
+  // 4. First enum
+  const firstEnum = fields.find((f) => f.field_type === 'enum');
+  if (firstEnum) return firstEnum;
+  // 5. First non-attachment, non-relation, non-computed field
+  return fields.find((f) => !['image', 'file', 'relation', 'computed'].includes(f.field_type)) ?? null;
+}
+
+/** Pick the best status-like field to use as a secondary chip on cards/pills. */
+export function pickSecondaryField(fields: DynamicField[], excludeName?: string | null): DynamicField | null {
+  const enums = fields.filter((f) => f.field_type === 'enum' && f.name !== excludeName);
+  if (!enums.length) return null;
+  // Prefer status-named enums
+  const statusEnum = enums.find((f) => STATUS_FIELD_RE.test(f.name) || STATUS_FIELD_RE.test(f.display_name));
+  return statusEnum ?? enums[0];
 }
 
 /* ────────────────────────────────────────────────────────────────── */
