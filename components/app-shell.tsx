@@ -15,6 +15,7 @@ import {
   LogOut,
   Settings,
   CreditCard,
+  Coins,
   UsersRound,
   Users,
   Filter,
@@ -52,6 +53,8 @@ interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /** Module key from active_modules; hides item if module not active. */
+  module?: string;
 }
 
 interface NavGroup {
@@ -60,6 +63,8 @@ interface NavGroup {
   href: string;
   icon: LucideIcon;
   children: NavItem[];
+  /** Module key from active_modules; hides whole group if module not active. */
+  module?: string;
 }
 
 type NavSection    = { kind: 'section'; label: string };
@@ -76,20 +81,59 @@ function isDataSheetSlot(e: NavEntry): e is DataSheetSlot {
   return (e as DataSheetSlot).kind === 'datasheet';
 }
 
+/**
+ * Filter nav entries by active modules:
+ *  - Drop items/groups whose `module` is not in activeModules.
+ *  - Collapse "orphan" sections: if a section header is followed only by removed
+ *    items (or nothing) before the next section, drop the header too.
+ *
+ * If `activeModules` is empty (e.g. unauth/SSR), pass everything through —
+ * we don't want the sidebar to flash empty on initial render.
+ */
+function filterNavByModules(entries: NavEntry[], activeModules: string[]): NavEntry[] {
+  if (!activeModules || activeModules.length === 0) return entries;
+  const has = (m?: string) => !m || activeModules.includes(m);
+
+  // First pass: drop hidden items
+  const kept: NavEntry[] = entries.filter((e) => {
+    if (isSection(e) || isDataSheetSlot(e)) return true;
+    if (isNavGroup(e)) return has(e.module);
+    return has(e.module);
+  });
+
+  // Second pass: drop section headers with no item between them and the next section
+  const out: NavEntry[] = [];
+  for (let i = 0; i < kept.length; i++) {
+    const e = kept[i];
+    if (isSection(e)) {
+      let j = i + 1;
+      let hasContent = false;
+      while (j < kept.length && !isSection(kept[j])) {
+        if (!isSection(kept[j])) { hasContent = true; break; }
+        j++;
+      }
+      if (!hasContent) continue;
+    }
+    out.push(e);
+  }
+  return out;
+}
+
 /* ─── Nav definitions ────────────────────────────────────────────────────── */
 
-/** Full nav for business owners */
+/** Full nav for business owners. `module` field hides item if not in active_modules. */
 const OWNER_NAV: NavEntry[] = [
   { label: 'Dashboard', href: '/new_dashboard', icon: LayoutDashboard },
 
   { kind: 'section', label: 'CRM' },
   { label: 'Inbox',    href: '/inbox',    icon: MessageSquare },
-  { label: 'Contacts', href: '/contacts', icon: UserCheck },
+  { label: 'Contacts', href: '/contacts', icon: UserCheck, module: 'crm' },
   {
     kind: 'group',
     label: 'Campaigns',
     href: '/outbound',
     icon: Megaphone,
+    module: 'campaigns',
     children: [
       { label: 'Segments', href: '/outbound/segments', icon: Filter },
     ],
@@ -100,17 +144,17 @@ const OWNER_NAV: NavEntry[] = [
   { label: 'Msg Templates', href: '/message-templates', icon: MessageCircle },
 
   { kind: 'section', label: 'AI & Automation' },
-  { label: 'Agents',     href: '/agents',     icon: Bot },
-  { label: 'Sequences',  href: '/nurture',    icon: Repeat },
-  { label: 'Automation', href: '/automation', icon: Zap },
+  { label: 'Agents',     href: '/agents',     icon: Bot,    module: 'chat_agent' },
+  { label: 'Sequences',  href: '/nurture',    icon: Repeat, module: 'nurture' },
+  { label: 'Automation', href: '/automation', icon: Zap,    module: 'follow_up' },
 
   // ── Work management (WA team + internal) ─────────────────────────────────
   { kind: 'section', label: 'Work' },
-  { label: 'Employees',       href: '/wa-employees', icon: UsersRound },
-  { label: 'Tasks',           href: '/wa-work',      icon: Send },
-  { label: 'Work Templates',  href: '/wa-templates', icon: FileText },
-  { label: 'Work Board',      href: '/work',         icon: Briefcase },
-  { label: 'Processes',       href: '/processes',    icon: Workflow },
+  { label: 'Employees',       href: '/wa-employees', icon: UsersRound, module: 'wa_employees' },
+  { label: 'Tasks',           href: '/wa-work',      icon: Send,       module: 'work_tasks' },
+  { label: 'Work Templates',  href: '/wa-templates', icon: FileText,   module: 'work_tasks' },
+  { label: 'Work Board',      href: '/work',         icon: Briefcase,  module: 'work_tasks' },
+  { label: 'Processes',       href: '/processes',    icon: Workflow,   module: 'work_tasks' },
 
   { kind: 'section', label: 'Data Sheets' },
   { kind: 'datasheet' },
@@ -118,9 +162,10 @@ const OWNER_NAV: NavEntry[] = [
   { kind: 'section', label: 'Account' },
   // /employees manages who can log into the dashboard (platform RBAC),
   // not the WhatsApp team — so it lives in Account, not Team.
-  { label: 'Team Access', href: '/employees',       icon: Users },
-  { label: 'Settings',    href: '/settings',         icon: Settings },
-  { label: 'Billing',     href: '/settings/billing', icon: CreditCard },
+  { label: 'Team Access', href: '/employees',          icon: Users },
+  { label: 'Settings',    href: '/settings',            icon: Settings },
+  { label: 'Billing',     href: '/settings/billing',    icon: CreditCard },
+  { label: 'AI Credits',  href: '/settings/credits',    icon: Coins },
 ];
 
 /** Simplified nav for team members / employees */
@@ -196,6 +241,7 @@ export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const user     = useAuthStore((s) => s.user as any);
   const isOwner  = useAuthStore((s) => s.isOwner);
+  const activeModules = useAuthStore((s) => s.activeModules);
   const business = user?.businesses?.[0];
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -236,7 +282,8 @@ export default function AppShell({ children }: AppShellProps) {
   // Defer nav selection until after mount so SSR output (no auth state) matches
   // the client's initial render. Zustand restores isOwner from localStorage
   // synchronously, causing a server/client mismatch without this guard.
-  const NAV_ITEMS = mounted ? (isOwner ? OWNER_NAV : EMPLOYEE_NAV) : EMPLOYEE_NAV;
+  const _RAW_NAV = mounted ? (isOwner ? OWNER_NAV : EMPLOYEE_NAV) : EMPLOYEE_NAV;
+  const NAV_ITEMS = mounted ? filterNavByModules(_RAW_NAV, activeModules) : _RAW_NAV;
 
   /* Auto-open any group whose child matches the current pathname */
   useEffect(() => {

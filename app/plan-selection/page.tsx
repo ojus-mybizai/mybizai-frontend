@@ -47,12 +47,12 @@ function PlanSelectionContent() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleStartTrial = async (slug: string) => {
-    setStarting(slug);
+  const handleStartTrial = async () => {
+    setStarting('trial');
     setError(null);
     try {
-      await startTrial(slug);
-      setPlanSlug(slug);
+      await startTrial();
+      setPlanSlug('trial');
       router.replace('/home');
     } catch (err: any) {
       setError(err?.message || 'Failed to start trial');
@@ -61,8 +61,7 @@ function PlanSelectionContent() {
   };
 
   const handleSkip = () => {
-    // Skip = auto-start Starter trial
-    void handleStartTrial('starter');
+    void handleStartTrial();
   };
 
   if (loading) {
@@ -122,7 +121,7 @@ function PlanSelectionContent() {
 
                 <div className="mt-3">
                   <span className="text-2xl font-extrabold text-text-primary">
-                    Rs {plan.price_inr.toLocaleString()}
+                    Rs {plan.price_monthly_inr.toLocaleString()}
                   </span>
                   <span className="text-sm text-text-secondary">/mo</span>
                 </div>
@@ -158,14 +157,14 @@ function PlanSelectionContent() {
 
                 <button
                   type="button"
-                  onClick={() => handleStartTrial(plan.slug)}
+                  onClick={handleStartTrial}
                   disabled={starting !== null}
                   className={`mt-5 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50 ${btnColor}`}
                 >
-                  {starting === plan.slug ? (
+                  {starting === 'trial' ? (
                     <><Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" /> Starting...</>
                   ) : (
-                    'Start 7-day free trial'
+                    'Start 15-day free trial'
                   )}
                 </button>
               </div>

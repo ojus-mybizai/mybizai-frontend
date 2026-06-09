@@ -2,7 +2,7 @@
 
 import { FormEvent, KeyboardEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { FileText, Search, RefreshCw, ArrowLeft, ExternalLink, MessageCircle, Bot, ChevronDown, BookmarkCheck, SlidersHorizontal, X, Send } from 'lucide-react';
+import { FileText, Search, RefreshCw, ArrowLeft, ExternalLink, MessageCircle, Bot, ChevronDown, BookmarkCheck, SlidersHorizontal, X, Send, Lock } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AIStatusBadge } from '@/components/customers/ai-status-badge';
 import { MessageBubble } from '@/components/customers/message-bubble';
@@ -35,6 +35,7 @@ import {
 } from '@/services/conversationViews';
 import { contactGroupsService, type ContactGroup } from '@/services/contactGroups';
 import { listChannels, type Channel as BusinessChannel } from '@/services/channels';
+import { listConversationTopics, type ConversationTopic } from '@/services/conversationTopics';
 import { useDebounce } from '@/lib/use-debounce';
 
 function formatTime(dateStr: string | undefined): string {
@@ -59,6 +60,21 @@ function formatRelativeTime(dateStr: string | undefined): string {
   if (diffDays === 1) return 'Yesterday';
   if (diffDays < 7) return `${diffDays}d ago`;
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Format remaining time in the WhatsApp 24h customer-service window.
+ * Returns e.g. "23h 14m", "47m", "<1m", or null if the window is closed.
+ */
+function formatSessionRemaining(expiresAt: string | null | undefined): string | null {
+  if (!expiresAt) return null;
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (ms <= 0) return null;
+  const totalMin = Math.floor(ms / 60000);
+  if (totalMin < 1) return '<1m';
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
 function getInitials(name: string | undefined, fallback: string): string {
@@ -120,11 +136,13 @@ const ConversationRow = memo(function ConversationRow({
   isSelected,
   onSelect,
   onLeadClick,
+  topicColor,
 }: {
   conv: InboxConversation;
   isSelected: boolean;
   onSelect: (id: string) => void;
   onLeadClick?: (leadId: string, ownerType?: string, contactId?: number | null) => void;
+  topicColor?: string;
 }) {
   const displayName = conv.ownerName || conv.leadName || conv.contactName || conv.customerId || 'Unknown';
   const initials = getInitials(displayName, 'Unknown');
@@ -188,6 +206,47 @@ const ConversationRow = memo(function ConversationRow({
                 {conv.agentName}
               </span>
             )}
+            {conv.lastIntent && (
+              <span
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium border"
+                style={{
+                  backgroundColor: (topicColor ?? '#94a3b8') + '22',
+                  borderColor: (topicColor ?? '#94a3b8') + '55',
+                  color: topicColor ?? 'var(--text-secondary)',
+                }}
+                title={`Topic: ${conv.lastIntent}`}
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: topicColor ?? '#94a3b8' }}
+                />
+                {conv.lastIntent}
+              </span>
+            )}
+            {/* WhatsApp 24h service window — only for WhatsApp conversations */}
+            {conv.channelType?.toLowerCase() === 'whatsapp' && (() => {
+              const remaining = formatSessionRemaining(conv.sessionWindowExpiresAt);
+              if (conv.sessionActive && remaining) {
+                return (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-medium dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
+                    title={`WhatsApp 24h window open · free-form messages allowed for ${remaining}`}
+                  >
+                    <MessageCircle className="h-2.5 w-2.5" />
+                    {remaining}
+                  </span>
+                );
+              }
+              return (
+                <span
+                  className="inline-flex items-center gap-1 rounded-md bg-gray-100 text-gray-500 border border-gray-200 px-1.5 py-0.5 text-[10px] font-medium dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700"
+                  title="WhatsApp 24h window closed · only approved templates can be sent"
+                >
+                  <Lock className="h-2.5 w-2.5" />
+                  Closed
+                </span>
+              );
+            })()}
           </div>
           <p className="line-clamp-1 text-[13px] text-text-secondary mt-0.5">
             {conv.lastMessagePreview || '—'}
@@ -213,6 +272,8 @@ const MODE_OPTIONS: { value: string; label: string }[] = [
 
 /* ─── Filters popover ─────────────────────────────────────────────── */
 
+type SessionFilter = '' | 'open' | 'closed';
+
 function FiltersPopover({
   modeFilter, setModeFilter,
   unreadOnly, setUnreadOnly,
@@ -220,7 +281,8 @@ function FiltersPopover({
   contactGroupId, setContactGroupId,
   contactGroups, clearActiveView,
   channelInstanceId, setChannelInstanceId, channelInstances,
-  intentSuggestions, activeCount,
+  topics, topicSuggestions, activeCount,
+  sessionFilter, setSessionFilter,
 }: {
   modeFilter: string;
   setModeFilter: (v: string) => void;
@@ -235,8 +297,11 @@ function FiltersPopover({
   channelInstanceId: number | null;
   setChannelInstanceId: (id: number | null) => void;
   channelInstances: BusinessChannel[];
-  intentSuggestions: string[];
+  topics: ConversationTopic[];
+  topicSuggestions: ConversationTopic[];
   activeCount: number;
+  sessionFilter: SessionFilter;
+  setSessionFilter: (v: SessionFilter) => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -256,8 +321,15 @@ function FiltersPopover({
     setIntentFilter('');
     setContactGroupId(null);
     setChannelInstanceId(null);
+    setSessionFilter('');
     clearActiveView();
   };
+
+  const SESSION_OPTIONS: { value: SessionFilter; label: string }[] = [
+    { value: '',       label: 'All' },
+    { value: 'open',   label: 'Open' },
+    { value: 'closed', label: 'Closed' },
+  ];
 
   return (
     <div ref={wrapperRef} className="relative">
@@ -315,37 +387,98 @@ function FiltersPopover({
             <span className="text-xs text-text-primary">Unread only</span>
           </label>
 
-          {/* Intent */}
+          {/* WhatsApp 24h service window */}
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary mb-1">Topic / Intent</p>
-            {intentSuggestions.length > 0 && (
+            <p
+              className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary mb-1"
+              title="WhatsApp's 24-hour customer service window. While Open, you can send any free-form message. Once Closed, only approved templates work."
+            >
+              WhatsApp Session
+            </p>
+            <div className="flex gap-1">
+              {SESSION_OPTIONS.map(({ value, label }) => {
+                const active = sessionFilter === value;
+                return (
+                  <button
+                    key={value || 'all'}
+                    type="button"
+                    onClick={() => { setSessionFilter(value); clearActiveView(); }}
+                    className={`flex-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
+                      active
+                        ? value === 'open'
+                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          : value === 'closed'
+                            ? 'border-gray-500 bg-gray-500 text-white'
+                            : 'border-accent bg-accent text-white'
+                        : 'border-border-color bg-bg-primary text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[10px] text-text-secondary/70">
+              Implicitly scopes to WhatsApp conversations.
+            </p>
+          </div>
+
+          {/* Topic — business-defined taxonomy */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">Topic</p>
+              <Link
+                href="/settings/topics"
+                className="text-[10px] text-text-secondary hover:text-accent"
+                title="Manage topics"
+              >
+                Manage
+              </Link>
+            </div>
+            {topicSuggestions.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-1.5">
-                {intentSuggestions.map((s) => {
-                  const active = intentFilter.toLowerCase() === s.toLowerCase();
+                {topicSuggestions.map((t) => {
+                  const active = intentFilter === t.name;
                   return (
                     <button
-                      key={s}
+                      key={t.id}
                       type="button"
-                      onClick={() => setIntentFilter(active ? '' : s)}
-                      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                      onClick={() => setIntentFilter(active ? '' : t.name)}
+                      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
                         active
-                          ? 'border-accent bg-accent text-white'
+                          ? 'border-transparent text-white'
                           : 'border-border-color bg-bg-primary text-text-secondary hover:text-text-primary'
                       }`}
+                      style={active ? { backgroundColor: t.color ?? '#6366f1' } : {}}
                     >
-                      {s}
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: active ? '#ffffff' : (t.color ?? '#94a3b8') }}
+                      />
+                      {t.name}
+                      {t.usage_count != null && t.usage_count > 0 && (
+                        <span className={active ? 'opacity-80' : 'opacity-50'}>· {t.usage_count}</span>
+                      )}
                     </button>
                   );
                 })}
               </div>
             )}
-            <input
-              type="text"
+            <select
               value={intentFilter}
               onChange={(e) => setIntentFilter(e.target.value)}
-              placeholder="Custom topic keyword…"
-              className="w-full rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent"
-            />
+              className="w-full rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="">All topics</option>
+              {topics.map((t) => (
+                <option key={t.id} value={t.name}>{t.name}</option>
+              ))}
+            </select>
+            {topics.length === 0 && (
+              <p className="mt-1 text-[10px] text-text-secondary/70">
+                No topics defined yet. <Link href="/settings/topics" className="text-accent hover:underline">Add some</Link> so the agent can classify conversations.
+              </p>
+            )}
           </div>
 
           {/* Channel instance */}
@@ -427,6 +560,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
   const [intentFilter, setIntentFilter] = useState('');
   const debouncedIntent = useDebounce(intentFilter, 300);
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [sessionFilter, setSessionFilter] = useState<SessionFilter>('');
   const [nameSearch, setNameSearch] = useState('');
   const debouncedNameSearch = useDebounce(nameSearch, 200);
   const [showChatPanel, setShowChatPanel] = useState(!!initialConversationId);
@@ -436,6 +570,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
   const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
   const [channelInstanceId, setChannelInstanceId] = useState<number | null>(null);
   const [channelInstances, setChannelInstances] = useState<BusinessChannel[]>([]);
+  const [topics, setTopics] = useState<ConversationTopic[]>([]);
   const [showViewsPanel, setShowViewsPanel] = useState(false);
   const { data: agentsData } = useQuery({
     queryKey: ['agents-summary'],
@@ -482,6 +617,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
     }).catch(() => {});
     contactGroupsService.list().then(setContactGroups).catch(() => {});
     listChannels().then((chs) => setChannelInstances(chs.filter((c) => c.isConnected))).catch(() => {});
+    listConversationTopics().then(setTopics).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -510,12 +646,16 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
         unread_only: unreadOnly || undefined,
         agent_name: agentFilter || undefined,
         contact_group_id: contactGroupId ?? undefined,
+        session_active:
+          sessionFilter === 'open' ? true
+          : sessionFilter === 'closed' ? false
+          : undefined,
       };
       return listAllConversations(filters)
         .then((list) => setConversations(list))
         .finally(() => { if (!silent) setLoadingList(false); });
     },
-    [channelFilter, channelInstanceId, modeFilter, debouncedIntent, unreadOnly, agentFilter, contactGroupId],
+    [channelFilter, channelInstanceId, modeFilter, debouncedIntent, unreadOnly, agentFilter, contactGroupId, sessionFilter],
   );
 
   /* Initial load */
@@ -702,26 +842,48 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
 
   const totalUnread = conversations.reduce((n, c) => n + (c.unreadCount ?? 0), 0);
 
-  // Derive top-6 intent suggestions from currently loaded conversations
-  const intentSuggestions = useMemo(() => {
+  // Top-6 topics to show as quick-filter chips. Prefer business-wide usage
+  // (from the topics catalog) so chips are stable across filters; fall back
+  // to in-view `lastIntent` counts when no usage data is available yet.
+  const topicSuggestions = useMemo(() => {
+    if (topics.length === 0) return [] as ConversationTopic[];
+    const withUsage = topics.filter((t) => (t.usage_count ?? 0) > 0);
+    if (withUsage.length > 0) {
+      return [...withUsage]
+        .sort((a, b) => (b.usage_count ?? 0) - (a.usage_count ?? 0))
+        .slice(0, 6);
+    }
+    // Fall back to in-view lastIntent counts mapped onto topic objects so
+    // chips can still render colors.
     const counts: Record<string, number> = {};
     for (const c of conversations) {
       const intent = c.lastIntent?.trim();
       if (!intent) continue;
       counts[intent] = (counts[intent] ?? 0) + 1;
     }
+    const byName = new Map(topics.map((t) => [t.name, t]));
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6)
-      .map(([intent]) => intent);
-  }, [conversations]);
+      .map(([name]) => byName.get(name))
+      .filter((t): t is ConversationTopic => !!t);
+  }, [topics, conversations]);
 
   const activeFilterCount =
     (modeFilter ? 1 : 0) +
     (unreadOnly ? 1 : 0) +
     (intentFilter.trim() ? 1 : 0) +
     (contactGroupId != null ? 1 : 0) +
-    (channelInstanceId != null ? 1 : 0);
+    (channelInstanceId != null ? 1 : 0) +
+    (sessionFilter ? 1 : 0);
+
+  const topicColorByName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of topics) {
+      if (t.color) m.set(t.name, t.color);
+    }
+    return m;
+  }, [topics]);
 
   const sortedConversations = [...conversations]
     .filter((c) => {
@@ -758,11 +920,12 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <h2 className="text-sm font-bold text-text-primary shrink-0">Conversations</h2>
-                  {totalUnread > 0 && (
-                    <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-white shrink-0">
-                      {totalUnread}
-                    </span>
-                  )}
+                  <span
+                    className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-white shrink-0"
+                    title="Conversations matching current filters"
+                  >
+                    {sortedConversations.length}
+                  </span>
                   {/* Active view badge */}
                   {activeViewId && (() => {
                     const activeView = savedViews.find((v) => v.id === activeViewId);
@@ -854,8 +1017,11 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                   setChannelInstanceId={setChannelInstanceId}
                   channelInstances={channelInstances}
                   clearActiveView={() => setActiveViewId(null)}
-                  intentSuggestions={intentSuggestions}
+                  topics={topics}
+                  topicSuggestions={topicSuggestions}
                   activeCount={activeFilterCount}
+                  sessionFilter={sessionFilter}
+                  setSessionFilter={setSessionFilter}
                 />
                 {modeFilter && (
                   <button
@@ -902,6 +1068,19 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                     Channel: {channelInstances.find((c) => Number(c.id) === channelInstanceId)?.name ?? '—'} <X className="h-2.5 w-2.5" />
                   </button>
                 )}
+                {sessionFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setSessionFilter('')}
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      sessionFilter === 'open'
+                        ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-300'
+                    }`}
+                  >
+                    Session: {sessionFilter === 'open' ? 'Open' : 'Closed'} <X className="h-2.5 w-2.5" />
+                  </button>
+                )}
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -926,6 +1105,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                       key={conv.id}
                       conv={conv}
                       isSelected={selectedId === conv.id}
+                      topicColor={conv.lastIntent ? topicColorByName.get(conv.lastIntent) : undefined}
                       onSelect={(id) => {
                         setSelectedId(id);
                         setShowChatPanel(true);

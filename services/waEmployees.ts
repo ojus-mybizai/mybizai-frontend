@@ -15,6 +15,10 @@ export interface WaEmployee {
   contact_id: number | null;
   verified_at: string | null;
   created_at: string;
+  /** ISO timestamp when the WhatsApp 24h customer-service window closes. Null = never opened. */
+  session_window_expires_at: string | null;
+  /** True if the 24h free-form messaging window is currently open. */
+  session_active: boolean;
 }
 
 export interface WaGroupMember {

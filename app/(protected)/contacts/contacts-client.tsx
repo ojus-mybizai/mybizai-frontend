@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Search, Plus, SlidersHorizontal, BarChart2, Download,
   FileSpreadsheet, Loader2, Users, Phone, Mail, Building2,
@@ -15,12 +15,12 @@ import { contactsV2Service } from '@/services/contacts-v2';
 import type { Contact, ContactFilters, Priority, RoutingMode, ContactGroup } from '@/services/contacts-v2';
 import { CreateContactModal } from '@/components/contacts-v2/create-contact-modal';
 import { ContactFiltersDrawer } from '@/components/contacts-v2/contact-filters-drawer';
-import { ContactDetailPanel } from '@/components/contacts-v2/contact-detail-panel';
 import { ContactAnalytics } from '@/components/contacts-v2/contact-analytics';
 import { GroupRoutingPanel } from '@/components/contacts-v2/group-routing-panel';
 import { TagPicker } from '@/components/contacts/TagPicker';
 import { TagManagerPanel } from '@/components/contacts/TagManagerPanel';
 import { gmailIntegrationService, type GmailStatus } from '@/services/gmailIntegration';
+import { listChannels, type Channel as BusinessChannel } from '@/services/channels';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   hot:    'text-red-500 bg-red-50 border-red-200',
@@ -43,12 +43,10 @@ interface TeamMember { id: number; name: string }
 export default function ContactsClient() {
   const {
     contacts: _contacts, total, loading, loadingMore,
-    selectedId,
     tags: _tags, savedViews: _savedViews,
     groups: _groups,
     selectedIds,
     list, loadMore, refresh,
-    select, clearSelected,
     remove, bulkAction,
     toggleSelectId, selectAll, clearSelection,
     loadTags, loadSavedViews, loadGroups,
@@ -77,8 +75,10 @@ export default function ContactsClient() {
   const [importMsg, setImportMsg] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
+  const [channelInstances, setChannelInstances] = useState<BusinessChannel[]>([]);
   const [gmailSyncing, setGmailSyncing] = useState(false);
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
   const [showBulkGroupPicker, setShowBulkGroupPicker] = useState(false);
   const [bulkAddingGroup, setBulkAddingGroup] = useState<number | null>(null);
@@ -95,6 +95,7 @@ export default function ContactsClient() {
     filters.routing_mode,
     filters.tag_id,
     filters.source,
+    filters.channel_id,
     activeGroupId,
   ].filter(v => v != null).length;
 
@@ -104,6 +105,7 @@ export default function ContactsClient() {
     loadSavedViews();
     loadGroups();
     gmailIntegrationService.getStatus().then(setGmailStatus).catch(() => {});
+    listChannels().then(chs => setChannelInstances(chs.filter(c => c.isConnected))).catch(() => {});
   }, []);
 
   // Handle ?gmail=connected redirect — auto-trigger sync
@@ -598,11 +600,11 @@ export default function ContactsClient() {
                       key={contact.id}
                       contact={contact}
                       selected={selectedIds.has(contact.id)}
-                      active={selectedId === contact.id}
+                      active={false}
                       onToggle={() => toggleSelectId(contact.id)}
                       deleting={deletingIds.has(contact.id)}
                       onDelete={() => handleDelete(contact.id)}
-                      onOpen={() => select(contact.id)}
+                      onOpen={() => router.push(`/contacts/${contact.id}`)}
                       groups={groups}
                       onAddToGroup={(groupId) => addToGroup(groupId, [contact.id])}
                     />
@@ -714,15 +716,6 @@ export default function ContactsClient() {
         />
       )}
 
-      {/* Detail panel (fixed overlay) */}
-      {selectedId !== null && (
-        <ContactDetailPanel
-          contactId={selectedId}
-          onClose={clearSelected}
-          onEdit={c => { setEditContact(c); setShowCreate(true); }}
-        />
-      )}
-
       <CreateContactModal
         open={showCreate}
         onClose={() => { setShowCreate(false); setEditContact(null); }}
@@ -735,6 +728,7 @@ export default function ContactsClient() {
         filters={filters}
         onApply={applyFilters}
         teamMembers={teamMembers}
+        channelInstances={channelInstances}
       />
     </div>
   );

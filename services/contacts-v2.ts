@@ -42,6 +42,22 @@ export interface ContactGroupChannelRouting {
   agent_id: number | null;
 }
 
+// ── Intake routing overrides ─────────────────────────────────────────────────
+// One per built-in source_key (meta_ads, whatsapp, instagram, ...). Default
+// is the built-in system group; override redirects new intake to a custom
+// group. Affects new contacts only.
+export interface IntakeRoutingItem {
+  source_key: string;
+  source_label: string;
+  source_description: string;
+  default_group_id: number | null;
+  default_group_name: string | null;
+  override_group_id: number | null;
+  override_group_name: string | null;
+  effective_group_id: number | null;
+  effective_group_name: string | null;
+}
+
 // ── Tag ───────────────────────────────────────────────────────────────────────
 
 export interface ContactTag {
@@ -89,6 +105,10 @@ export interface Contact {
   latest_conversation_id: number | null;
   // Custom fields — keyed by ContactFieldDef.id as string
   custom_fields: Record<string, unknown> | null;
+  // IDs of the contact_groups this contact belongs to. Used by the contact
+  // detail UI to filter applicable ContactFieldDef entries (global +
+  // group-scoped) without N+1 round trips.
+  group_ids?: number[];
   // Meta ad attribution
   ad_platform: string | null;
   meta_ad_id: string | null;
@@ -116,6 +136,7 @@ export interface ContactFilters {
   routing_mode?: RoutingMode | null;
   tag_id?: number | null;
   source?: string | null;
+  channel_id?: number | null;
   sort_by?: string;
   sort_dir?: 'asc' | 'desc';
   limit?: number;
@@ -147,6 +168,13 @@ export interface ContactChannel {
   routing_mode: RoutingMode | null;
   agent_id: number | null;
   agent_name: string | null;
+  channel_default_agent_id?: number | null;
+}
+
+/** Body for PATCH /contacts-v2/{contact_id}/channels/{channel_id}. */
+export interface ContactChannelRoutingPatch {
+  routing_mode?: RoutingMode | null;
+  agent_id?: number | null;
 }
 
 // ── Activity ──────────────────────────────────────────────────────────────────
@@ -289,6 +317,7 @@ export const contactsV2Service = {
       priority:        filters.priority,
       assigned_to_id:  filters.assigned_to_id,
       source:          filters.source,
+      channel_id:      filters.channel_id,
       sort_by:         filters.sort_by ?? 'created_at',
       sort_dir:        filters.sort_dir ?? 'desc',
       page,
@@ -354,6 +383,27 @@ export const contactsV2Service = {
   // ── Channels ──────────────────────────────────────────────────────────────
   getChannels: (id: number): Promise<ContactChannel[]> =>
     apiFetch<ContactChannel[]>(`/contacts-v2/${id}/channels`),
+
+  /**
+   * Update per-channel routing for one contact. Send only the fields you
+   * want to change. Pass `routing_mode: null` to clear the override (revert
+   * to channel default). Same with `agent_id: null`.
+   */
+  setChannelRouting: (
+    contactId: number,
+    channelId: number,
+    patch: ContactChannelRoutingPatch,
+  ): Promise<{
+    channel_id: number;
+    contact_id: number;
+    channel_identifier: string;
+    routing_mode: RoutingMode | null;
+    agent_id: number | null;
+  }> =>
+    apiFetch(`/contacts-v2/${contactId}/channels/${channelId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
 
   // ── Tags ──────────────────────────────────────────────────────────────────
   addTag: (contactId: number, tagId: number): Promise<void> =>
@@ -458,6 +508,22 @@ export const contactGroupService = {
     apiFetch<ContactGroup>(`/contact-groups/${groupId}/members`, {
       method: 'POST',
       body: JSON.stringify({ contact_ids: contactIds }),
+    }),
+
+  // ── Intake routing overrides (built-in source_key → custom group) ──
+
+  listIntakeRouting: (): Promise<{ items: IntakeRoutingItem[] }> =>
+    apiFetch<{ items: IntakeRoutingItem[] }>('/contact-groups/intake-routing'),
+
+  setIntakeRouting: (sourceKey: string, groupId: number): Promise<IntakeRoutingItem> =>
+    apiFetch<IntakeRoutingItem>(`/contact-groups/intake-routing/${encodeURIComponent(sourceKey)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ group_id: groupId }),
+    }),
+
+  clearIntakeRouting: (sourceKey: string): Promise<IntakeRoutingItem> =>
+    apiFetch<IntakeRoutingItem>(`/contact-groups/intake-routing/${encodeURIComponent(sourceKey)}`, {
+      method: 'DELETE',
     }),
 
   removeMembers: (groupId: number, contactIds: number[]): Promise<ContactGroup> =>

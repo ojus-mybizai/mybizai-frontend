@@ -13,6 +13,8 @@ export interface Channel {
   createdAt: string | null;
   updatedAt: string | null;
   leadCount?: number;
+  /** Provider-specific config blob — for WhatsApp this carries display_phone_number, etc. */
+  config?: Record<string, unknown> | null;
 }
 
 type ApiChannel = {
@@ -24,6 +26,7 @@ type ApiChannel = {
   created_at: string | null;
   updated_at: string | null;
   lead_count?: number;
+  config?: Record<string, unknown> | null;
 };
 
 function mapChannel(api: ApiChannel): Channel {
@@ -36,7 +39,23 @@ function mapChannel(api: ApiChannel): Channel {
     createdAt: api.created_at,
     updatedAt: api.updated_at,
     leadCount: typeof api.lead_count === 'number' ? api.lead_count : 0,
+    config: api.config ?? null,
   };
+}
+
+/** Verified WhatsApp business numbers usable as a "send from" channel. */
+export async function listVerifiedWhatsAppChannels(): Promise<Channel[]> {
+  const all = await listChannels();
+  return all.filter(c => c.type === 'whatsapp' && c.isConnected);
+}
+
+/** Best-effort display label for a WA channel — falls back to channel.name. */
+export function whatsAppChannelLabel(c: Channel): string {
+  const cfg = (c.config || {}) as Record<string, unknown>;
+  const phone = (cfg.display_phone_number as string | undefined)
+    || (cfg.phone_number as string | undefined)
+    || '';
+  return phone ? `${phone} · ${c.name}` : c.name;
 }
 
 export async function listChannels(): Promise<Channel[]> {

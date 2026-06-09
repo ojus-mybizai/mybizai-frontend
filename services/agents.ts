@@ -117,6 +117,13 @@ export interface Agent {
    */
   skillOverrides: SkillOverridesMap;
   /**
+   * Phase-2 manifest stack — Layer 2 selector. Maps to a role template like
+   * "recruitment" or "sales_inbound". `null` means no template; the skill
+   * description falls back to the developer manifest (Layer 1).
+   * See GET /agents/skill-templates for the live list of valid values.
+   */
+  roleTemplate: string | null;
+  /**
    * Free-form agent settings JSON. Keys currently used:
    *   - automation_instructions: string — system prompt body for non-chat runs
    *     (event triggers, scheduled runs). Falls back to `instructions` if empty.
@@ -155,6 +162,8 @@ export interface UpdateAgentInput {
   skills?: string[] | null;
   /** Phase-4 per-skill owner overrides — see SkillOverride. */
   skillOverrides?: SkillOverridesMap;
+  /** Phase-2 manifest Layer 2 — e.g. "recruitment" or null. */
+  roleTemplate?: string | null;
   /** Free-form settings JSON (e.g. {automation_instructions: "..."}) */
   settings?: Record<string, unknown>;
 }
@@ -231,6 +240,7 @@ type ApiChatAgent = {
   max_actions_per_run?: number;
   skills?: string[] | null;
   skill_overrides?: Record<string, ApiSkillOverride> | null;
+  role_template?: string | null;
   settings?: Record<string, unknown> | null;
   last_run_at?: string | null;
   total_runs?: number;
@@ -281,6 +291,7 @@ function mapAgent(a: ApiChatAgent): Agent {
     maxActionsPerRun: a.max_actions_per_run ?? 10,
     skills: a.skills ?? null,
     skillOverrides: mapSkillOverrides(a.skill_overrides),
+    roleTemplate: a.role_template ?? null,
     settings: (a.settings && typeof a.settings === 'object') ? (a.settings as Record<string, unknown>) : {},
     lastRunAt: a.last_run_at ?? null,
     totalRuns: a.total_runs ?? 0,
@@ -365,6 +376,9 @@ export async function updateAgent(id: string, input: UpdateAgentInput): Promise<
   if (input.skills !== undefined) payload.skills = input.skills;
   if (input.skillOverrides !== undefined) {
     payload.skill_overrides = serializeSkillOverrides(input.skillOverrides);
+  }
+  if (input.roleTemplate !== undefined) {
+    payload.role_template = input.roleTemplate;
   }
   if (input.settings !== undefined) payload.settings = input.settings;
 
@@ -567,11 +581,206 @@ export async function setAgentSkills(
   });
 }
 
+
+// ─── Phase-2 Role Templates ─────────────────────────────────
+
+export interface RoleTemplateSummary {
+  name: string;
+  label: string;
+  description: string;
+  skillCount: number;
+  coveredSkills: string[];
+}
+
+export interface RoleTemplateSkillOverlay {
+  whenToUse?: string;
+  examples?: Array<{
+    situation?: string;
+    call?: Record<string, unknown>;
+    why?: string;
+  }>;
+}
+
+export interface RoleTemplateDetail {
+  name: string;
+  label: string;
+  description: string;
+  skills: Record<string, RoleTemplateSkillOverlay>;
+}
+
+type ApiRoleTemplate = {
+  name: string;
+  label?: string;
+  description?: string;
+  skill_count?: number;
+  covered_skills?: string[];
+};
+
+export async function listSkillTemplates(): Promise<RoleTemplateSummary[]> {
+  const res = await apiFetch<{ templates: ApiRoleTemplate[] }>('/agents/skill-templates');
+  return (res.templates ?? []).map((t) => ({
+    name: t.name,
+    label: t.label ?? t.name,
+    description: t.description ?? '',
+    skillCount: t.skill_count ?? 0,
+    coveredSkills: t.covered_skills ?? [],
+  }));
+}
+
+export async function getSkillTemplate(name: string): Promise<RoleTemplateDetail> {
+  const res = await apiFetch<{
+    name: string;
+    label?: string;
+    description?: string;
+    skills?: Record<string, { when_to_use?: string; examples?: RoleTemplateSkillOverlay['examples'] }>;
+  }>(`/agents/skill-templates/${encodeURIComponent(name)}`);
+  const skills: Record<string, RoleTemplateSkillOverlay> = {};
+  for (const [skillName, overlay] of Object.entries(res.skills ?? {})) {
+    skills[skillName] = {
+      whenToUse: overlay?.when_to_use,
+      examples: overlay?.examples,
+    };
+  }
+  return {
+    name: res.name,
+    label: res.label ?? res.name,
+    description: res.description ?? '',
+    skills,
+  };
+}
+
+
+// ─── Phase-2c AI-suggest per-skill guidance ─────────────────
+
+export interface SkillGuidanceSuggestion {
+  customGuidance: string;
+  examples: Array<{ situation: string; call: Record<string, unknown>; why: string }>;
+  mode: SkillOverrideMode;
+}
+
+/**
+ * Ask the backend LLM to draft custom_guidance + examples for one skill,
+ * grounded in this agent's role + instructions. Does NOT mutate the agent;
+ * the UI shows the suggestion and the owner decides whether to apply it.
+ */
+export async function suggestSkillGuidance(
+  agentId: string | number,
+  skillName: string,
+): Promise<SkillGuidanceSuggestion> {
+  const res = await apiFetch<{
+    skill_name: string;
+    suggestion: {
+      custom_guidance?: string;
+      examples?: Array<{ situation?: string; call?: Record<string, unknown>; why?: string }>;
+      mode?: SkillOverrideMode;
+    };
+  }>(`/agents/${agentId}/skills/${encodeURIComponent(skillName)}/suggest`, {
+    method: 'POST',
+  });
+  const s = res.suggestion ?? {};
+  return {
+    customGuidance: s.custom_guidance ?? '',
+    examples: (s.examples ?? []).map((e) => ({
+      situation: e.situation ?? '',
+      call: (e.call && typeof e.call === 'object') ? e.call : {},
+      why: e.why ?? '',
+    })),
+    mode: s.mode === 'replace' ? 'replace' : 'append',
+  };
+}
+
 export async function runAgentManually(agentId: string, context?: Record<string, unknown>): Promise<unknown> {
   return apiFetch(`/agents/${agentId}/run`, {
     method: 'POST',
     body: JSON.stringify(context ?? {}),
   });
+}
+
+
+// ─── Skill preview (compiled tool description) ───────────────
+// Returns exactly what OpenAI sees for this skill — both the default
+// (Layer-1-only) and the effective (Layer 1 + role template + owner override)
+// so the Skills page can show a live preview + diff.
+
+export interface SkillPreview {
+  skillName: string;
+  defaultDescription: string;
+  effectiveDescription: string;
+  parameters: Record<string, unknown>;
+  layers: {
+    hasRoleTemplate: boolean;
+    roleTemplateName: string | null;
+    hasOwnerOverride: boolean;
+    ownerMode: SkillOverrideMode | null;
+  };
+}
+
+interface ApiPreviewResponse {
+  skill_name: string;
+  default_description: string;
+  effective_description: string;
+  parameters: Record<string, unknown>;
+  layers?: {
+    has_role_template?: boolean;
+    role_template_name?: string | null;
+    has_owner_override?: boolean;
+    owner_mode?: string | null;
+  };
+}
+
+function _mapPreview(res: ApiPreviewResponse): SkillPreview {
+  return {
+    skillName: res.skill_name,
+    defaultDescription: res.default_description ?? '',
+    effectiveDescription: res.effective_description ?? '',
+    parameters: res.parameters ?? {},
+    layers: {
+      hasRoleTemplate: !!res.layers?.has_role_template,
+      roleTemplateName: res.layers?.role_template_name ?? null,
+      hasOwnerOverride: !!res.layers?.has_owner_override,
+      ownerMode:
+        res.layers?.owner_mode === 'replace'
+          ? 'replace'
+          : res.layers?.owner_mode === 'append'
+            ? 'append'
+            : null,
+    },
+  };
+}
+
+/** Get the saved compiled description for a skill on an agent. */
+export async function getSkillPreview(
+  agentId: string | number,
+  skillName: string,
+): Promise<SkillPreview> {
+  const res = await apiFetch<ApiPreviewResponse>(
+    `/agents/${agentId}/skills/${encodeURIComponent(skillName)}/preview`,
+  );
+  return _mapPreview(res);
+}
+
+/**
+ * Live-preview a skill description with an UNSAVED draft override applied.
+ * Used by the Skills page to update the preview pane while the owner types.
+ * Debounce on the caller side.
+ */
+export async function previewSkillWithDraft(
+  agentId: string | number,
+  skillName: string,
+  draft: SkillOverride,
+): Promise<SkillPreview> {
+  const res = await apiFetch<ApiPreviewResponse>(
+    `/agents/${agentId}/skills/${encodeURIComponent(skillName)}/preview`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        customGuidance: draft.customGuidance,
+        mode: draft.mode,
+        examples: draft.examples,
+      }),
+    },
+  );
+  return _mapPreview(res);
 }
 
 

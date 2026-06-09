@@ -15,6 +15,7 @@ import {
   listFieldDefs, createFieldDef, updateFieldDef, deleteFieldDef,
   type ContactFieldDef, type FieldType, FIELD_TYPE_LABELS,
 } from '@/services/contact-field-defs';
+import IntakeRoutingSection from './intake-routing-section';
 
 interface Props {
   onClose: () => void;
@@ -230,6 +231,10 @@ export function GroupRoutingPanel({ onClose, onGroupSelect, activeGroupId }: Pro
 
       {/* Group list */}
       <div className="flex-1 overflow-y-auto">
+        {/* Intake routing config — sits above the group list so owners
+            configuring groups can also configure where new contacts land. */}
+        <IntakeRoutingSection allGroups={groups} />
+
         {loadingGroups && groups.length === 0 ? (
           <div className="flex items-center justify-center h-32">
             <Loader2 className="w-5 h-5 animate-spin text-text-secondary" />

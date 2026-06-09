@@ -228,6 +228,13 @@ export interface ConversationListFilters {
   agent_id?: number;
   agent_name?: string;
   contact_group_id?: number;
+  /**
+   * WhatsApp 24h customer-service window filter.
+   * true → only WA conversations whose window is currently open.
+   * false → only WA conversations whose window is closed (template-only).
+   * undefined → no filtering.
+   */
+  session_active?: boolean;
 }
 
 type PaginatedMessages = {
@@ -509,10 +516,25 @@ export interface InboxConversation extends Conversation {
   leadStatus?: string;
   lastIntent?: string;
   unreadCount?: number;
+  /** ISO timestamp when the WhatsApp 24h customer-service window closes (whatsapp only). */
+  sessionWindowExpiresAt?: string | null;
+  /** True if currently within the 24h free-form messaging window (whatsapp only). */
+  sessionActive?: boolean;
 }
 
 function mapConvosToInboxConversations(convos: ConvoOut[]): InboxConversation[] {
-  return convos.map((c) => ({
+  const now = Date.now();
+  return convos.map((c) => {
+    // WhatsApp 24h customer-service window — only meaningful for WhatsApp.
+    const isWhatsapp = (c.channel_type ?? '').toLowerCase() === 'whatsapp';
+    let sessionWindowExpiresAt: string | null = null;
+    let sessionActive = false;
+    if (isWhatsapp && c.last_user_message_at) {
+      const expiresMs = new Date(c.last_user_message_at).getTime() + 24 * 60 * 60 * 1000;
+      sessionWindowExpiresAt = new Date(expiresMs).toISOString();
+      sessionActive = expiresMs > now;
+    }
+    return ({
     id: String(c.id),
     customerId: c.lead_id != null ? String(c.lead_id) : String(c.contact_id ?? ''),
     contactId: c.contact_id ?? null,
@@ -531,7 +553,10 @@ function mapConvosToInboxConversations(convos: ConvoOut[]): InboxConversation[] 
     leadStatus: c.lead_status ?? undefined,
     lastIntent: c.last_intent ?? undefined,
     unreadCount: c.unread_count ?? 0,
-  }));
+    sessionWindowExpiresAt,
+    sessionActive,
+  });
+  });
 }
 
 export async function listAllConversations(
@@ -547,6 +572,7 @@ export async function listAllConversations(
   if (filters?.agent_id) params.set('agent_id', String(filters.agent_id));
   if (filters?.agent_name) params.set('agent_name', filters.agent_name);
   if (filters?.contact_group_id) params.set('contact_group_id', String(filters.contact_group_id));
+  if (filters?.session_active != null) params.set('session_active', String(filters.session_active));
   const qs = params.toString();
   const url = qs ? `/convo/?${qs}` : '/convo/';
   const convos = await apiFetch<ConvoOut[]>(url, { method: 'GET' });

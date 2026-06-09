@@ -114,6 +114,8 @@ export function ByEmployeePanel({ employees, itemDetailsMap, loading, composerPr
               contact_id: null,
               created_at: '',
               verified_at: null,
+              session_window_expires_at: null,
+              session_active: false,
             },
             totalAssigned: 0,
             done: 0,

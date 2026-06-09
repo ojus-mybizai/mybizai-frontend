@@ -11,13 +11,14 @@ import {
   LayoutList, ChevronRight, Pencil, Save, X, Hash, Shield,
 } from 'lucide-react';
 import ModuleGuard from '@/components/module-guard';
-import { useContactV2Store } from '@/lib/contact-v2-store';
+import { useContactV2Store, type ContactV2State } from '@/lib/contact-v2-store';
 import { useAuthStore } from '@/lib/auth-store';
 import { useAgentList, useEmployeeList } from '@/lib/hooks/use-reference-data';
 import {
   contactsV2Service,
   type Contact,
   type ContactChannel,
+  type ContactGroup,
   type RoutingMode,
   type Priority,
   type NoteCategory,
@@ -30,7 +31,7 @@ import {
 // Constants
 // ────────────────────────────────────────────────────────────────
 
-type TabId = 'overview' | 'details' | 'activity' | 'notes' | 'pipeline' | 'channels';
+type TabId = 'overview' | 'details' | 'activity' | 'notes' | 'pipeline' | 'channels' | 'groups';
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', Icon: User },
@@ -39,6 +40,7 @@ const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'notes',    label: 'Notes',    Icon: FileText },
   { id: 'pipeline', label: 'Pipeline', Icon: Layers },
   { id: 'channels', label: 'Channels', Icon: Wifi },
+  { id: 'groups',   label: 'Groups',   Icon: FolderKanban },
 ];
 
 const PRIORITY_OPTIONS: Priority[] = ['hot', 'high', 'medium', 'low'];
@@ -134,6 +136,7 @@ function ContactDetailInner() {
     select, clearSelected, update, updateRouting, assign,
     addNote, deleteNote, removeTag, moveProcessStage, remove,
     tags: allTags, loadTags, addTag,
+    groups: allGroups, loadGroups, addToGroup, removeFromGroup,
   } = useContactV2Store(useShallow(s => ({
     selectedContact: s.selectedContact,
     loadingDetail: s.loadingDetail,
@@ -156,6 +159,10 @@ function ContactDetailInner() {
     remove: s.remove,
     tags: s.tags,
     loadTags: s.loadTags,
+    groups: s.groups,
+    loadGroups: s.loadGroups,
+    addToGroup: s.addToGroup,
+    removeFromGroup: s.removeFromGroup,
   })));
 
   const hasPermission = useAuthStore(s => s.hasPermission);
@@ -182,6 +189,11 @@ function ContactDetailInner() {
   useEffect(() => {
     if (allTags.length === 0) void loadTags();
   }, [allTags.length, loadTags]);
+
+  // ── Load groups when the Groups tab is opened (or once for badges) ──
+  useEffect(() => {
+    if (allGroups.length === 0) void loadGroups();
+  }, [allGroups.length, loadGroups]);
 
   // ── Load channels on demand ───────────────────────────────────
   useEffect(() => {
@@ -349,7 +361,48 @@ function ContactDetailInner() {
               />
             )}
             {tab === 'channels' && (
-              <ChannelsTab channels={channels} loading={channelsLoading} />
+              <ChannelsTab
+                channels={channels}
+                loading={channelsLoading}
+                contactId={c.id}
+                agents={agents}
+                canManage={canManage}
+                onChannelUpdated={(channelId, patch) => {
+                  setChannels((prev) =>
+                    prev.map((row) =>
+                      row.channel_id === channelId
+                        ? {
+                            ...row,
+                            ...('routing_mode' in patch ? { routing_mode: patch.routing_mode ?? null } : {}),
+                            ...('agent_id' in patch
+                              ? {
+                                  agent_id: patch.agent_id ?? null,
+                                  agent_name: patch.agent_id
+                                    ? agents.find((a) => Number(a.id) === patch.agent_id)?.name ?? row.agent_name
+                                    : null,
+                                }
+                              : {}),
+                          }
+                        : row,
+                    ),
+                  );
+                }}
+              />
+            )}
+            {tab === 'groups' && (
+              <GroupsTab
+                contact={c}
+                allGroups={allGroups}
+                canManage={canManage}
+                onAdd={async (groupId) => {
+                  await addToGroup(groupId, [c.id]);
+                  await select(c.id); // refresh the contact (group_ids etc.)
+                }}
+                onRemove={async (groupId) => {
+                  await removeFromGroup(groupId, [c.id]);
+                  await select(c.id);
+                }}
+              />
             )}
           </div>
 
@@ -507,9 +560,11 @@ function ContactHeader({
           options={PRIORITY_OPTIONS.map(p => ({ value: p, label: PRIORITY_LABEL[p] }))}
           onChange={(v) => onPriority(v as Priority)}
         />
-        {/* Routing */}
+        {/* Routing — this is the DEFAULT for new channels this contact uses.
+            Per-channel overrides live in the Channels tab and take precedence
+            on actual message routing. */}
         <ChipDropdown
-          label="Routing"
+          label="Default routing"
           value={ROUTING_LABEL[c.routing_mode]}
           styleClass={ROUTING_STYLE[c.routing_mode]}
           disabled={!canManage}
@@ -644,13 +699,25 @@ function DetailsTab({ contact: c }: { contact: Contact }) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
+  // Match the modal's Fields tab semantics: only show field defs that are
+  // global (group_id === null) OR scoped to a group this contact belongs to.
+  // Previously this tab rendered every field def in the business — which
+  // surfaced editor inputs for fields that weren't applicable to the contact
+  // (e.g. "Suppliers"-group fields on a "Customers" contact) and diverged
+  // from the modal, confusing owners about which tab was right.
   useEffect(() => {
     setLoading(true);
+    const contactGroupIds = new Set(c.group_ids ?? []);
     listFieldDefs()
-      .then(setDefs)
+      .then((all) => {
+        const applicable = all.filter(
+          (f) => f.group_id === null || contactGroupIds.has(f.group_id),
+        );
+        setDefs(applicable);
+      })
       .catch(() => setDefs([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [c.id, (c.group_ids ?? []).join(',')]);
 
   useEffect(() => { setValues(c.custom_fields ?? {}); setDirty(false); }, [c.id, c.custom_fields]);
 
@@ -773,7 +840,7 @@ function DLRow({ label, value }: { label: string; value: string }) {
 // Activity tab
 // ────────────────────────────────────────────────────────────────
 
-function ActivityTab({ activities, loading }: { activities: ReturnType<typeof useContactV2Store>['activities']; loading: boolean }) {
+function ActivityTab({ activities, loading }: { activities: ContactV2State['activities']; loading: boolean }) {
   if (loading) return <SkeletonCard />;
   return (
     <SectionCard title="Activity timeline" icon={Activity}>
@@ -805,7 +872,7 @@ function NotesTab({
   contact: _c, notes, loading, onAdd, onDelete,
 }: {
   contact: Contact;
-  notes: ReturnType<typeof useContactV2Store>['notes'];
+  notes: ContactV2State['notes'];
   loading: boolean;
   onAdd: (content: string, category?: string) => Promise<void>;
   onDelete: (noteId: number) => Promise<void>;
@@ -902,7 +969,7 @@ function PipelineTab({
   contact: _c, processes, loading, onMoveStage,
 }: {
   contact: Contact;
-  processes: ReturnType<typeof useContactV2Store>['processes'];
+  processes: ContactV2State['processes'];
   loading: boolean;
   onMoveStage: (entryId: number, stageId: number) => Promise<void>;
 }) {
@@ -972,36 +1039,285 @@ function PipelineTab({
 // Channels tab
 // ────────────────────────────────────────────────────────────────
 
-function ChannelsTab({ channels, loading }: { channels: ContactChannel[]; loading: boolean }) {
+type AgentLite = { id: number | string; name: string };
+
+function ChannelsTab({
+  channels, loading, contactId, agents, canManage, onChannelUpdated,
+}: {
+  channels: ContactChannel[];
+  loading: boolean;
+  contactId: number;
+  agents: AgentLite[];
+  canManage: boolean;
+  onChannelUpdated: (channelId: number, patch: { routing_mode?: RoutingMode | null; agent_id?: number | null }) => void;
+}) {
   if (loading) return <SkeletonCard />;
   return (
-    <SectionCard title="Channels" icon={Wifi}>
+    <SectionCard title="Channels & routing" icon={Wifi}>
       {channels.length === 0 ? (
-        <p className="text-sm text-text-secondary">No channels linked.</p>
+        <p className="text-sm text-text-secondary">This contact hasn&apos;t messaged on any channel yet.</p>
       ) : (
-        <ul className="divide-y divide-border-color">
-          {channels.map(ch => (
-            <li key={ch.channel_id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-text-primary truncate">{ch.display_name || ch.channel_name}</p>
-                <p className="text-xs text-text-secondary">{ch.channel_type} · {ch.channel_identifier}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {ch.routing_mode && (
-                  <span className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${ROUTING_STYLE[ch.routing_mode]}`}>
-                    {ROUTING_LABEL[ch.routing_mode]}
-                  </span>
-                )}
-                {ch.agent_name && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-0.5 text-[11px] font-medium text-purple-500">
-                    <Bot className="h-3 w-3" /> {ch.agent_name}
-                  </span>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="mb-3 text-xs text-text-secondary">
+            Per-channel routing for this contact. Set each channel independently —
+            e.g. <span className="font-medium text-text-primary">AI</span> on one WhatsApp number,
+            <span className="font-medium text-text-primary"> Blocked</span> on another.
+          </p>
+          <ul className="divide-y divide-border-color">
+            {channels.map(ch => (
+              <ChannelRoutingRow
+                key={ch.channel_id}
+                channel={ch}
+                contactId={contactId}
+                agents={agents}
+                canManage={canManage}
+                onPatched={(patch) => onChannelUpdated(ch.channel_id, patch)}
+              />
+            ))}
+          </ul>
+        </>
       )}
+    </SectionCard>
+  );
+}
+
+function ChannelRoutingRow({
+  channel: ch, contactId, agents, canManage, onPatched,
+}: {
+  channel: ContactChannel;
+  contactId: number;
+  agents: AgentLite[];
+  canManage: boolean;
+  onPatched: (patch: { routing_mode?: RoutingMode | null; agent_id?: number | null }) => void;
+}) {
+  const [saving, setSaving] = useState<null | 'routing' | 'agent'>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const persist = async (
+    patch: { routing_mode?: RoutingMode | null; agent_id?: number | null },
+    which: 'routing' | 'agent',
+  ) => {
+    setSaving(which);
+    setError(null);
+    try {
+      await contactsV2Service.setChannelRouting(contactId, ch.channel_id, patch);
+      onPatched(patch);
+    } catch (err) {
+      setError((err as Error).message || 'Failed to update');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  // "default" in the dropdown means routing_mode = null → use channel default.
+  const routingValue: 'default' | RoutingMode = ch.routing_mode ?? 'default';
+
+  return (
+    <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-text-primary truncate">
+          {ch.display_name || ch.channel_name}
+        </p>
+        <p className="text-xs text-text-secondary">
+          {ch.channel_type} · {ch.channel_identifier}
+          {ch.channel_name && ch.channel_name !== ch.display_name && (
+            <span className="text-text-secondary/70"> · on “{ch.channel_name}”</span>
+          )}
+        </p>
+        {error && <p className="mt-1 text-[11px] text-rose-500">{error}</p>}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Routing mode dropdown */}
+        <div className="relative">
+          <select
+            value={routingValue}
+            disabled={!canManage || saving !== null}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === 'default') void persist({ routing_mode: null }, 'routing');
+              else void persist({ routing_mode: v as RoutingMode }, 'routing');
+            }}
+            className={`rounded-md border px-2 py-1 text-[11px] font-medium focus:border-accent focus:outline-none disabled:opacity-60 ${
+              ch.routing_mode
+                ? ROUTING_STYLE[ch.routing_mode]
+                : 'border-border-color bg-bg-primary text-text-secondary'
+            }`}
+            title="Per-channel routing for this contact. 'Default' uses the channel's own routing."
+          >
+            <option value="default">Use channel default</option>
+            <option value="ai">{ROUTING_LABEL.ai}</option>
+            <option value="manual">{ROUTING_LABEL.manual}</option>
+            <option value="blocked">{ROUTING_LABEL.blocked}</option>
+          </select>
+        </div>
+
+        {/* Agent dropdown — only relevant if routing is ai (or default + channel has agent) */}
+        <div className="relative">
+          <select
+            value={ch.agent_id ? String(ch.agent_id) : 'default'}
+            disabled={!canManage || saving !== null || ch.routing_mode === 'blocked'}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === 'default') void persist({ agent_id: null }, 'agent');
+              else void persist({ agent_id: Number(v) }, 'agent');
+            }}
+            className="rounded-md border border-border-color bg-bg-primary px-2 py-1 text-[11px] font-medium text-text-primary focus:border-accent focus:outline-none disabled:opacity-60"
+            title="Which agent handles this contact on this channel. 'Default' uses the channel's bound agent."
+          >
+            <option value="default">Default agent</option>
+            {agents.map((a) => (
+              <option key={a.id} value={String(a.id)}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-text-secondary" />}
+      </div>
+    </li>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Groups tab
+// ────────────────────────────────────────────────────────────────
+
+function GroupsTab({
+  contact: c, allGroups, canManage, onAdd, onRemove,
+}: {
+  contact: Contact;
+  allGroups: ContactGroup[];
+  canManage: boolean;
+  onAdd: (groupId: number) => Promise<void>;
+  onRemove: (groupId: number) => Promise<void>;
+}) {
+  const memberIds = useMemo(() => new Set(c.group_ids ?? []), [c.group_ids]);
+  const memberGroups = useMemo(
+    () => allGroups.filter((g) => memberIds.has(g.id)),
+    [allGroups, memberIds],
+  );
+  const availableGroups = useMemo(
+    () => allGroups.filter((g) => !memberIds.has(g.id)),
+    [allGroups, memberIds],
+  );
+
+  const [pendingId, setPendingId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [picker, setPicker] = useState('');
+
+  const handleAdd = async (groupId: number) => {
+    if (!groupId) return;
+    setPendingId(groupId);
+    setError(null);
+    try {
+      await onAdd(groupId);
+      setPicker('');
+    } catch (e) {
+      setError((e as Error).message || 'Failed to add to group');
+    } finally {
+      setPendingId(null);
+    }
+  };
+
+  const handleRemove = async (groupId: number) => {
+    setPendingId(groupId);
+    setError(null);
+    try {
+      await onRemove(groupId);
+    } catch (e) {
+      setError((e as Error).message || 'Failed to remove from group');
+    } finally {
+      setPendingId(null);
+    }
+  };
+
+  return (
+    <SectionCard title="Groups" icon={FolderKanban}>
+      <p className="mb-3 text-xs text-text-secondary">
+        Groups scope which custom fields apply to this contact and which routing
+        rules fire at intake. System groups (auto-assigned) can&apos;t be removed
+        here.
+      </p>
+
+      {/* Current memberships */}
+      {memberGroups.length === 0 ? (
+        <p className="text-sm text-text-secondary mb-3">Not a member of any group yet.</p>
+      ) : (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {memberGroups.map((g) => {
+            const isSystem = (g as ContactGroup & { is_system?: boolean }).is_system === true;
+            return (
+              <span
+                key={g.id}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  isSystem
+                    ? 'border-bg-secondary bg-bg-secondary text-text-secondary'
+                    : 'border-indigo-300/60 bg-indigo-50 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-900/30 dark:text-indigo-200'
+                }`}
+                style={!isSystem && g.color ? { borderColor: g.color, color: g.color, backgroundColor: g.color + '15' } : undefined}
+              >
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: g.color ?? 'currentColor' }}
+                />
+                {g.name}
+                {isSystem && (
+                  <span title="Auto-assigned system group — managed by routing rules">
+                    <Shield className="h-3 w-3 opacity-70" />
+                  </span>
+                )}
+                {!isSystem && canManage && (
+                  <button
+                    type="button"
+                    onClick={() => void handleRemove(g.id)}
+                    disabled={pendingId === g.id}
+                    className="ml-0.5 opacity-70 hover:opacity-100 disabled:opacity-40"
+                    title="Remove from group"
+                  >
+                    {pendingId === g.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <X className="h-3 w-3" />
+                    )}
+                  </button>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Picker */}
+      {canManage && (
+        <div className="flex items-center gap-2">
+          <select
+            value={picker}
+            onChange={(e) => {
+              const v = e.target.value;
+              setPicker(v);
+              if (v) void handleAdd(Number(v));
+            }}
+            disabled={availableGroups.length === 0 || pendingId !== null}
+            className="rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:border-accent focus:outline-none disabled:opacity-60"
+          >
+            <option value="">
+              {availableGroups.length === 0 ? 'Already in every group' : 'Add to group…'}
+            </option>
+            {availableGroups.map((g) => (
+              <option key={g.id} value={String(g.id)}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+          {pendingId !== null && (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-text-secondary" />
+          )}
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-[11px] text-rose-500">{error}</p>}
     </SectionCard>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { useContactV2Store } from '@/lib/contact-v2-store';
 import type { ContactFilters, Priority, RoutingMode } from '@/services/contacts-v2';
+import type { Channel as BusinessChannel } from '@/services/channels';
 
 interface Props {
   open: boolean;
@@ -11,6 +12,7 @@ interface Props {
   filters: ContactFilters;
   onApply: (filters: ContactFilters) => void;
   teamMembers?: { id: number; name: string }[];
+  channelInstances?: BusinessChannel[];
 }
 
 const PRIORITIES: { value: Priority; label: string }[] = [
@@ -36,7 +38,7 @@ const SOURCES = [
   { value: 'web_form',  label: 'Web Form' },
 ];
 
-export function ContactFiltersDrawer({ open, onClose, filters, onApply, teamMembers = [] }: Props) {
+export function ContactFiltersDrawer({ open, onClose, filters, onApply, teamMembers = [], channelInstances = [] }: Props) {
   const { tags, loadTags } = useContactV2Store();
   const [local, setLocal] = useState<ContactFilters>(filters);
 
@@ -68,6 +70,7 @@ export function ContactFiltersDrawer({ open, onClose, filters, onApply, teamMemb
     local.routing_mode,
     local.tag_id,
     local.source,
+    local.channel_id,
   ].filter(Boolean).length;
 
   return (
@@ -189,6 +192,25 @@ export function ContactFiltersDrawer({ open, onClose, filters, onApply, teamMemb
               ))}
             </select>
           </div>
+
+          {/* Channel (business channel instance) */}
+          {channelInstances.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">
+                Channel
+              </label>
+              <select
+                value={local.channel_id ?? ''}
+                onChange={e => set('channel_id', e.target.value ? Number(e.target.value) : null)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border-color bg-bg-secondary text-text-primary focus:outline-none focus:border-accent"
+              >
+                <option value="">All channels</option>
+                {channelInstances.map(ch => (
+                  <option key={ch.id} value={ch.id}>{ch.name} ({ch.type})</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Assigned To */}
           {teamMembers.length > 0 && (

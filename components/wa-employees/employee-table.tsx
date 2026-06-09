@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { UserPlus, ChevronUp, ChevronDown, ChevronsUpDown, MoreVertical, Send, UserX, UserCheck, Trash2, Shield, Search, X } from 'lucide-react';
+import { UserPlus, ChevronUp, ChevronDown, ChevronsUpDown, MoreVertical, Send, UserX, UserCheck, Trash2, Shield, Search, X, MessageCircle, Lock } from 'lucide-react';
 import type { WaEmployee, WaEmployeeGroup } from '@/services/waEmployees';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -25,9 +25,24 @@ const STATUS_PILL: Record<string, string> = {
   inactive:           'bg-gray-100 text-gray-500 border-gray-200',
 };
 
-type SortField = 'name' | 'status' | 'verified_at';
+type SortField = 'name' | 'status' | 'verified_at' | 'session';
 type SortDir   = 'asc' | 'desc';
 type StatusFilter = 'all' | 'active' | 'pending_acceptance' | 'rejected' | 'inactive';
+
+/**
+ * Format the time remaining in the WhatsApp 24h free-form messaging window.
+ * Returns e.g. "23h 14m", "47m", "<1m", or null if the window is closed.
+ */
+function formatSessionRemaining(expiresAt: string | null): string | null {
+  if (!expiresAt) return null;
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (ms <= 0) return null;
+  const totalMin = Math.floor(ms / 60000);
+  if (totalMin < 1) return '<1m';
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
 
 interface Props {
   employees: WaEmployee[];
@@ -97,6 +112,12 @@ export function EmployeeTable({ employees, groups, onRowClick, onResendInvite, o
       else if (sortField === 'verified_at') {
         const av = a.verified_at ? new Date(a.verified_at).getTime() : 0;
         const bv = b.verified_at ? new Date(b.verified_at).getTime() : 0;
+        cmp = av - bv;
+      }
+      else if (sortField === 'session') {
+        // Open sessions first (sorted by remaining time desc), then closed
+        const av = a.session_active && a.session_window_expires_at ? new Date(a.session_window_expires_at).getTime() : 0;
+        const bv = b.session_active && b.session_window_expires_at ? new Date(b.session_window_expires_at).getTime() : 0;
         cmp = av - bv;
       }
       return sortDir === 'asc' ? cmp : -cmp;
@@ -208,6 +229,13 @@ export function EmployeeTable({ employees, groups, onRowClick, onResendInvite, o
                     Status <SortIcon field="status" sortField={sortField} sortDir={sortDir} />
                   </th>
                   <th
+                    className="text-left px-4 py-3 text-text-secondary font-medium cursor-pointer select-none hover:text-text-primary"
+                    onClick={() => toggleSort('session')}
+                    title="WhatsApp 24-hour customer service window. While open, the business can send any free-form message; once closed, only approved templates work."
+                  >
+                    Session <SortIcon field="session" sortField={sortField} sortDir={sortDir} />
+                  </th>
+                  <th
                     className="text-left px-4 py-3 text-text-secondary font-medium hidden md:table-cell cursor-pointer select-none hover:text-text-primary"
                     onClick={() => toggleSort('verified_at')}
                   >
@@ -253,6 +281,37 @@ export function EmployeeTable({ employees, groups, onRowClick, onResendInvite, o
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[emp.status] || 'bg-gray-400'}`} />
                         {STATUS_LABELS[emp.status] || emp.status}
                       </span>
+                    </td>
+
+                    {/* WhatsApp 24h service window */}
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const remaining = formatSessionRemaining(emp.session_window_expires_at);
+                        if (emp.session_active && remaining) {
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200"
+                              title={`Free-form messages allowed for ${remaining} (until ${new Date(emp.session_window_expires_at!).toLocaleString()})`}
+                            >
+                              <MessageCircle className="w-3 h-3" />
+                              Open · {remaining}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-gray-100 text-gray-500 border-gray-200"
+                            title={
+                              emp.session_window_expires_at
+                                ? `Window closed at ${new Date(emp.session_window_expires_at).toLocaleString()}. Only approved templates can be sent.`
+                                : 'Employee has never sent an inbound message. Only approved templates can be sent.'
+                            }
+                          >
+                            <Lock className="w-3 h-3" />
+                            Closed
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* Verified date */}

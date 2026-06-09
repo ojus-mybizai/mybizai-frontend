@@ -704,9 +704,14 @@ function AddWidgetModal({
               )}
 
               <div className="space-y-1">
-                {group.items.map(opt => {
-                  const key       = opt.source_type + (opt.source_id ?? '');
-                  const isLoading = adding === key;
+                {group.items.map((opt, idx) => {
+                  // Compose a key that's unique across the source + its display variant.
+                  // Same source (e.g. datasheet column "number14") can appear multiple
+                  // times under different display types (stat, list, chart) — they were
+                  // colliding on the source-only key.
+                  const key = `${opt.source_type}|${opt.source_id ?? ''}|${opt.display_type ?? ''}|${idx}`;
+                  const addingKey = opt.source_type + (opt.source_id ?? '');
+                  const isLoading = adding === addingKey;
                   const cfg       = getSourceConfig(opt.source_type);
                   const Icon      = cfg.icon;
                   const tc        = TYPE_COLORS[opt.display_type] ?? TYPE_COLORS.stat;

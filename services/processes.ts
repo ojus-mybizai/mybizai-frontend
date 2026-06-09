@@ -1,16 +1,41 @@
 import { apiFetch } from '@/lib/api-client';
+import type { WaWorkItem } from '@/services/waWork';
 
 // ---------- Types ----------
+
+/** Discriminator selecting the runtime path for a stage-bound task.
+ *  - 'wa_work'       → WhatsApp dispatch to WaEmployees (new default).
+ *  - 'internal_work' → legacy Work row pointed at a platform User. Kept so
+ *                      pre-migration rows still render (read-only chip) and
+ *                      keep firing until the owner removes them. */
+export type StageWorkDispatchKind = 'wa_work' | 'internal_work';
 
 export interface ProcessStageWork {
   id: number;
   stage_id: number;
+  dispatch_kind: StageWorkDispatchKind;
+
+  // ── internal_work (legacy) ───────────────────────────────────────────
   work_template_id: number | null;
   work_template_name: string | null;
-  title: string | null;
-  description: string | null;
   default_assigned_to_id: number | null;
   default_assigned_to_name: string | null;
+
+  // ── wa_work ──────────────────────────────────────────────────────────
+  wa_template_id: number | null;
+  wa_template_name: string | null;
+  /** simple_task | whatsapp_form | checklist | (lead_list — blocked) */
+  wa_template_type: string | null;
+  wa_assigned_employee_ids: number[] | null;
+  wa_assigned_employee_names: string[] | null;
+  wa_assigned_group_id: number | null;
+  wa_assigned_group_name: string | null;
+  wa_dispatch_mode: 'individual' | 'broadcast' | null;
+  wa_auto_dispatch: boolean;
+
+  // ── shared ───────────────────────────────────────────────────────────
+  title: string | null;
+  description: string | null;
   sort_order: number;
   due_in_days: number | null;
 }
@@ -201,11 +226,31 @@ export async function deleteStage(processId: number, stageId: number): Promise<v
 
 // ---------- Stage Works ----------
 
-export async function addStageWork(processId: number, stageId: number, payload: {
-  work_template_id?: number | null; title?: string; description?: string;
-  default_assigned_to_id?: number | null; sort_order?: number;
+export interface AddStageWorkPayload {
+  /** Defaults server-side to 'wa_work' if omitted — the UI sends it explicitly. */
+  dispatch_kind?: StageWorkDispatchKind;
+
+  // Internal-work (legacy — not produced by the rebuilt UI, kept for API parity).
+  work_template_id?: number | null;
+  default_assigned_to_id?: number | null;
+
+  // WA-work
+  wa_template_id?: number | null;
+  wa_assigned_employee_ids?: number[] | null;
+  wa_assigned_group_id?: number | null;
+  wa_dispatch_mode?: 'individual' | 'broadcast';
+  wa_auto_dispatch?: boolean;
+
+  // Shared
+  title?: string;
+  description?: string;
+  sort_order?: number;
   due_in_days?: number | null;
-}): Promise<ProcessStageWork> {
+}
+
+export async function addStageWork(
+  processId: number, stageId: number, payload: AddStageWorkPayload,
+): Promise<ProcessStageWork> {
   return apiFetch<ProcessStageWork>(`/processes/${processId}/stages/${stageId}/works`, {
     method: 'POST', auth: true,
     body: JSON.stringify(payload),
@@ -215,6 +260,17 @@ export async function addStageWork(processId: number, stageId: number, payload: 
 
 export async function deleteStageWork(processId: number, stageId: number, workId: number): Promise<void> {
   await apiFetch(`/processes/${processId}/stages/${stageId}/works/${workId}`, { method: 'DELETE', auth: true });
+}
+
+/** List the WaWorkItems (with embedded assignments) that were auto-spawned
+ *  for this process entry. Powers the entry drawer's WhatsApp tasks panel. */
+export async function listEntryWaWork(
+  processId: number, entryId: number,
+): Promise<WaWorkItem[]> {
+  return apiFetch<WaWorkItem[]>(
+    `/processes/${processId}/entries/${entryId}/wa-work`,
+    { method: 'GET', auth: true },
+  );
 }
 
 // ---------- Process Entries ----------
@@ -475,12 +531,34 @@ export async function createFromTemplate(template_key: string, name_override?: s
 
 // ---------- Automation Rules ----------
 
+export type AutomationTrigger =
+  | 'on_added'      // entry first lands in the process (process-wide)
+  | 'on_enter'      // entry enters a specific stage
+  | 'on_exit'       // entry leaves a specific stage
+  | 'on_stuck'      // SLA breach on a stage (or any stage if stage_id null)
+  | 'on_complete'   // entry reached a terminal "completed" stage
+  | 'on_drop';      // entry reached a terminal "failed" stage
+
+/** A single AND-condition evaluated against the event context before the
+ *  rule's action fires. Same shape as the generic AutomationRule.conditions. */
+export interface AutomationCondition {
+  /** Dotted path resolved against the event context, e.g. `entry.priority`. */
+  field: string;
+  /** Operator: eq | neq | gt | gte | lt | lte | in | not_in | contains
+   *  | is_empty | is_not_empty | days_since_gt | days_since_lt
+   *  | days_until_gt | days_until_lt. */
+  op: string;
+  /** JSON-serialisable comparison value. `in` / `not_in` expect arrays. */
+  value: any;
+}
+
 export interface AutomationRule {
   id: number;
   process_id: number;
   stage_id: number | null;
-  trigger: 'on_enter' | 'on_exit' | 'on_stuck' | 'on_complete' | 'on_drop';
+  trigger: AutomationTrigger;
   action: Record<string, any>;
+  conditions: AutomationCondition[];
   is_active: boolean;
   created_at: string;
 }
@@ -490,8 +568,11 @@ export async function listAutomations(processId: number): Promise<AutomationRule
 }
 
 export async function createAutomation(processId: number, payload: {
-  trigger: 'on_enter' | 'on_exit' | 'on_stuck' | 'on_complete' | 'on_drop';
-  stage_id?: number | null; action: Record<string, any>; is_active?: boolean;
+  trigger: AutomationTrigger;
+  stage_id?: number | null;
+  action: Record<string, any>;
+  conditions?: AutomationCondition[];
+  is_active?: boolean;
 }): Promise<AutomationRule> {
   return apiFetch<AutomationRule>(`/processes/${processId}/automations`, {
     method: 'POST', auth: true,

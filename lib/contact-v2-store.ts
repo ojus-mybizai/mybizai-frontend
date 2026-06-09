@@ -21,7 +21,7 @@ import {
 
 // ── State shape ───────────────────────────────────────────────────────────────
 
-interface ContactV2State {
+export interface ContactV2State {
   // List
   contacts: Contact[];
   total: number;

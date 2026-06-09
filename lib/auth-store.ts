@@ -137,6 +137,10 @@ export interface AuthState {
   planSlug: string | null;
   /** Whether planSlug has been fetched at least once this session. */
   planLoaded: boolean;
+  /** Active module keys for the current business — drives sidebar + ModuleGuard. */
+  activeModules: string[];
+  /** Annual vs monthly subscription (drives "Save 25%" UI hints). */
+  billingPeriod: 'monthly' | 'annual' | null;
   setAccessToken: (token: string | null) => void;
   setUser: (user: User) => void;
   setOnboardingRequired: (value: boolean) => void;
@@ -147,9 +151,36 @@ export interface AuthState {
   setPermissionKeys: (keys: string[]) => void;
   setIsOwner: (value: boolean) => void;
   setPlanSlug: (slug: string) => void;
+  setActiveModules: (modules: string[]) => void;
   /** True if user has the permission or is owner. */
   hasPermission: (key: string) => boolean;
+  /** True if the given module key is active for the current business (or is `base`). */
+  hasModule: (key: string) => boolean;
   logout: (broadcast?: boolean) => void;
+}
+
+/** Extract active_modules / plan_slug / billing_period from a User payload. */
+function extractBusinessMeta(user: User): {
+  activeModules: string[];
+  planSlug: string | null;
+  billingPeriod: 'monthly' | 'annual' | null;
+} {
+  if (!user || typeof user !== 'object') {
+    return { activeModules: [], planSlug: null, billingPeriod: null };
+  }
+  const businesses = (user as { businesses?: Array<Record<string, unknown>> }).businesses;
+  const first = Array.isArray(businesses) ? businesses[0] : undefined;
+  if (!first) {
+    return { activeModules: [], planSlug: null, billingPeriod: null };
+  }
+  const am = first.active_modules;
+  const planSlug = typeof first.plan_slug === 'string' ? first.plan_slug : null;
+  const bp = first.billing_period;
+  return {
+    activeModules: Array.isArray(am) ? (am as string[]).filter((m) => typeof m === 'string') : [],
+    planSlug,
+    billingPeriod: bp === 'annual' || bp === 'monthly' ? bp : null,
+  };
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -164,13 +195,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isOwner: getStoredIsOwner(),
   planSlug: null,
   planLoaded: false,
+  activeModules: [],
+  billingPeriod: null,
   setAccessToken: (token: string | null) => {
     persistAccessToken(token);
     set({ accessToken: token });
   },
   setUser: (user: User) => {
     persistUser(user);
-    set({ user });
+    const meta = extractBusinessMeta(user);
+    set({
+      user,
+      activeModules: meta.activeModules,
+      billingPeriod: meta.billingPeriod,
+      ...(meta.planSlug ? { planSlug: meta.planSlug, planLoaded: true } : {}),
+    });
   },
   setOnboardingRequired: (value: boolean) => set({ onboardingRequired: value }),
   setDefaultBusinessId: (value: number | null) => {
@@ -189,10 +228,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isOwner: value });
   },
   setPlanSlug: (slug: string) => set({ planSlug: slug, planLoaded: true }),
+  setActiveModules: (modules: string[]) => set({ activeModules: modules }),
   hasPermission: (key: string) => {
     const s = get();
     if (s.isOwner) return true;
     return Array.isArray(s.permissionKeys) && s.permissionKeys.includes(key);
+  },
+  hasModule: (key: string) => {
+    if (key === 'base') return true;
+    const s = get();
+    return Array.isArray(s.activeModules) && s.activeModules.includes(key);
   },
   logout: (broadcast: boolean = true) => {
     persistAccessToken(null);
@@ -211,6 +256,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isOwner: false,
       planSlug: null,
       planLoaded: false,
+      activeModules: [],
+      billingPeriod: null,
     });
     if (broadcast && typeof window !== "undefined") {
       broadcastAuthEvent("logout");
