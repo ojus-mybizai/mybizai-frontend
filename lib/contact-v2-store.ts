@@ -113,6 +113,10 @@ const DEFAULT_FILTERS: ContactFilters = {
   offset: 0,
 };
 
+// Monotonic id for list requests — lets us drop out-of-order responses when
+// the user switches groups/filters faster than the network responds.
+let listSeq = 0;
+
 export const useContactV2Store = create<ContactV2State>((set, get) => ({
   // ── Initial state ──────────────────────────────────────────────────────────
   contacts: [],
@@ -144,23 +148,27 @@ export const useContactV2Store = create<ContactV2State>((set, get) => ({
   // ── List ──────────────────────────────────────────────────────────────────
 
   async list(filters = {}) {
+    const seq = ++listSeq;
     const merged = { ...DEFAULT_FILTERS, ...filters, offset: 0 };
     set({ loading: true, lastFilters: merged, selectedIds: new Set() });
     try {
       const data = await contactsV2Service.list(merged);
+      if (seq !== listSeq) return; // a newer list() superseded this request
       set({ contacts: data.contacts, total: data.total, loading: false });
     } catch {
-      set({ loading: false });
+      if (seq === listSeq) set({ loading: false });
     }
   },
 
   async loadMore() {
-    const { lastFilters, contacts, total, loadingMore } = get();
-    if (loadingMore || contacts.length >= total) return;
+    const { lastFilters, contacts, total, loading, loadingMore } = get();
+    if (loading || loadingMore || contacts.length >= total) return;
+    const seq = listSeq;
     const nextFilters = { ...lastFilters, offset: contacts.length };
     set({ loadingMore: true });
     try {
       const data = await contactsV2Service.list(nextFilters);
+      if (seq !== listSeq) { set({ loadingMore: false }); return; } // filters changed while paginating — discard
       set(s => ({ contacts: [...s.contacts, ...data.contacts], total: data.total, loadingMore: false }));
     } catch {
       set({ loadingMore: false });

@@ -8,8 +8,11 @@ export interface Channel {
   id: string;
   type: ChannelType;
   name: string;
+  /** Platform-level credential validity. True = we can send/receive via the provider. */
   isConnected: boolean;
   agentId: number | null;
+  /** True when an AI agent is bound and will auto-reply. Independent of isConnected. */
+  agentAssigned: boolean;
   createdAt: string | null;
   updatedAt: string | null;
   leadCount?: number;
@@ -23,6 +26,7 @@ type ApiChannel = {
   name: string;
   is_connected: boolean;
   agent_id: number | null;
+  agent_assigned?: boolean;
   created_at: string | null;
   updated_at: string | null;
   lead_count?: number;
@@ -36,6 +40,7 @@ function mapChannel(api: ApiChannel): Channel {
     name: api.name,
     isConnected: Boolean(api.is_connected),
     agentId: api.agent_id ?? null,
+    agentAssigned: api.agent_assigned ?? api.agent_id != null,
     createdAt: api.created_at,
     updatedAt: api.updated_at,
     leadCount: typeof api.lead_count === 'number' ? api.lead_count : 0,
@@ -83,10 +88,52 @@ export interface CreateChannelPayload {
   return mapChannel(data);
 }
 
+// ── IndiaMART one-click connection (Lead Manager CRM pull API) ──────────────
+
+export interface IndiaMARTConnectResult {
+  channel_id: number;
+  is_connected: boolean;
+  leads_imported: number;
+  duplicates_skipped: number;
+  message: string;
+}
+
+export async function connectIndiaMART(crmKey: string, name?: string): Promise<IndiaMARTConnectResult> {
+  return apiFetch<IndiaMARTConnectResult>('/channels/indiamart/connect', {
+    method: 'POST',
+    body: JSON.stringify({ crm_key: crmKey, name: name || undefined }),
+  });
+}
+
+export interface IndiaMARTStatus {
+  connected: boolean;
+  connected_via: 'pull_api' | 'webhook';
+  last_synced_at: string | null;
+  sync_error: string | null;
+  leads_24h: number;
+  lead_count: number;
+}
+
+export async function getIndiaMARTStatus(channelId: string): Promise<IndiaMARTStatus> {
+  return apiFetch<IndiaMARTStatus>(`/channels/${channelId}/indiamart/status`, { method: 'GET' });
+}
+
+export interface IndiaMARTSyncResult {
+  ok: boolean;
+  message: string;
+  leads_imported: number;
+  duplicates_skipped: number;
+  last_synced_at: string | null;
+}
+
+export async function syncIndiaMARTNow(channelId: string): Promise<IndiaMARTSyncResult> {
+  return apiFetch<IndiaMARTSyncResult>(`/channels/${channelId}/indiamart/sync-now`, { method: 'POST' });
+}
+
 export async function setChannelAgent(
   channelId: string,
   agentId: number | null,
-): Promise<{ channel_id: number; agent_id: number | null }> {
+): Promise<{ channel_id: number; agent_id: number | null; is_connected: boolean; agent_assigned: boolean }> {
   return apiFetch(`/channels/${channelId}/default-agent`, {
     method: 'PUT',
     body: JSON.stringify({ agent_id: agentId }),

@@ -15,6 +15,7 @@ import {
   generateTemplateWithAI,
   listMetaAvailableTemplates,
   importFromMeta,
+  uploadTemplateHeaderMedia,
   type MessageTemplate,
   type MessageTemplateCreate,
   type SendTemplateRequest,
@@ -58,6 +59,7 @@ import {
   Download,
   Globe,
   Search,
+  Upload,
 } from 'lucide-react';
 
 // ─── Source options for parameter mapping ──
@@ -183,6 +185,19 @@ const LANGUAGES = [
 // E.164 phone number pattern required by Meta for phone_number buttons
 const E164_RE = /^\+[1-9]\d{6,14}$/;
 
+// Header media constraints (mirror backend / Meta limits)
+const HEADER_MEDIA_ACCEPT: Record<string, string> = {
+  image: 'image/jpeg,image/png',
+  video: 'video/mp4,video/3gpp',
+  document: '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx',
+};
+const HEADER_MEDIA_MAX_MB: Record<string, number> = { image: 5, video: 16, document: 100 };
+const HEADER_MEDIA_HINT: Record<string, string> = {
+  image: 'JPEG or PNG, up to 5 MB',
+  video: 'MP4 or 3GPP, up to 16 MB',
+  document: 'PDF or Office document, up to 100 MB',
+};
+
 const VALID_LANGUAGE_CODES = new Set(LANGUAGES.map((l) => l.value));
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -257,9 +272,16 @@ function StatusBadge({ status }: { status: MetaStatus | null }) {
 
 function WhatsAppPreview({
   form,
+  headerMediaUrl,
 }: {
   form: FormState;
+  headerMediaUrl?: string | null;
 }) {
+  // Show the real image when we have a displayable URL (uploaded preview or pasted public URL)
+  const headerImageSrc =
+    form.header_type === 'image'
+      ? headerMediaUrl || (/^https?:\/\//.test(form.header_content || '') ? form.header_content! : '')
+      : '';
   const bodyText = useMemo(() => {
     const examples = form.example_values?.body || [];
     return replacePlaceholders(form.body || '', examples);
@@ -306,9 +328,14 @@ function WhatsAppPreview({
                       </div>
                     )}
                     {form.header_type === 'image' && (
-                      <div className="bg-[#004438] h-32 flex items-center justify-center">
-                        <Image className="h-8 w-8 text-white/40" />
-                      </div>
+                      headerImageSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={headerImageSrc} alt="" className="w-full h-32 object-cover" />
+                      ) : (
+                        <div className="bg-[#004438] h-32 flex items-center justify-center">
+                          <Image className="h-8 w-8 text-white/40" />
+                        </div>
+                      )
                     )}
                     {form.header_type === 'video' && (
                       <div className="bg-[#004438] h-32 flex items-center justify-center">
@@ -1384,6 +1411,11 @@ export default function AgentMessageTemplatesPage() {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Header media upload (image / video / document headers)
+  const headerFileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingHeader, setUploadingHeader] = useState(false);
+  const [headerMedia, setHeaderMedia] = useState<{ filename: string; url: string } | null>(null);
+
   // ─── Real-time template status via SSE notifications ──
   const latestNotification = useNotificationStore((s) => s.notifications[0] ?? null);
   const lastProcessedNotifIdRef = useRef<number | null>(null);
@@ -1518,12 +1550,43 @@ export default function AgentMessageTemplatesPage() {
     setEditing(null);
     setShowBuilder(false);
     setForm({ ...EMPTY_FORM });
+    setHeaderMedia(null);
   };
 
   const openNewTemplate = () => {
     setEditing(null);
     setForm({ ...EMPTY_FORM });
+    setHeaderMedia(null);
     setShowBuilder(true);
+  };
+
+  // ─── Header media upload ──
+
+  const handleHeaderFileSelected = async (file: File) => {
+    const ht = form.header_type;
+    if (ht !== 'image' && ht !== 'video' && ht !== 'document') return;
+    const maxMb = HEADER_MEDIA_MAX_MB[ht];
+    if (file.size > maxMb * 1024 * 1024) {
+      setError(`File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Meta allows up to ${maxMb} MB for ${ht} headers.`);
+      return;
+    }
+    setUploadingHeader(true);
+    setError(null);
+    try {
+      const res = await uploadTemplateHeaderMedia(file, ht);
+      setForm((f) => ({ ...f, header_content: res.header_content }));
+      setHeaderMedia({ filename: res.filename, url: res.url });
+    } catch (e) {
+      setError((e as Error).message ?? 'Failed to upload header media');
+    } finally {
+      setUploadingHeader(false);
+      if (headerFileInputRef.current) headerFileInputRef.current.value = '';
+    }
+  };
+
+  const clearHeaderMedia = () => {
+    setForm((f) => ({ ...f, header_content: '' }));
+    setHeaderMedia(null);
   };
 
   const applyAiResult = (result: TemplateAIGenerateResult) => {
@@ -1544,6 +1607,7 @@ export default function AgentMessageTemplatesPage() {
         ? { header: [], body: [], button: [], ...result.example_values }
         : { header: [], body: [], button: [] },
     }));
+    setHeaderMedia(null);
     // Make sure the builder is open
     setShowBuilder(true);
   };
@@ -1571,6 +1635,7 @@ export default function AgentMessageTemplatesPage() {
       example_values: tpl.example_values ? { ...tpl.example_values } : { header: [], body: [], button: [] },
       category: tpl.category,
     });
+    setHeaderMedia(null);
     setShowBuilder(true);
   };
 
@@ -2074,7 +2139,7 @@ export default function AgentMessageTemplatesPage() {
                           name="header_type"
                           value={ht}
                           checked={form.header_type === ht}
-                          onChange={() => setForm((f) => ({ ...f, header_type: ht, header_content: '' }))}
+                          onChange={() => { setForm((f) => ({ ...f, header_type: ht, header_content: '' })); setHeaderMedia(null); }}
                           className="accent-accent"
                         />
                         <span className="text-xs text-text-primary capitalize flex items-center gap-1">
@@ -2096,12 +2161,87 @@ export default function AgentMessageTemplatesPage() {
                     />
                   )}
                   {(form.header_type === 'image' || form.header_type === 'video' || form.header_type === 'document') && (
-                    <input
-                      value={form.header_content ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, header_content: e.target.value }))}
-                      placeholder={`${form.header_type === 'image' ? 'Image' : form.header_type === 'video' ? 'Video' : 'Document'} URL`}
-                      className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent"
-                    />
+                    <div className="space-y-2">
+                      <input
+                        ref={headerFileInputRef}
+                        type="file"
+                        accept={HEADER_MEDIA_ACCEPT[form.header_type]}
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void handleHeaderFileSelected(f);
+                        }}
+                      />
+                      {(form.header_content?.startsWith('s3:') || headerMedia) ? (
+                        /* Uploaded file chip */
+                        <div className="flex items-center gap-2.5 rounded-lg border border-[#25d366]/30 bg-[#25d366]/5 px-3 py-2.5">
+                          {form.header_type === 'image' && headerMedia?.url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={headerMedia.url} alt="" className="h-9 w-9 rounded object-cover shrink-0" />
+                          ) : (
+                            <div className="flex h-9 w-9 items-center justify-center rounded bg-[#25d366]/15 shrink-0">
+                              {form.header_type === 'image' && <Image className="h-4 w-4 text-[#25d366]" />}
+                              {form.header_type === 'video' && <Video className="h-4 w-4 text-[#25d366]" />}
+                              {form.header_type === 'document' && <File className="h-4 w-4 text-[#25d366]" />}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-text-primary truncate">
+                              {headerMedia?.filename ?? 'Uploaded media file'}
+                            </div>
+                            <div className="text-[10px] text-text-secondary">Will be attached as the template header sample</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => headerFileInputRef.current?.click()}
+                            disabled={uploadingHeader}
+                            className="rounded-md border border-border-color px-2 py-1 text-[11px] font-medium text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors disabled:opacity-50"
+                          >
+                            Replace
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearHeaderMedia}
+                            className="rounded-md p-1 text-text-secondary hover:text-red-400 transition-colors"
+                            title="Remove file"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => headerFileInputRef.current?.click()}
+                            disabled={uploadingHeader}
+                            className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-border-color bg-bg-primary px-3 py-3 text-xs font-medium text-text-secondary hover:text-text-primary hover:border-accent/50 hover:bg-accent/5 transition-colors disabled:opacity-60 disabled:cursor-wait"
+                          >
+                            {uploadingHeader ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Uploading…
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="h-3.5 w-3.5" />
+                                Upload {form.header_type} ({HEADER_MEDIA_HINT[form.header_type]})
+                              </>
+                            )}
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-px bg-border-color/60" />
+                            <span className="text-[10px] text-text-secondary uppercase">or paste a public URL</span>
+                            <div className="flex-1 h-px bg-border-color/60" />
+                          </div>
+                          <input
+                            value={form.header_content ?? ''}
+                            onChange={(e) => setForm((f) => ({ ...f, header_content: e.target.value }))}
+                            placeholder={`https://… ${form.header_type === 'image' ? 'image' : form.header_type === 'video' ? 'video' : 'document'} URL`}
+                            className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent"
+                          />
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -2425,7 +2565,7 @@ export default function AgentMessageTemplatesPage() {
 
               {/* Right column: Preview */}
               <div>
-                <WhatsAppPreview form={form} />
+                <WhatsAppPreview form={form} headerMediaUrl={headerMedia?.url ?? null} />
               </div>
             </div>
           </div>

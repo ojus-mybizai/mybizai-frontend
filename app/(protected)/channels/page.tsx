@@ -7,7 +7,17 @@ import { LoadingSkeleton } from '@/components/agents/loading-skeleton';
 import { FacebookSDKLoader } from '@/components/integrations/FacebookSDKLoader';
 import { MetaConnectButton } from '@/components/integrations/MetaConnectButton';
 import { WhatsAppManualConnectModal } from '@/components/integrations/WhatsAppManualConnectModal';
-import { createChannel, deleteChannel, listChannels, setChannelAgent, type Channel, type MetaChannelType } from '@/services/channels';
+import {
+  connectIndiaMART,
+  deleteChannel,
+  getIndiaMARTStatus,
+  listChannels,
+  setChannelAgent,
+  syncIndiaMARTNow,
+  type Channel,
+  type IndiaMARTStatus,
+  type MetaChannelType,
+} from '@/services/channels';
 import { listAgents, type Agent } from '@/services/agents';
 
 const CHANNEL_TYPE_LABELS: Record<string, string> = {
@@ -33,10 +43,35 @@ export default function ChannelsPage() {
   const [savingAgentFor, setSavingAgentFor] = useState<string | null>(null);
   const [showWhatsAppManual, setShowWhatsAppManual] = useState(false);
   const [showIndiaMARTForm, setShowIndiaMARTForm] = useState(false);
+  const [showIndiaMARTHelp, setShowIndiaMARTHelp] = useState(false);
   const [indiamartName, setIndiamartName] = useState('');
-  const [indiamartSellerId, setIndiamartSellerId] = useState('');
+  const [indiamartCrmKey, setIndiamartCrmKey] = useState('');
   const [indiamartSubmitting, setIndiamartSubmitting] = useState(false);
   const [indiamartError, setIndiamartError] = useState<string | null>(null);
+  const [indiamartSuccess, setIndiamartSuccess] = useState<string | null>(null);
+  const [imStatuses, setImStatuses] = useState<Record<string, IndiaMARTStatus>>({});
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+
+  const loadIndiaMARTStatuses = useCallback(async (chs: Channel[]) => {
+    const imChannels = chs.filter((c) => c.type === 'indiamart' || c.type === 'india_mart');
+    if (imChannels.length === 0) return;
+    const entries = await Promise.all(
+      imChannels.map(async (c) => {
+        try {
+          return [c.id, await getIndiaMARTStatus(c.id)] as const;
+        } catch {
+          return null;
+        }
+      })
+    );
+    setImStatuses((prev) => {
+      const next = { ...prev };
+      for (const entry of entries) {
+        if (entry) next[entry[0]] = entry[1];
+      }
+      return next;
+    });
+  }, []);
 
   const loadChannels = useCallback(async () => {
     try {
@@ -44,13 +79,14 @@ export default function ChannelsPage() {
       setChannelsError(null);
       const data = await listChannels();
       setChannels(data);
+      void loadIndiaMARTStatuses(data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load channels';
       setChannelsError(msg);
     } finally {
       setChannelsLoading(false);
     }
-  }, []);
+  }, [loadIndiaMARTStatuses]);
 
   useEffect(() => {
     void loadChannels();
@@ -72,24 +108,44 @@ export default function ChannelsPage() {
   };
 
   const handleConnectIndiaMART = async () => {
-    const name = indiamartName.trim() || 'IndiaMART';
-    const sellerId = indiamartSellerId.trim();
-    if (!sellerId) {
-      setIndiamartError('Seller ID is required');
+    const name = indiamartName.trim();
+    const crmKey = indiamartCrmKey.trim();
+    if (!crmKey) {
+      setIndiamartError('CRM key is required');
       return;
     }
     setIndiamartSubmitting(true);
     setIndiamartError(null);
+    setIndiamartSuccess(null);
     try {
-      await createChannel({ type: 'indiamart', name, config: { seller_id: sellerId } });
+      const result = await connectIndiaMART(crmKey, name || undefined);
       setShowIndiaMARTForm(false);
       setIndiamartName('');
-      setIndiamartSellerId('');
+      setIndiamartCrmKey('');
+      setIndiamartSuccess(result.message);
       await loadChannels();
     } catch (err) {
       setIndiamartError(err instanceof Error ? err.message : 'Failed to connect IndiaMART');
     } finally {
       setIndiamartSubmitting(false);
+    }
+  };
+
+  const handleSyncIndiaMART = async (channelId: string) => {
+    setSyncingId(channelId);
+    setChannelsError(null);
+    try {
+      const result = await syncIndiaMARTNow(channelId);
+      setIndiamartSuccess(
+        result.leads_imported > 0
+          ? `Sync complete — ${result.leads_imported} new lead(s) imported.`
+          : result.message
+      );
+      await loadChannels();
+    } catch (err) {
+      setChannelsError(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setSyncingId(null);
     }
   };
 
@@ -99,21 +155,27 @@ export default function ChannelsPage() {
       setChannelsError(null);
       const data = await listChannels();
       setChannels(data);
+      void loadIndiaMARTStatuses(data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to refresh channels';
       setChannelsError(msg);
     } finally {
       setChannelsLoading(false);
     }
-  }, []);
+  }, [loadIndiaMARTStatuses]);
 
   const handleSetAgent = async (channelId: string, agentId: number | null) => {
     setSavingAgentFor(channelId);
     try {
       await setChannelAgent(channelId, agentId);
+      // Note: don't touch isConnected here. Agent assignment is independent
+      // of platform-level connectivity. Only the derived agentAssigned flag
+      // tracks "AI will auto-reply".
       setChannels((prev) =>
         prev.map((ch) =>
-          ch.id === channelId ? { ...ch, agentId: agentId, isConnected: agentId !== null } : ch
+          ch.id === channelId
+            ? { ...ch, agentId: agentId, agentAssigned: agentId !== null }
+            : ch
         )
       );
     } catch (err) {
@@ -122,6 +184,8 @@ export default function ChannelsPage() {
       setSavingAgentFor(null);
     }
   };
+
+  const CHAT_TYPES = new Set<string>(['whatsapp', 'instagram', 'messenger']);
 
   const typeCount: Record<string, number> = {};
   channels.forEach((ch) => {
@@ -169,6 +233,19 @@ export default function ChannelsPage() {
             </div>
           )}
 
+          {indiamartSuccess && (
+            <div className="flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <span>{indiamartSuccess}</span>
+              <button
+                type="button"
+                onClick={() => setIndiamartSuccess(null)}
+                className="ml-3 font-medium hover:underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-base font-semibold text-text-primary">Your channels</h3>
@@ -206,6 +283,8 @@ export default function ChannelsPage() {
                         const displayName = getDisplayName(ch, indexInList);
                         const typeLabel = CHANNEL_TYPE_LABELS[ch.type] || ch.type;
                         const leadCount = ch.leadCount ?? 0;
+                        const isIndiaMART = ch.type === 'indiamart' || ch.type === 'india_mart';
+                        const imStatus = isIndiaMART ? imStatuses[ch.id] : undefined;
                         return (
                           <tr key={ch.id} className="border-b border-border-color last:border-b-0">
                             <td className="px-4 py-3 font-medium text-text-primary">{displayName}</td>
@@ -221,6 +300,9 @@ export default function ChannelsPage() {
                                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                                     : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
                                 }`}
+                                title={ch.isConnected
+                                  ? 'Platform credentials valid — channel can send and receive.'
+                                  : 'Platform credentials missing or invalid.'}
                               >
                                 <span
                                   className={`h-1.5 w-1.5 rounded-full ${
@@ -229,6 +311,38 @@ export default function ChannelsPage() {
                                 />
                                 {ch.isConnected ? 'Connected' : 'Not connected'}
                               </span>
+                              {/* AI auto-reply indicator — only for chat channels where the
+                                  concept is meaningful (IndiaMART/Amazon don't auto-reply). */}
+                              {CHAT_TYPES.has(ch.type) && ch.isConnected && (
+                                ch.agentAssigned ? (
+                                  <div
+                                    className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"
+                                    title="An AI agent is bound to this channel and will auto-reply on inbound messages."
+                                  >
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                    AI auto-reply on
+                                  </div>
+                                ) : (
+                                  <div
+                                    className="mt-1 inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
+                                    title="No AI agent assigned. Inbound messages will not get an automated reply — pick an agent in the next column."
+                                  >
+                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                    Manual replies only
+                                  </div>
+                                )
+                              )}
+                              {imStatus && (
+                                <div className="mt-1 text-xs text-text-secondary">
+                                  {imStatus.sync_error ? (
+                                    <span className="text-red-600 dark:text-red-400">{imStatus.sync_error}</span>
+                                  ) : imStatus.last_synced_at ? (
+                                    <>Last synced {new Date(imStatus.last_synced_at).toLocaleString()} · {imStatus.leads_24h} lead(s) in 24h</>
+                                  ) : (
+                                    <>First sync within 5 minutes</>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <select
@@ -253,6 +367,16 @@ export default function ChannelsPage() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex flex-wrap items-center justify-end gap-2">
+                                {isIndiaMART && imStatus?.connected_via === 'pull_api' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSyncIndiaMART(ch.id)}
+                                    disabled={syncingId === ch.id}
+                                    className="rounded border border-border-color px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary disabled:opacity-50"
+                                  >
+                                    {syncingId === ch.id ? 'Syncing…' : 'Sync now'}
+                                  </button>
+                                )}
                                 <Link
                                   href={`/customers?channel_id=${ch.id}`}
                                   className="rounded border border-border-color px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary"
@@ -307,7 +431,7 @@ export default function ChannelsPage() {
                 <div className="flex flex-col rounded-xl border border-border-color bg-card-bg p-4">
                   <h4 className="text-base font-semibold text-text-primary">IndiaMART</h4>
                   <p className="mt-1 flex-1 text-sm text-text-secondary">
-                    Connect your IndiaMART seller account to receive and respond to leads.
+                    Paste your IndiaMART CRM key once — leads sync automatically every 5 minutes. No webhook setup needed.
                   </p>
                   <div className="mt-3">
                     <button
@@ -323,27 +447,41 @@ export default function ChannelsPage() {
                 <div className="rounded-xl border border-border-color bg-card-bg p-4 sm:col-span-2 lg:col-span-1">
                   <h4 className="text-base font-semibold text-text-primary">Connect IndiaMART</h4>
                   <p className="mt-1 text-sm text-text-secondary">
-                    Enter your IndiaMART Seller ID. Configure the webhook URL in IndiaMART to:{' '}
-                    <code className="rounded bg-bg-secondary px-1 py-0.5 text-sm">/api/v1/indiamart/webhook</code>
+                    Paste your IndiaMART CRM key. We verify it instantly and import your last 7 days of inquiries.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowIndiaMARTHelp((v) => !v)}
+                    className="mt-1 text-sm font-medium text-accent hover:underline"
+                  >
+                    {showIndiaMARTHelp ? 'Hide help' : 'Where do I find my CRM key?'}
+                  </button>
+                  {showIndiaMARTHelp && (
+                    <ol className="mt-2 list-decimal space-y-1 rounded-md bg-bg-secondary p-3 pl-7 text-sm text-text-secondary">
+                      <li>Log in to your IndiaMART Seller Panel (seller.indiamart.com)</li>
+                      <li>Go to Settings → Account Settings</li>
+                      <li>Find &ldquo;Lead Manager CRM Integration&rdquo; and click <strong>Generate Key</strong></li>
+                      <li>Copy the key and paste it below</li>
+                    </ol>
+                  )}
                   <div className="mt-3 space-y-3">
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-text-secondary">Display name</label>
+                      <label className="mb-1 block text-sm font-medium text-text-secondary">CRM key *</label>
+                      <input
+                        type="text"
+                        value={indiamartCrmKey}
+                        onChange={(e) => setIndiamartCrmKey(e.target.value)}
+                        placeholder="Paste your IndiaMART CRM key"
+                        className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-text-secondary">Display name (optional)</label>
                       <input
                         type="text"
                         value={indiamartName}
                         onChange={(e) => setIndiamartName(e.target.value)}
                         placeholder="IndiaMART"
-                        className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-text-secondary">Seller ID *</label>
-                      <input
-                        type="text"
-                        value={indiamartSellerId}
-                        onChange={(e) => setIndiamartSellerId(e.target.value)}
-                        placeholder="Your IndiaMART seller ID"
                         className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
                       />
                     </div>
@@ -357,7 +495,7 @@ export default function ChannelsPage() {
                         disabled={indiamartSubmitting}
                         className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
                       >
-                        {indiamartSubmitting ? 'Adding…' : 'Add IndiaMART'}
+                        {indiamartSubmitting ? 'Verifying & importing…' : 'Connect'}
                       </button>
                       <button
                         type="button"

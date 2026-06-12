@@ -290,6 +290,7 @@ export default function ContactsClient() {
   };
 
   const allSelected = selectedIds.size === contacts.length && contacts.length > 0;
+  const activeGroup = activeGroupId != null ? groups.find(g => g.id === activeGroupId) ?? null : null;
 
   return (
     <div className="flex flex-col h-full bg-main-bg overflow-hidden">
@@ -305,9 +306,27 @@ export default function ContactsClient() {
           <div className="flex items-center gap-3">
             <Users className="w-5 h-5 text-accent" />
             <h1 className="text-lg font-semibold text-text-primary">Contacts</h1>
-            <span className="text-xs text-text-secondary bg-bg-secondary px-2 py-0.5 rounded-full border border-border-color">
-              {total.toLocaleString()}
+            <span className="flex items-center gap-1 text-xs text-text-secondary bg-bg-secondary px-2 py-0.5 rounded-full border border-border-color">
+              {loading
+                ? <Loader2 className="w-3 h-3 animate-spin text-accent" />
+                : total.toLocaleString()}
             </span>
+            {activeGroup && (
+              <span
+                className="flex items-center gap-1.5 text-xs font-medium text-white px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: activeGroup.color ?? '#6366f1' }}
+              >
+                {activeGroup.is_system ? <Lock className="w-3 h-3" /> : <FolderKanban className="w-3 h-3" />}
+                {activeGroup.name}
+                <button
+                  onClick={() => applyGroupFilter(null)}
+                  className="ml-0.5 rounded-full hover:bg-white/20 p-0.5 transition-colors"
+                  title="Clear group filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -481,7 +500,10 @@ export default function ContactsClient() {
                 : 'border-border-color text-text-secondary hover:border-accent hover:text-accent'
             }`}
           >
-            All
+            <span className="flex items-center gap-1.5">
+              {activeGroupId === null && loading && <Loader2 className="w-3 h-3 animate-spin" />}
+              All
+            </span>
           </button>
 
           {/* Group chips */}
@@ -498,7 +520,9 @@ export default function ContactsClient() {
                   }`}
                   style={activeGroupId === g.id ? { backgroundColor: g.color ?? '#6366f1' } : {}}
                 >
-                  {g.is_system ? <Lock className="w-2.5 h-2.5" /> : <FolderKanban className="w-3 h-3" />}
+                  {activeGroupId === g.id && loading
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : g.is_system ? <Lock className="w-2.5 h-2.5" /> : <FolderKanban className="w-3 h-3" />}
                   {g.name}
                   <span className={`text-[9px] font-bold ${activeGroupId === g.id ? 'text-white/70' : 'text-text-secondary/60'}`}>
                     {g.member_count}
@@ -563,18 +587,17 @@ export default function ContactsClient() {
       <div className="flex flex-1 overflow-hidden">
         {/* Contact list */}
         <div className="flex-1 overflow-auto flex flex-col">
-          {loading && contacts.length === 0 ? (
+          {loading ? (
+            /* Skeleton on every fetch — initial load, group switch, filter or search change */
             <ContactTableSkeleton />
           ) : contacts.length === 0 ? (
-            <EmptyState onAdd={() => setShowCreate(true)} hasFilters={activeFilterCount > 0 || !!search} />
+            <EmptyState
+              onAdd={() => setShowCreate(true)}
+              hasFilters={activeFilterCount > 0 || !!search}
+              groupName={activeFilterCount === 1 && !search ? activeGroup?.name : undefined}
+            />
           ) : (
             <>
-              {/* Shimmer overlay while re-fetching (filter/search change) */}
-              {loading && (
-                <div className="h-0.5 w-full bg-bg-secondary overflow-hidden">
-                  <div className="h-full bg-accent animate-[shimmer_1.2s_ease-in-out_infinite] w-1/3" />
-                </div>
-              )}
               <table className="w-full text-sm border-collapse">
                 <thead className="bg-bg-secondary border-b border-border-color sticky top-0 z-10">
                   <tr>
@@ -982,12 +1005,14 @@ function LoadMoreIndicator({ loaded, total }: { loaded: number; total: number })
 
 // ── Empty state ────────────────────────────────────────────────
 
-function EmptyState({ onAdd, hasFilters }: { onAdd: () => void; hasFilters: boolean }) {
+function EmptyState({ onAdd, hasFilters, groupName }: { onAdd: () => void; hasFilters: boolean; groupName?: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-secondary px-8 text-center">
-      <Users className="w-10 h-10 opacity-20" />
+      {groupName ? <FolderKanban className="w-10 h-10 opacity-20" /> : <Users className="w-10 h-10 opacity-20" />}
       <p className="text-sm max-w-xs">
-        {hasFilters
+        {groupName
+          ? <>The group <span className="font-medium text-text-primary">{groupName}</span> has no contacts yet. Select contacts from the list and use “Add to Group”.</>
+          : hasFilters
           ? 'No contacts match the current filters. Try adjusting your search or filters.'
           : 'No contacts yet. Import from Excel or add one manually.'}
       </p>

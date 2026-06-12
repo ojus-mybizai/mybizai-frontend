@@ -168,6 +168,32 @@ export async function selectMessageTemplate(ctx: TemplateSelectionContext): Prom
   return apiFetch<TemplateSelectionResult | null>("/message-templates/select", { method: "POST", body: JSON.stringify(ctx) });
 }
 
+// ─── Header Media Upload ──
+
+export interface HeaderMediaUploadResult {
+  object_key: string;
+  /** Value to store in header_content (stable `s3:<key>` reference). */
+  header_content: string;
+  /** Signed preview URL for the builder UI (expires — do not persist). */
+  url: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+}
+
+export async function uploadTemplateHeaderMedia(
+  file: File,
+  headerType: 'image' | 'video' | 'document',
+): Promise<HeaderMediaUploadResult> {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('header_type', headerType);
+  return apiFetch<HeaderMediaUploadResult>('/message-templates/upload-header-media', {
+    method: 'POST',
+    body: fd,
+  });
+}
+
 // ─── Meta Approval Workflow ──
 
 export async function submitTemplateToMeta(id: number): Promise<MessageTemplate> {
