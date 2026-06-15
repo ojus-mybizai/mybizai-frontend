@@ -10,8 +10,19 @@ import {
 } from '@/services/nurture';
 import { listCustomers, type Customer } from '@/services/customers';
 import { listMessageTemplates, type MessageTemplate } from '@/services/message-templates';
+import { contactGroupsService, type ContactGroup } from '@/services/contactGroups';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const TIMEZONE_OPTIONS = [
+  { value: 'Asia/Kolkata', label: 'IST (India)' },
+  { value: 'Asia/Dubai', label: 'GST (Gulf)' },
+  { value: 'Asia/Singapore', label: 'SGT (Singapore)' },
+  { value: 'Europe/London', label: 'UK (GMT/BST)' },
+  { value: 'America/New_York', label: 'US Eastern' },
+  { value: 'America/Los_Angeles', label: 'US Pacific' },
+  { value: 'UTC', label: 'UTC' },
+];
 
 function fmtDelay(days: number, hours: number) {
   if (days === 0 && hours === 0) return 'Immediately';
@@ -54,9 +65,7 @@ function StepEditor({ step, sequenceId, isNew, onSave, onClose, leads }: StepEdi
   const [form, setForm] = useState({
     delay_days: step.delay_days ?? 1,
     delay_hours: step.delay_hours ?? 0,
-    message_type: step.message_type ?? 'ai_generated' as 'ai_generated' | 'template',
     template_id: step.template_id ?? null as number | null,
-    ai_instructions: step.ai_instructions ?? '',
     send_window_start: step.send_window_start ?? '09:00',
     send_window_end: step.send_window_end ?? '18:00',
     skip_weekends: step.skip_weekends ?? true,
@@ -77,11 +86,20 @@ function StepEditor({ step, sequenceId, isNew, onSave, onClose, leads }: StepEdi
   const set = (key: string, val: unknown) => setForm(f => ({ ...f, [key]: val }));
 
   const handleSave = async () => {
+    if (!form.template_id) return;
     setSaving(true);
     try {
       let saved: NurtureStep;
       if (isNew) {
-        saved = await addStep(sequenceId, { ...form, step_number: step.step_number });
+        saved = await addStep(sequenceId, {
+          step_number: step.step_number,
+          delay_days: form.delay_days,
+          delay_hours: form.delay_hours,
+          template_id: form.template_id,
+          send_window_start: form.send_window_start,
+          send_window_end: form.send_window_end,
+          skip_weekends: form.skip_weekends,
+        });
       } else {
         saved = await updateStep(sequenceId, step.id!, form);
       }
@@ -145,47 +163,8 @@ function StepEditor({ step, sequenceId, isNew, onSave, onClose, leads }: StepEdi
             </p>
           </div>
 
-          {/* Message type */}
+          {/* Approved WhatsApp template — nurture sends templates only */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Message Type</label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { val: 'ai_generated', label: 'AI Generated', desc: 'Personalised using lead context' },
-                { val: 'template', label: 'Approved Template', desc: 'Meta-approved WhatsApp HSM template' },
-              ].map(opt => (
-                <button key={opt.val} type="button"
-                  onClick={() => set('message_type', opt.val)}
-                  className={`rounded-xl border p-3 text-left transition-all ${
-                    form.message_type === opt.val
-                      ? 'border-accent bg-accent/5'
-                      : 'border-border-color hover:border-accent/40'
-                  }`}>
-                  <div className="text-sm font-semibold text-text-primary">{opt.label}</div>
-                  <div className="text-xs text-text-secondary mt-0.5">{opt.desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* AI Instructions (shown when AI) */}
-          {form.message_type === 'ai_generated' && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                AI Instructions <span className="text-text-secondary font-normal normal-case">(optional hint)</span>
-              </label>
-              <textarea
-                value={form.ai_instructions}
-                onChange={e => set('ai_instructions', e.target.value)}
-                rows={3}
-                placeholder="e.g. Share a success story relevant to their industry. Keep it under 3 lines and end with a soft question."
-                className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
-              />
-            </div>
-          )}
-
-          {/* Approved template picker (shown when template) */}
-          {form.message_type === 'template' && (
-            <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
                 WhatsApp Template
               </label>
@@ -233,7 +212,6 @@ function StepEditor({ step, sequenceId, isNew, onSave, onClose, leads }: StepEdi
                 </div>
               )}
             </div>
-          )}
 
           {/* Send window */}
           <div className="space-y-2">
@@ -257,11 +235,11 @@ function StepEditor({ step, sequenceId, isNew, onSave, onClose, leads }: StepEdi
             </label>
           </div>
 
-          {/* Preview */}
-          {!isNew && form.message_type === 'ai_generated' && leads.length > 0 && (
+          {/* Preview — renders the selected template with a real contact's data */}
+          {!isNew && !!form.template_id && leads.length > 0 && (
             <div className="space-y-2 rounded-xl border border-dashed border-border-color p-4">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Preview</label>
+                <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Preview with contact</label>
                 <div className="flex items-center gap-2">
                   <select
                     value={previewLeadId}
@@ -292,7 +270,7 @@ function StepEditor({ step, sequenceId, isNew, onSave, onClose, leads }: StepEdi
           <button onClick={onClose} className="flex-1 rounded-lg border border-border-color px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary transition-colors">
             Cancel
           </button>
-          <button onClick={handleSave} disabled={saving}
+          <button onClick={handleSave} disabled={saving || !form.template_id}
             className="flex-1 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
             {saving ? 'Saving…' : isNew ? 'Add Step' : 'Save Changes'}
           </button>
@@ -305,20 +283,33 @@ function StepEditor({ step, sequenceId, isNew, onSave, onClose, leads }: StepEdi
 // ─── Enroll Modal ─────────────────────────────────────────────────────────────
 
 function EnrollModal({ sequenceId, onClose, onDone }: { sequenceId: number; onClose: () => void; onDone: () => void }) {
+  const [mode, setMode] = useState<'contacts' | 'groups'>('contacts');
   const [leads, setLeads] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [groups, setGroups] = useState<ContactGroup[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
   const [result, setResult] = useState<{ enrolled: number; skipped: number } | null>(null);
 
   useEffect(() => {
+    if (mode !== 'contacts') return;
     setLoading(true);
     listCustomers({ search: search || undefined, page: 1, perPage: 50 })
       .then(r => setLeads(r.items))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [search]);
+  }, [search, mode]);
+
+  useEffect(() => {
+    if (mode !== 'groups') return;
+    setLoading(true);
+    contactGroupsService.list()
+      .then(setGroups)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [mode]);
 
   const toggle = (id: number) => setSelected(prev => {
     const next = new Set(prev);
@@ -326,11 +317,25 @@ function EnrollModal({ sequenceId, onClose, onDone }: { sequenceId: number; onCl
     return next;
   });
 
+  const toggleGroup = (id: number) => setSelectedGroups(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const selectedGroupMembers = groups
+    .filter(g => selectedGroups.has(g.id))
+    .reduce((sum, g) => sum + g.memberCount, 0);
+
+  const canEnroll = mode === 'contacts' ? selected.size > 0 : selectedGroups.size > 0;
+
   const handleEnroll = async () => {
-    if (selected.size === 0) return;
+    if (!canEnroll) return;
     setEnrolling(true);
     try {
-      const res = await enrollLeads(sequenceId, Array.from(selected));
+      const res = mode === 'contacts'
+        ? await enrollLeads(sequenceId, Array.from(selected))
+        : await enrollLeads(sequenceId, [], { groupIds: Array.from(selectedGroups) });
       setResult(res);
     } finally {
       setEnrolling(false);
@@ -341,7 +346,7 @@ function EnrollModal({ sequenceId, onClose, onDone }: { sequenceId: number; onCl
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-lg rounded-2xl bg-card-bg shadow-2xl flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between border-b border-border-color px-5 py-4 shrink-0">
-          <h2 className="font-semibold text-text-primary">Enroll Leads</h2>
+          <h2 className="font-semibold text-text-primary">Enroll Contacts</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors">
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
@@ -354,8 +359,8 @@ function EnrollModal({ sequenceId, onClose, onDone }: { sequenceId: number; onCl
             </div>
             <h3 className="text-lg font-semibold text-text-primary mb-1">Enrolled!</h3>
             <p className="text-sm text-text-secondary mb-6">
-              {result.enrolled} lead{result.enrolled !== 1 ? 's' : ''} enrolled
-              {result.skipped > 0 ? `, ${result.skipped} skipped (already enrolled)` : ''}
+              {result.enrolled} contact{result.enrolled !== 1 ? 's' : ''} enrolled
+              {result.skipped > 0 ? `, ${result.skipped} skipped (already enrolled / no phone)` : ''}
             </p>
             <button onClick={onDone} className="rounded-lg bg-accent px-6 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity">
               Done
@@ -363,54 +368,99 @@ function EnrollModal({ sequenceId, onClose, onDone }: { sequenceId: number; onCl
           </div>
         ) : (
           <>
-            <div className="px-5 py-3 border-b border-border-color shrink-0">
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search leads…"
-                  className="w-full rounded-lg border border-border-color bg-bg-primary pl-9 pr-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-                />
-              </div>
+            {/* Mode toggle */}
+            <div className="flex gap-1 px-5 pt-3 shrink-0">
+              {(['contacts', 'groups'] as const).map(m => (
+                <button key={m} onClick={() => setMode(m)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
+                    mode === m ? 'bg-accent text-white' : 'border border-border-color text-text-secondary hover:bg-bg-secondary'
+                  }`}>
+                  {m === 'contacts' ? 'Individual contacts' : 'Groups'}
+                </button>
+              ))}
             </div>
 
-            <div className="flex-1 overflow-y-auto">
-              {loading ? (
-                <div className="p-6 text-center text-sm text-text-secondary animate-pulse">Loading leads…</div>
-              ) : leads.length === 0 ? (
-                <div className="p-6 text-center text-sm text-text-secondary">No leads found</div>
-              ) : (
-                <div className="divide-y divide-border-color">
-                  {leads.map(lead => {
-                    const id = Number(lead.id);
-                    const checked = selected.has(id);
-                    return (
-                      <label key={lead.id} className="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-bg-secondary transition-colors">
-                        <input type="checkbox" checked={checked} onChange={() => toggle(id)}
-                          className="rounded border-border-color text-accent focus:ring-accent/40"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium text-text-primary truncate">{lead.name || '—'}</div>
-                          <div className="text-xs text-text-secondary truncate">{lead.phone || lead.email || ''}</div>
-                        </div>
-                        {lead.pipelineStageName && (
-                          <span className="text-xs text-text-secondary bg-bg-secondary px-2 py-0.5 rounded-full shrink-0">{lead.pipelineStageName}</span>
-                        )}
-                      </label>
-                    );
-                  })}
+            {mode === 'contacts' && (
+              <div className="px-5 py-3 shrink-0">
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder="Search contacts…"
+                    className="w-full rounded-lg border border-border-color bg-bg-primary pl-9 pr-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  />
                 </div>
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto border-t border-border-color">
+              {loading ? (
+                <div className="p-6 text-center text-sm text-text-secondary animate-pulse">Loading…</div>
+              ) : mode === 'contacts' ? (
+                leads.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-text-secondary">No contacts found</div>
+                ) : (
+                  <div className="divide-y divide-border-color">
+                    {leads.map(lead => {
+                      const id = Number(lead.id);
+                      const checked = selected.has(id);
+                      return (
+                        <label key={lead.id} className="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-bg-secondary transition-colors">
+                          <input type="checkbox" checked={checked} onChange={() => toggle(id)}
+                            className="rounded border-border-color text-accent focus:ring-accent/40"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-text-primary truncate">{lead.name || '—'}</div>
+                            <div className="text-xs text-text-secondary truncate">{lead.phone || lead.email || ''}</div>
+                          </div>
+                          {lead.pipelineStageName && (
+                            <span className="text-xs text-text-secondary bg-bg-secondary px-2 py-0.5 rounded-full shrink-0">{lead.pipelineStageName}</span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )
+              ) : (
+                groups.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-text-secondary">No contact groups yet</div>
+                ) : (
+                  <div className="divide-y divide-border-color">
+                    {groups.map(g => {
+                      const checked = selectedGroups.has(g.id);
+                      return (
+                        <label key={g.id} className="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-bg-secondary transition-colors">
+                          <input type="checkbox" checked={checked} onChange={() => toggleGroup(g.id)}
+                            className="rounded border-border-color text-accent focus:ring-accent/40"
+                          />
+                          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color || '#6366f1' }} />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-text-primary truncate">{g.name}</div>
+                            {g.description && <div className="text-xs text-text-secondary truncate">{g.description}</div>}
+                          </div>
+                          <span className="text-xs text-text-secondary bg-bg-secondary px-2 py-0.5 rounded-full shrink-0">
+                            {g.memberCount} member{g.memberCount !== 1 ? 's' : ''}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )
               )}
             </div>
 
             <div className="shrink-0 border-t border-border-color px-5 py-4 flex items-center justify-between gap-3">
-              <span className="text-sm text-text-secondary">{selected.size} selected</span>
+              <span className="text-sm text-text-secondary">
+                {mode === 'contacts'
+                  ? `${selected.size} selected`
+                  : `${selectedGroups.size} group${selectedGroups.size !== 1 ? 's' : ''} · ~${selectedGroupMembers} contact${selectedGroupMembers !== 1 ? 's' : ''}`}
+              </span>
               <div className="flex gap-2">
                 <button onClick={onClose} className="rounded-lg border border-border-color px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary transition-colors">Cancel</button>
-                <button onClick={handleEnroll} disabled={selected.size === 0 || enrolling}
+                <button onClick={handleEnroll} disabled={!canEnroll || enrolling}
                   className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
-                  {enrolling ? 'Enrolling…' : `Enroll ${selected.size > 0 ? selected.size : ''} Lead${selected.size !== 1 ? 's' : ''}`}
+                  {enrolling ? 'Enrolling…' : 'Enroll'}
                 </button>
               </div>
             </div>
@@ -466,9 +516,7 @@ function StepsTab({ sequence, onUpdate }: { sequence: NurtureSequence; onUpdate:
             <div key={step.id} className="flex gap-3">
               {/* Timeline connector */}
               <div className="flex flex-col items-center">
-                <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${
-                  step.message_type === 'ai_generated' ? 'bg-accent' : 'bg-text-secondary'
-                }`}>
+                <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 bg-accent">
                   {step.step_number}
                 </div>
                 {idx < steps.length - 1 && <div className="w-px flex-1 bg-border-color my-1" />}
@@ -479,12 +527,8 @@ function StepsTab({ sequence, onUpdate }: { sequence: NurtureSequence; onUpdate:
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        step.message_type === 'ai_generated'
-                          ? 'bg-accent/10 text-accent'
-                          : 'bg-bg-secondary text-text-secondary'
-                      }`}>
-                        {step.message_type === 'ai_generated' ? '✦ AI Generated' : '✎ Template'}
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-bg-secondary text-text-secondary">
+                        ✎ Template
                       </span>
                       <span className="text-xs text-text-secondary">
                         {idx === 0 ? 'Send ' : 'Wait '}
@@ -496,10 +540,7 @@ function StepsTab({ sequence, onUpdate }: { sequence: NurtureSequence; onUpdate:
                         {step.skip_weekends ? ' · No weekends' : ''}
                       </span>
                     </div>
-                    {step.ai_instructions && (
-                      <p className="mt-2 text-sm text-text-secondary italic truncate">"{step.ai_instructions}"</p>
-                    )}
-                    {step.message_type === 'template' && step.template_name && (
+                    {step.template_name && (
                       <div className="mt-2 rounded-lg bg-bg-secondary px-3 py-2 space-y-0.5">
                         <p className="text-xs font-medium text-text-secondary">{step.template_name}</p>
                         {step.template_body && (
@@ -781,6 +822,12 @@ export default function SequenceBuilderClient({ sequenceId }: { sequenceId: numb
     }
   };
 
+  const handleTimezoneChange = async (tz: string) => {
+    if (!sequence || tz === sequence.timezone) return;
+    const updated = await updateSequence(sequence.id, { timezone: tz });
+    setSequence(updated);
+  };
+
   if (loading) return <div className="p-8 animate-pulse text-text-secondary">Loading…</div>;
   if (!sequence) return <div className="p-8 text-text-secondary">Sequence not found.</div>;
 
@@ -812,6 +859,20 @@ export default function SequenceBuilderClient({ sequenceId }: { sequenceId: numb
                 <span>On reply: <span className="font-medium text-text-primary capitalize">{sequence.on_reply}</span></span>
                 {sequence.agent_name && <span>Agent: <span className="font-medium text-text-primary">{sequence.agent_name}</span></span>}
                 <span>{sequence.steps.length} step{sequence.steps.length !== 1 ? 's' : ''}</span>
+                <span className="inline-flex items-center gap-1">
+                  Timezone:
+                  <select
+                    value={sequence.timezone}
+                    onChange={e => handleTimezoneChange(e.target.value)}
+                    className="rounded-md border border-border-color bg-bg-primary px-1.5 py-0.5 text-xs font-medium text-text-primary focus:outline-none focus:ring-1 focus:ring-accent/40"
+                    title="Send windows are evaluated in this timezone"
+                  >
+                    {TIMEZONE_OPTIONS.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                    {!TIMEZONE_OPTIONS.some(t => t.value === sequence.timezone) && (
+                      <option value={sequence.timezone}>{sequence.timezone}</option>
+                    )}
+                  </select>
+                </span>
               </div>
             </div>
 

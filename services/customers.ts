@@ -302,6 +302,13 @@ export interface ConversationListFilters {
   agent_id?: number;
   agent_name?: string;
   contact_group_id?: number;
+  // Contact-attribute filters (mirror the contacts page filter rail)
+  priority?: string;
+  source?: string;
+  tag_id?: number;
+  contact_routing_mode?: string;
+  /** JSON-encoded array of contact custom-field filters {field_id, op, value} */
+  custom_filters?: string;
   /**
    * WhatsApp 24h customer-service window filter.
    * true → only WA conversations whose window is currently open.
@@ -566,6 +573,11 @@ export async function listAllConversations(
   if (filters?.agent_id) params.set('agent_id', String(filters.agent_id));
   if (filters?.agent_name) params.set('agent_name', filters.agent_name);
   if (filters?.contact_group_id) params.set('contact_group_id', String(filters.contact_group_id));
+  if (filters?.priority) params.set('priority', filters.priority);
+  if (filters?.source) params.set('source', filters.source);
+  if (filters?.tag_id != null) params.set('tag_id', String(filters.tag_id));
+  if (filters?.contact_routing_mode) params.set('contact_routing_mode', filters.contact_routing_mode);
+  if (filters?.custom_filters) params.set('custom_filters', filters.custom_filters);
   if (filters?.session_active != null) params.set('session_active', String(filters.session_active));
   const qs = params.toString();
   const url = qs ? `/convo/?${qs}` : '/convo/';

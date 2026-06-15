@@ -38,6 +38,9 @@ import { contactGroupsService, type ContactGroup } from '@/services/contactGroup
 import { listChannels, type Channel as BusinessChannel } from '@/services/channels';
 import { listConversationTopics, type ConversationTopic } from '@/services/conversationTopics';
 import { useDebounce } from '@/lib/use-debounce';
+import { contactTagService, type ContactTag, type CustomFilter } from '@/services/contacts-v2';
+import { listSourceDefs, type ContactSourceDef } from '@/services/contact-source-defs';
+import { listFieldDefs, type ContactFieldDef } from '@/services/contact-field-defs';
 
 function formatTime(dateStr: string | undefined): string {
   if (!dateStr) return '—';
@@ -275,6 +278,71 @@ const MODE_OPTIONS: { value: string; label: string }[] = [
 
 type SessionFilter = '' | 'open' | 'closed';
 
+// Compact custom-field filter control for the inbox filter panel.
+function InboxCustomFieldFilter({
+  field, current, onSet,
+}: {
+  field: ContactFieldDef;
+  current: CustomFilter | undefined;
+  onSet: (fieldId: number, op: CustomFilter['op'], value: CustomFilter['value'] | null) => void;
+}) {
+  const selectCls = "w-full rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent";
+  const label = (
+    <p className="mb-1 text-[10px] text-text-secondary">
+      {field.name}
+      {field.group_name && <span className="ml-1 text-text-secondary/60">· {field.group_name}</span>}
+    </p>
+  );
+
+  if ((field.field_type === 'select' || field.field_type === 'multi_select') && field.options?.length) {
+    const op = field.field_type === 'multi_select' ? 'has' : 'eq';
+    const val = typeof current?.value === 'string' ? current.value : '';
+    return (
+      <div>
+        {label}
+        <select value={val} onChange={(e) => onSet(field.id, op, e.target.value || null)} className={selectCls}>
+          <option value="">Any</option>
+          {field.options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+    );
+  }
+
+  if (field.field_type === 'boolean') {
+    const val = typeof current?.value === 'boolean' ? String(current.value) : '';
+    return (
+      <div>
+        {label}
+        <select
+          value={val}
+          onChange={(e) => onSet(field.id, 'bool', e.target.value === '' ? null : e.target.value === 'true')}
+          className={selectCls}
+        >
+          <option value="">Any</option>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+    );
+  }
+
+  const op: CustomFilter['op'] = (field.field_type === 'number' || field.field_type === 'date') ? 'eq' : 'contains';
+  const inputType = field.field_type === 'date' ? 'date' : field.field_type === 'number' ? 'number' : 'text';
+  const val = typeof current?.value === 'string' ? current.value : '';
+  return (
+    <div>
+      {label}
+      <input
+        type={inputType}
+        value={val}
+        onChange={(e) => onSet(field.id, op, e.target.value)}
+        placeholder={op === 'contains' ? `Search ${field.name.toLowerCase()}…` : undefined}
+        className={selectCls}
+      />
+    </div>
+  );
+}
+
 function FiltersPopover({
   modeFilter, setModeFilter,
   unreadOnly, setUnreadOnly,
@@ -284,6 +352,12 @@ function FiltersPopover({
   channelInstanceId, setChannelInstanceId, channelInstances,
   topics, topicSuggestions, activeCount,
   sessionFilter, setSessionFilter,
+  priorityFilter, setPriorityFilter,
+  sourceFilter, setSourceFilter,
+  tagFilter, setTagFilter,
+  contactRoutingFilter, setContactRoutingFilter,
+  customFilters, setCustomFilters,
+  sourceDefs, contactTags, fieldDefs,
 }: {
   modeFilter: string;
   setModeFilter: (v: string) => void;
@@ -303,7 +377,26 @@ function FiltersPopover({
   activeCount: number;
   sessionFilter: SessionFilter;
   setSessionFilter: (v: SessionFilter) => void;
+  priorityFilter: string;
+  setPriorityFilter: (v: string) => void;
+  sourceFilter: string;
+  setSourceFilter: (v: string) => void;
+  tagFilter: number | null;
+  setTagFilter: (v: number | null) => void;
+  contactRoutingFilter: string;
+  setContactRoutingFilter: (v: string) => void;
+  customFilters: CustomFilter[];
+  setCustomFilters: (v: CustomFilter[]) => void;
+  sourceDefs: ContactSourceDef[];
+  contactTags: ContactTag[];
+  fieldDefs: ContactFieldDef[];
 }) {
+  // Upsert/remove a single custom-field condition (one per field).
+  const setCF = (fieldId: number, op: CustomFilter['op'], value: CustomFilter['value'] | null) => {
+    const others = customFilters.filter((f) => f.field_id !== fieldId);
+    const empty = value == null || value === '' || (Array.isArray(value) && value.length === 0);
+    setCustomFilters(empty ? others : [...others, { field_id: fieldId, op, value }]);
+  };
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -323,6 +416,11 @@ function FiltersPopover({
     setContactGroupId(null);
     setChannelInstanceId(null);
     setSessionFilter('');
+    setPriorityFilter('');
+    setSourceFilter('');
+    setTagFilter(null);
+    setContactRoutingFilter('');
+    setCustomFilters([]);
     clearActiveView();
   };
 
@@ -526,6 +624,88 @@ function FiltersPopover({
             </div>
           )}
 
+          {/* ── Contact attributes (mirrors the contacts page filter rail) ── */}
+          <div className="border-t border-border-color pt-3 space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">Contact</p>
+
+            {/* Priority */}
+            <div>
+              <p className="mb-1 text-[10px] text-text-secondary">Priority</p>
+              <div className="flex flex-wrap gap-1">
+                {(['hot', 'high', 'medium', 'low'] as const).map((p) => {
+                  const active = priorityFilter === p;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriorityFilter(active ? '' : p)}
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize transition-colors ${
+                        active
+                          ? 'border-transparent bg-accent text-white'
+                          : 'border-border-color bg-bg-primary text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Source */}
+            <div>
+              <p className="mb-1 text-[10px] text-text-secondary">Source</p>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="w-full rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                <option value="">All sources</option>
+                {sourceDefs.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+
+            {/* Tag */}
+            {contactTags.length > 0 && (
+              <div>
+                <p className="mb-1 text-[10px] text-text-secondary">Tag</p>
+                <select
+                  value={tagFilter ?? ''}
+                  onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  <option value="">All tags</option>
+                  {contactTags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            {/* Contact routing */}
+            <div>
+              <p className="mb-1 text-[10px] text-text-secondary">Contact routing</p>
+              <select
+                value={contactRoutingFilter}
+                onChange={(e) => setContactRoutingFilter(e.target.value)}
+                className="w-full rounded-md border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                <option value="">Any routing</option>
+                <option value="ai">AI auto-reply</option>
+                <option value="manual">Manual inbox</option>
+                <option value="blocked">Blocked</option>
+              </select>
+            </div>
+
+            {/* Custom fields */}
+            {fieldDefs.map((fd) => (
+              <InboxCustomFieldFilter
+                key={fd.id}
+                field={fd}
+                current={customFilters.find((f) => f.field_id === fd.id)}
+                onSet={setCF}
+              />
+            ))}
+          </div>
+
           {activeCount > 0 && (
             <button
               type="button"
@@ -572,6 +752,15 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
   const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
   const [channelInstanceId, setChannelInstanceId] = useState<number | null>(null);
   const [channelInstances, setChannelInstances] = useState<BusinessChannel[]>([]);
+  // Contact-attribute filters (mirror the contacts page filter rail)
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState<number | null>(null);
+  const [contactRoutingFilter, setContactRoutingFilter] = useState('');
+  const [customFilters, setCustomFilters] = useState<CustomFilter[]>([]);
+  const [sourceDefs, setSourceDefs] = useState<ContactSourceDef[]>([]);
+  const [contactTags, setContactTags] = useState<ContactTag[]>([]);
+  const [fieldDefs, setFieldDefs] = useState<ContactFieldDef[]>([]);
   const [topics, setTopics] = useState<ConversationTopic[]>([]);
   const [showViewsPanel, setShowViewsPanel] = useState(false);
   const { data: agentsData } = useQuery({
@@ -631,8 +820,29 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
     contactGroupsService.list().then(setContactGroups).catch(() => {});
     listChannels().then((chs) => setChannelInstances(chs.filter((c) => c.isConnected))).catch(() => {});
     listConversationTopics().then(setTopics).catch(() => {});
+    // Contact-attribute filter reference data
+    listSourceDefs().then(setSourceDefs).catch(() => {});
+    contactTagService.list().then(setContactTags).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Custom-field defs applicable to the current context: global always, plus
+  // the selected contact group's scoped fields. Prune stale custom filters.
+  useEffect(() => {
+    const calls = [listFieldDefs(0)];
+    if (contactGroupId != null) calls.push(listFieldDefs(contactGroupId));
+    Promise.all(calls)
+      .then((results) => {
+        const seen = new Set<number>();
+        const merged = results.flat().filter((f) => (seen.has(f.id) ? false : seen.add(f.id)));
+        setFieldDefs(merged);
+        setCustomFilters((prev) => {
+          const valid = prev.filter((cf) => seen.has(cf.field_id));
+          return valid.length === prev.length ? prev : valid;
+        });
+      })
+      .catch(() => setFieldDefs([]));
+  }, [contactGroupId]);
 
   // Sync active view id to ?view= URL param
   useEffect(() => {
@@ -659,6 +869,11 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
         unread_only: unreadOnly || undefined,
         agent_name: agentFilter || undefined,
         contact_group_id: contactGroupId ?? undefined,
+        priority: priorityFilter || undefined,
+        source: sourceFilter || undefined,
+        tag_id: tagFilter ?? undefined,
+        contact_routing_mode: contactRoutingFilter || undefined,
+        custom_filters: customFilters.length ? JSON.stringify(customFilters) : undefined,
         session_active:
           sessionFilter === 'open' ? true
           : sessionFilter === 'closed' ? false
@@ -668,7 +883,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
         .then((list) => setConversations(list))
         .finally(() => { if (!silent) setLoadingList(false); });
     },
-    [channelFilter, channelInstanceId, modeFilter, debouncedIntent, unreadOnly, agentFilter, contactGroupId, sessionFilter],
+    [channelFilter, channelInstanceId, modeFilter, debouncedIntent, unreadOnly, agentFilter, contactGroupId, sessionFilter, priorityFilter, sourceFilter, tagFilter, contactRoutingFilter, customFilters],
   );
 
   /* Initial load */
@@ -904,7 +1119,12 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
     (intentFilter.trim() ? 1 : 0) +
     (contactGroupId != null ? 1 : 0) +
     (channelInstanceId != null ? 1 : 0) +
-    (sessionFilter ? 1 : 0);
+    (sessionFilter ? 1 : 0) +
+    (priorityFilter ? 1 : 0) +
+    (sourceFilter ? 1 : 0) +
+    (tagFilter != null ? 1 : 0) +
+    (contactRoutingFilter ? 1 : 0) +
+    customFilters.length;
 
   const topicColorByName = useMemo(() => {
     const m = new Map<string, string>();
@@ -1059,6 +1279,19 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                   activeCount={activeFilterCount}
                   sessionFilter={sessionFilter}
                   setSessionFilter={setSessionFilter}
+                  priorityFilter={priorityFilter}
+                  setPriorityFilter={(v) => { setPriorityFilter(v); setActiveViewId(null); }}
+                  sourceFilter={sourceFilter}
+                  setSourceFilter={(v) => { setSourceFilter(v); setActiveViewId(null); }}
+                  tagFilter={tagFilter}
+                  setTagFilter={(v) => { setTagFilter(v); setActiveViewId(null); }}
+                  contactRoutingFilter={contactRoutingFilter}
+                  setContactRoutingFilter={(v) => { setContactRoutingFilter(v); setActiveViewId(null); }}
+                  customFilters={customFilters}
+                  setCustomFilters={(v) => { setCustomFilters(v); setActiveViewId(null); }}
+                  sourceDefs={sourceDefs}
+                  contactTags={contactTags}
+                  fieldDefs={fieldDefs}
                 />
                 {modeFilter && (
                   <button

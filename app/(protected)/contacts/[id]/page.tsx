@@ -9,6 +9,7 @@ import {
   Clock, Plus, Trash2, Loader2, Activity, FileText, Layers, Wifi,
   AlertCircle, Megaphone, Calendar, DollarSign, FolderKanban,
   LayoutList, ChevronRight, Pencil, Save, X, Hash, Shield,
+  Bell, Send, CalendarClock, CheckCircle2, XCircle, AlertTriangle,
 } from 'lucide-react';
 import ModuleGuard from '@/components/module-guard';
 import { useContactV2Store, type ContactV2State } from '@/lib/contact-v2-store';
@@ -26,21 +27,31 @@ import {
 import {
   listFieldDefs, setContactCustomFields, type ContactFieldDef,
 } from '@/services/contact-field-defs';
+import {
+  listFollowups, createFollowup, sendFollowupNow, cancelFollowup,
+  statusBadgeClasses, type FollowUpMessage, type FollowUpStatus, type FollowUpMode,
+} from '@/services/followups';
+import {
+  listMessages, listConversationSessions,
+  type Message, type ConversationSession,
+} from '@/services/customers';
 
 // ────────────────────────────────────────────────────────────────
 // Constants
 // ────────────────────────────────────────────────────────────────
 
-type TabId = 'overview' | 'details' | 'activity' | 'notes' | 'pipeline' | 'channels' | 'groups';
+type TabId = 'overview' | 'details' | 'conversation' | 'activity' | 'notes' | 'followups' | 'pipeline' | 'channels' | 'groups';
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
-  { id: 'overview', label: 'Overview', Icon: User },
-  { id: 'details',  label: 'Details',  Icon: LayoutList },
-  { id: 'activity', label: 'Activity', Icon: Activity },
-  { id: 'notes',    label: 'Notes',    Icon: FileText },
-  { id: 'pipeline', label: 'Pipeline', Icon: Layers },
-  { id: 'channels', label: 'Channels', Icon: Wifi },
-  { id: 'groups',   label: 'Groups',   Icon: FolderKanban },
+  { id: 'overview',     label: 'Overview',     Icon: User },
+  { id: 'details',      label: 'Details',      Icon: LayoutList },
+  { id: 'conversation', label: 'Conversation', Icon: MessageSquare },
+  { id: 'activity',     label: 'Activity',     Icon: Activity },
+  { id: 'notes',        label: 'Notes',        Icon: FileText },
+  { id: 'followups',    label: 'Follow-ups',   Icon: Bell },
+  { id: 'pipeline',     label: 'Pipeline',     Icon: Layers },
+  { id: 'channels',     label: 'Channels',     Icon: Wifi },
+  { id: 'groups',       label: 'Groups',       Icon: FolderKanban },
 ];
 
 const PRIORITY_OPTIONS: Priority[] = ['hot', 'high', 'medium', 'low'];
@@ -278,7 +289,7 @@ function ContactDetailInner() {
           <div className="flex items-center gap-2">
             {c.latest_conversation_id && (
               <Link
-                href={`/inbox?conversation=${c.latest_conversation_id}`}
+                href={`/inbox?c=${c.latest_conversation_id}`}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border-color px-3 py-1.5 text-xs font-medium text-text-primary hover:bg-bg-primary"
               >
                 <MessageSquare className="h-3.5 w-3.5" /> Open in Inbox
@@ -319,29 +330,48 @@ function ContactDetailInner() {
         />
 
         {/* ── Tabs ──────────────────────────────────────────────── */}
-        <div className="mt-6 border-b border-border-color">
-          <div className="flex gap-1 overflow-x-auto">
-            {TABS.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-                  tab === t.id
-                    ? 'border-accent text-accent'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                <t.Icon className="h-4 w-4" /> {t.label}
-              </button>
-            ))}
+        <div className="mt-6 overflow-x-auto pb-1 no-scrollbar">
+          <div className="flex w-max gap-1 rounded-xl border border-border-color bg-card-bg p-1 shadow-sm">
+            {TABS.map(t => {
+              const badge =
+                t.id === 'notes' ? notes.length :
+                t.id === 'followups' ? c.overdue_followup_count :
+                0;
+              const isActive = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-text-secondary hover:bg-bg-primary hover:text-text-primary'
+                  }`}
+                >
+                  <t.Icon className="h-4 w-4" /> {t.label}
+                  {badge > 0 && (
+                    <span className={`ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
+                      isActive
+                        ? 'bg-white/20 text-white'
+                        : t.id === 'followups'
+                          ? 'bg-amber-500/15 text-amber-600'
+                          : 'bg-bg-primary text-text-secondary'
+                    }`}>
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* ── Content grid ──────────────────────────────────────── */}
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
           <div className="min-w-0">
-            {tab === 'overview' && <OverviewTab contact={c} />}
+            {tab === 'overview' && <OverviewTab contact={c} onGoToFollowups={() => setTab('followups')} />}
             {tab === 'details' && <DetailsTab contact={c} />}
+            {tab === 'conversation' && <ConversationTab contact={c} />}
             {tab === 'activity' && <ActivityTab activities={activities} loading={loadingActivities} />}
             {tab === 'notes' && (
               <NotesTab
@@ -351,6 +381,9 @@ function ContactDetailInner() {
                 onAdd={(content, category) => addNote(c.id, content, category)}
                 onDelete={(noteId) => deleteNote(c.id, noteId)}
               />
+            )}
+            {tab === 'followups' && (
+              <FollowupsTab contact={c} canManage={canManage} />
             )}
             {tab === 'pipeline' && (
               <PipelineTab
@@ -633,7 +666,7 @@ function ChipDropdown({
 // Overview tab
 // ────────────────────────────────────────────────────────────────
 
-function OverviewTab({ contact: c }: { contact: Contact }) {
+function OverviewTab({ contact: c, onGoToFollowups }: { contact: Contact; onGoToFollowups: () => void }) {
   const activeProcesses = c.active_processes ?? [];
   return (
     <div className="space-y-4">
@@ -644,7 +677,7 @@ function OverviewTab({ contact: c }: { contact: Contact }) {
           <p className="mt-1 text-xs text-text-secondary">{timeAgo(c.last_message_at)}</p>
           {c.latest_conversation_id && (
             <Link
-              href={`/inbox?conversation=${c.latest_conversation_id}`}
+              href={`/inbox?c=${c.latest_conversation_id}`}
               className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
             >
               View conversation <ChevronRight className="h-3.5 w-3.5" />
@@ -677,13 +710,21 @@ function OverviewTab({ contact: c }: { contact: Contact }) {
       </SectionCard>
 
       {/* Followups */}
-      {c.overdue_followup_count > 0 && (
-        <SectionCard title="Follow-ups" icon={Calendar}>
+      <SectionCard title="Follow-ups" icon={Bell}>
+        {c.overdue_followup_count > 0 ? (
           <p className="text-sm text-amber-600">
-            ⚠ {c.overdue_followup_count} overdue follow-up{c.overdue_followup_count === 1 ? '' : 's'}.
+            ⚠ {c.overdue_followup_count} overdue follow-up{c.overdue_followup_count === 1 ? '' : 's'} for this contact.
           </p>
-        </SectionCard>
-      )}
+        ) : (
+          <p className="text-sm text-text-secondary">No overdue follow-ups.</p>
+        )}
+        <button
+          onClick={onGoToFollowups}
+          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+        >
+          Manage follow-ups <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      </SectionCard>
     </div>
   );
 }
@@ -837,6 +878,187 @@ function DLRow({ label, value }: { label: string; value: string }) {
 }
 
 // ────────────────────────────────────────────────────────────────
+// Conversation tab — transcript + session history
+// ────────────────────────────────────────────────────────────────
+
+function formatDuration(seconds: number | null): string {
+  if (!seconds || seconds <= 0) return '—';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+const SESSION_STATUS_STYLE: Record<ConversationSession['status'], string> = {
+  active:    'bg-green-500/15 text-green-600',
+  ended:     'bg-gray-500/15 text-gray-500',
+  abandoned: 'bg-amber-500/15 text-amber-600',
+};
+
+function ConversationTab({ contact: c }: { contact: Contact }) {
+  const convoId = c.latest_conversation_id;
+  const [view, setView] = useState<'transcript' | 'sessions'>('transcript');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [sessions, setSessions] = useState<ConversationSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (convoId == null) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      listMessages(String(convoId)),
+      listConversationSessions(String(convoId)).catch(() => [] as ConversationSession[]),
+    ])
+      .then(([msgs, sess]) => {
+        if (cancelled) return;
+        setMessages(msgs);
+        setSessions(sess);
+      })
+      .catch((e) => { if (!cancelled) setError((e as Error).message || 'Failed to load conversation'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [convoId]);
+
+  // No conversation yet — offer to start one.
+  if (convoId == null) {
+    const params = new URLSearchParams({ new: '1' });
+    if (c.phone) params.set('phone', c.phone);
+    if (c.name) params.set('name', c.name);
+    return (
+      <SectionCard title="Conversation" icon={MessageSquare}>
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <MessageSquare className="h-8 w-8 text-text-secondary/40" />
+          <p className="text-sm font-medium text-text-primary">No conversation yet</p>
+          <p className="max-w-sm text-sm text-text-secondary">
+            This contact hasn&apos;t messaged on any channel. Start one to begin a thread.
+          </p>
+          <Link
+            href={`/inbox?${params.toString()}`}
+            className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90"
+          >
+            <MessageSquare className="h-3.5 w-3.5" /> Start conversation
+          </Link>
+        </div>
+      </SectionCard>
+    );
+  }
+
+  if (loading) return <SkeletonCard />;
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4" /> {error}
+        </div>
+      )}
+
+      {/* Inner toggle + open-in-inbox */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="inline-flex gap-1 rounded-lg border border-border-color bg-card-bg p-1 shadow-sm">
+          {(['transcript', 'sessions'] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                view === v ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {v === 'transcript' ? 'Transcript' : `Sessions${sessions.length ? ` (${sessions.length})` : ''}`}
+            </button>
+          ))}
+        </div>
+        <Link
+          href={`/inbox?c=${convoId}`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border-color px-3 py-1.5 text-xs font-medium text-text-primary hover:bg-bg-primary"
+        >
+          <MessageSquare className="h-3.5 w-3.5" /> Open in Inbox
+        </Link>
+      </div>
+
+      {view === 'transcript' ? (
+        <SectionCard title="Recent messages" icon={MessageSquare}>
+          {messages.length === 0 ? (
+            <p className="text-sm text-text-secondary">No messages in this conversation.</p>
+          ) : (
+            <div className="space-y-2.5">
+              {messages.map(m => <MessageBubble key={m.id} m={m} />)}
+            </div>
+          )}
+        </SectionCard>
+      ) : (
+        <SectionCard title="Session history" icon={Clock}>
+          {sessions.length === 0 ? (
+            <p className="text-sm text-text-secondary">No sessions recorded yet.</p>
+          ) : (
+            <ul className="space-y-2.5">
+              {sessions.map(s => <SessionCard key={s.id} s={s} />)}
+            </ul>
+          )}
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+function MessageBubble({ m }: { m: Message }) {
+  const text = m.content?.trim() || '[no text content]';
+  if (m.role === 'system' || m.role === 'tool') {
+    return (
+      <div className="flex justify-center">
+        <span className="rounded-full bg-bg-primary px-2.5 py-0.5 text-[11px] text-text-secondary">{text}</span>
+      </div>
+    );
+  }
+  const outbound = m.role === 'assistant';
+  return (
+    <div className={`flex ${outbound ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+        outbound
+          ? 'rounded-br-sm bg-accent text-white'
+          : 'rounded-bl-sm border border-border-color bg-bg-primary text-text-primary'
+      }`}>
+        <p className="whitespace-pre-wrap break-words">{text}</p>
+        <p className={`mt-1 text-[10px] ${outbound ? 'text-white/70' : 'text-text-secondary'}`}>
+          {formatDateTime(m.timestamp)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SessionCard({ s }: { s: ConversationSession }) {
+  return (
+    <li className="rounded-xl border border-border-color bg-bg-primary p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${SESSION_STATUS_STYLE[s.status]}`}>
+          {s.status}
+        </span>
+        <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+          <Calendar className="h-3 w-3" /> {formatDateTime(s.startedAt)}
+        </span>
+        <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+          <Clock className="h-3 w-3" /> {formatDuration(s.durationSeconds)}
+        </span>
+        <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+          <MessageSquare className="h-3 w-3" /> {s.messagesCount} msg{s.messagesCount === 1 ? '' : 's'}
+        </span>
+        {s.leadScore != null && (
+          <span className="ml-auto rounded-md bg-bg-secondary px-1.5 py-0.5 text-[11px] text-text-secondary">
+            Lead score {s.leadScore}
+          </span>
+        )}
+      </div>
+      {s.summary && <p className="mt-2 text-sm text-text-primary">{s.summary}</p>}
+    </li>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
 // Activity tab
 // ────────────────────────────────────────────────────────────────
 
@@ -958,6 +1180,307 @@ function NotesTab({
         </ul>
       )}
     </SectionCard>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Follow-ups tab
+// ────────────────────────────────────────────────────────────────
+
+const FOLLOWUP_STATUS_LABEL: Record<FollowUpStatus, string> = {
+  scheduled: 'Scheduled',
+  pending_manual: 'Pending (manual)',
+  sent: 'Sent',
+  cancelled: 'Cancelled',
+  failed: 'Failed',
+};
+
+const FOLLOWUP_STATUS_ICON: Record<FollowUpStatus, React.ElementType> = {
+  scheduled: CalendarClock,
+  pending_manual: Clock,
+  sent: CheckCircle2,
+  cancelled: XCircle,
+  failed: AlertTriangle,
+};
+
+// Format a Date into the value expected by <input type="datetime-local">.
+function toLocalInputValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function defaultScheduleValue(): string {
+  const d = new Date(Date.now() + 24 * 60 * 60 * 1000); // tomorrow
+  d.setMinutes(0, 0, 0);
+  return toLocalInputValue(d);
+}
+
+function FollowupsTab({ contact: c, canManage }: { contact: Contact; canManage: boolean }) {
+  const [items, setItems] = useState<FollowUpMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [unavailable, setUnavailable] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Composer state
+  const [showForm, setShowForm] = useState(false);
+  const [message, setMessage] = useState('');
+  const [when, setWhen] = useState(defaultScheduleValue);
+  const [mode, setMode] = useState<FollowUpMode>('auto');
+  const [saving, setSaving] = useState(false);
+
+  // Per-row action state
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    listFollowups({ contact_id: c.id })
+      .then((rows) => { setItems(rows); setUnavailable(false); })
+      .catch((e) => {
+        // 403/404 → follow_up module not enabled for this business
+        const status = (e as { status?: number })?.status;
+        if (status === 403 || status === 404) setUnavailable(true);
+        else setError((e as Error).message || 'Failed to load follow-ups');
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [c.id]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = message.trim();
+    if (!text || !when) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createFollowup({
+        contact_id: c.id,
+        message_text: text,
+        scheduled_at: new Date(when).toISOString(),
+        delivery_mode: mode,
+      });
+      setMessage('');
+      setWhen(defaultScheduleValue());
+      setShowForm(false);
+      load();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to schedule follow-up');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSendNow = async (id: number) => {
+    setBusyId(id);
+    setError(null);
+    try { await sendFollowupNow(id); load(); }
+    catch (err) { setError((err as Error).message || 'Failed to send'); }
+    finally { setBusyId(null); }
+  };
+
+  const handleCancel = async (id: number) => {
+    setBusyId(id);
+    setError(null);
+    try { await cancelFollowup(id); load(); }
+    catch (err) { setError((err as Error).message || 'Failed to cancel'); }
+    finally { setBusyId(null); }
+  };
+
+  if (loading) return <SkeletonCard />;
+
+  if (unavailable) {
+    return (
+      <SectionCard title="Follow-ups" icon={Bell}>
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <Bell className="h-8 w-8 text-text-secondary/40" />
+          <p className="text-sm text-text-primary font-medium">Follow-ups aren&apos;t enabled</p>
+          <p className="text-sm text-text-secondary max-w-sm">
+            The Follow-up module is off for this workspace. Enable it to schedule reminders
+            and automated nudges for your contacts.
+          </p>
+        </div>
+      </SectionCard>
+    );
+  }
+
+  const now = Date.now();
+  const upcoming = items.filter(f => f.status === 'scheduled' || f.status === 'pending_manual');
+  const history = items.filter(f => f.status === 'sent' || f.status === 'cancelled' || f.status === 'failed');
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4" /> {error}
+          <button className="ml-auto" onClick={() => setError(null)}><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Composer */}
+      <SectionCard
+        title="Schedule a follow-up"
+        icon={CalendarClock}
+        action={canManage ? (
+          <button
+            onClick={() => setShowForm(v => !v)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90"
+          >
+            {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            {showForm ? 'Close' : 'New follow-up'}
+          </button>
+        ) : undefined}
+      >
+        {!canManage ? (
+          <p className="text-sm text-text-secondary">You don&apos;t have permission to schedule follow-ups.</p>
+        ) : showForm ? (
+          <form onSubmit={handleCreate} className="space-y-3">
+            <textarea
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              placeholder="What should this follow-up say? e.g. “Hi {{name}}, just checking in on your quote…”"
+              rows={3}
+              className="w-full resize-none rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-text-secondary">When</label>
+                <input
+                  type="datetime-local"
+                  value={when}
+                  onChange={e => setWhen(e.target.value)}
+                  className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-text-secondary">Delivery</label>
+                <select
+                  value={mode}
+                  onChange={e => setMode(e.target.value as FollowUpMode)}
+                  className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
+                >
+                  <option value="auto">Send automatically</option>
+                  <option value="manual">Add to manual queue</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="rounded-lg border border-border-color px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-primary"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving || !message.trim() || !when}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />} Schedule
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="text-sm text-text-secondary">
+            Schedule a one-off reminder or message for this contact. Choose
+            <span className="font-medium text-text-primary"> Send automatically</span> to deliver it at the set time,
+            or <span className="font-medium text-text-primary">Add to manual queue</span> to be reminded to send it yourself.
+          </p>
+        )}
+      </SectionCard>
+
+      {/* Upcoming */}
+      <SectionCard title={`Upcoming${upcoming.length ? ` (${upcoming.length})` : ''}`} icon={CalendarClock}>
+        {upcoming.length === 0 ? (
+          <p className="text-sm text-text-secondary">No upcoming follow-ups.</p>
+        ) : (
+          <ul className="space-y-2">
+            {upcoming.map(f => (
+              <FollowupRow
+                key={f.id}
+                f={f}
+                overdue={new Date(f.scheduled_at).getTime() < now}
+                busy={busyId === f.id}
+                canManage={canManage}
+                onSendNow={() => handleSendNow(f.id)}
+                onCancel={() => handleCancel(f.id)}
+              />
+            ))}
+          </ul>
+        )}
+      </SectionCard>
+
+      {/* History */}
+      {history.length > 0 && (
+        <SectionCard title="History" icon={Clock}>
+          <ul className="space-y-2">
+            {history.map(f => (
+              <FollowupRow key={f.id} f={f} busy={false} canManage={false} />
+            ))}
+          </ul>
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+function FollowupRow({
+  f, overdue, busy, canManage, onSendNow, onCancel,
+}: {
+  f: FollowUpMessage;
+  overdue?: boolean;
+  busy: boolean;
+  canManage: boolean;
+  onSendNow?: () => void;
+  onCancel?: () => void;
+}) {
+  const StatusIcon = FOLLOWUP_STATUS_ICON[f.status];
+  const actionable = f.status === 'scheduled' || f.status === 'pending_manual';
+  return (
+    <li className="rounded-xl border border-border-color bg-bg-primary p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${statusBadgeClasses(f.status)}`}>
+              <StatusIcon className="h-3 w-3" /> {FOLLOWUP_STATUS_LABEL[f.status]}
+            </span>
+            <span className={`inline-flex items-center gap-1 text-xs ${overdue ? 'text-amber-600 font-medium' : 'text-text-secondary'}`}>
+              <Calendar className="h-3 w-3" />
+              {overdue ? 'Overdue · ' : ''}{formatDateTime(f.scheduled_at)}
+            </span>
+            <span className="text-[11px] text-text-secondary/70">
+              {f.delivery_mode === 'manual' ? 'Manual queue' : 'Auto-send'}
+            </span>
+          </div>
+          <p className="whitespace-pre-wrap break-words text-sm text-text-primary">{f.message_text}</p>
+        </div>
+
+        {canManage && actionable && (
+          <div className="flex shrink-0 items-center gap-1">
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin text-text-secondary" />
+            ) : (
+              <>
+                <button
+                  onClick={onSendNow}
+                  title="Send now"
+                  className="rounded-md p-1.5 text-text-secondary hover:bg-accent/10 hover:text-accent"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={onCancel}
+                  title="Cancel"
+                  className="rounded-md p-1.5 text-text-secondary hover:bg-red-500/10 hover:text-red-500"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -1418,12 +1941,13 @@ function AdAttributionRail({ contact: c }: { contact: Contact }) {
 // Generic helpers
 // ────────────────────────────────────────────────────────────────
 
-function SectionCard({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
+function SectionCard({ title, icon: Icon, children, action }: { title: string; icon: React.ElementType; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-border-color bg-card-bg p-4 shadow-sm">
-      <header className="mb-3 flex items-center gap-2">
+    <section className="rounded-2xl border border-border-color bg-card-bg p-5 shadow-sm">
+      <header className="mb-4 flex items-center gap-2">
         <Icon className="h-4 w-4 text-text-secondary" />
         <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
+        {action && <div className="ml-auto">{action}</div>}
       </header>
       <div>{children}</div>
     </section>

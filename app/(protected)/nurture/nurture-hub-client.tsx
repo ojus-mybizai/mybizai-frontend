@@ -44,10 +44,21 @@ function EmptyState({ onNew }: { onNew: () => void }) {
 }
 
 // ─── Create modal ─────────────────────────────────────────────────────────────
+const TIMEZONE_OPTIONS = [
+  { value: 'Asia/Kolkata', label: 'India Standard Time (IST)' },
+  { value: 'Asia/Dubai', label: 'Gulf Standard Time (GST)' },
+  { value: 'Asia/Singapore', label: 'Singapore Time (SGT)' },
+  { value: 'Europe/London', label: 'UK Time (GMT/BST)' },
+  { value: 'America/New_York', label: 'US Eastern Time (ET)' },
+  { value: 'America/Los_Angeles', label: 'US Pacific Time (PT)' },
+  { value: 'UTC', label: 'UTC' },
+];
+
 function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (seq: NurtureSequence) => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [onReply, setOnReply] = useState<'pause' | 'stop' | 'continue'>('pause');
+  const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,7 +66,7 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (se
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const seq = await createSequence({ name: name.trim(), description: description.trim() || undefined, on_reply: onReply });
+      const seq = await createSequence({ name: name.trim(), description: description.trim() || undefined, on_reply: onReply, timezone });
       onCreate(seq);
     } finally {
       setSaving(false);
@@ -105,6 +116,18 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (se
               {onReply === 'stop' && 'Sequence stops permanently when lead replies.'}
               {onReply === 'continue' && 'Sequence keeps sending even if lead replied.'}
             </p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Send timezone</label>
+            <select
+              value={timezone} onChange={e => setTimezone(e.target.value)}
+              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+            >
+              {TIMEZONE_OPTIONS.map(tz => (
+                <option key={tz.value} value={tz.value}>{tz.label}</option>
+              ))}
+            </select>
+            <p className="text-xs text-text-secondary">Step send windows &amp; weekend skipping are evaluated in this timezone.</p>
           </div>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-border-color px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary transition-colors">
@@ -158,7 +181,7 @@ function SequenceCard({ seq, onArchive }: { seq: NurtureSequence; onArchive: (id
           {seq.steps.slice(0, 6).map((step, i) => (
             <div key={step.id} className="flex items-center gap-1">
               {i > 0 && <div className="h-px w-3 bg-border-color shrink-0" />}
-              <div className={`h-2 w-2 rounded-full shrink-0 ${step.message_type === 'ai_generated' ? 'bg-accent' : 'bg-text-secondary'}`} title={`Step ${step.step_number}: Day ${step.delay_days}`} />
+              <div className="h-2 w-2 rounded-full shrink-0 bg-accent" title={`Step ${step.step_number}: Day ${step.delay_days}`} />
             </div>
           ))}
           {totalSteps > 6 && <span className="text-xs text-text-secondary ml-1">+{totalSteps - 6} more</span>}

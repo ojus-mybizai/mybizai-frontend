@@ -116,11 +116,13 @@ export interface FollowUpRuleUpdate extends Partial<FollowUpRuleCreate> {}
 
 export async function listFollowups(params: {
   lead_id?: number;
+  contact_id?: number;
   agent_id?: number;
   status?: FollowUpStatus;
 }): Promise<FollowUpMessage[]> {
   const q = new URLSearchParams();
   if (params.lead_id != null) q.set('lead_id', String(params.lead_id));
+  if (params.contact_id != null) q.set('contact_id', String(params.contact_id));
   if (params.agent_id != null) q.set('agent_id', String(params.agent_id));
   if (params.status) q.set('status', params.status);
   const data = await apiFetch<FollowUpListResponse>(`/followups?${q.toString()}`, {
@@ -222,7 +224,8 @@ export async function deleteAgentFollowupRule(agentId: number | string, ruleId: 
 
 export interface FollowUpMessageCreate {
   agent_id?: number | null;
-  lead_id: number;
+  lead_id?: number;
+  contact_id?: number;
   message_text: string;
   scheduled_at: string; // ISO datetime string
   delivery_mode?: FollowUpMode;

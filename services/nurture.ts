@@ -8,7 +8,8 @@ export interface NurtureStep {
   step_number: number;
   delay_days: number;
   delay_hours: number;
-  message_type: 'ai_generated' | 'template';
+  // Nurture sends approved WhatsApp templates only.
+  message_type: 'template';
   template_id: number | null;
   template_name: string | null;
   template_body: string | null;
@@ -27,6 +28,7 @@ export interface NurtureSequence {
   agent_id: number | null;
   agent_name: string | null;
   on_reply: 'pause' | 'stop' | 'continue';
+  timezone: string;
   status: 'draft' | 'active' | 'archived';
   steps: NurtureStep[];
   total_enrolled: number;
@@ -92,6 +94,7 @@ export async function createSequence(data: {
   description?: string;
   agent_id?: number | null;
   on_reply?: 'pause' | 'stop' | 'continue';
+  timezone?: string;
 }): Promise<NurtureSequence> {
   return apiFetch<NurtureSequence>('/nurture/sequences', {
     method: 'POST',
@@ -104,6 +107,7 @@ export async function updateSequence(id: number, data: Partial<{
   description: string;
   agent_id: number | null;
   on_reply: 'pause' | 'stop' | 'continue';
+  timezone: string;
   status: 'draft' | 'active' | 'archived';
 }>): Promise<NurtureSequence> {
   return apiFetch<NurtureSequence>(`/nurture/sequences/${id}`, {
@@ -126,9 +130,8 @@ export async function addStep(sequenceId: number, data: {
   step_number: number;
   delay_days: number;
   delay_hours?: number;
-  message_type: 'ai_generated' | 'template';
-  template_id?: number | null;
-  ai_instructions?: string;
+  message_type?: 'template';
+  template_id: number;
   send_window_start?: string;
   send_window_end?: string;
   skip_weekends?: boolean;
@@ -160,10 +163,18 @@ export async function previewStep(sequenceId: number, stepId: number, leadId: nu
 
 // ─── Enrollments API ──────────────────────────────────────────────────────────
 
-export async function enrollLeads(sequenceId: number, leadIds: number[], startAt?: string): Promise<{ enrolled: number; skipped: number }> {
+export async function enrollLeads(
+  sequenceId: number,
+  leadIds: number[],
+  opts?: { groupIds?: number[]; startAt?: string },
+): Promise<{ enrolled: number; skipped: number }> {
   return apiFetch<{ enrolled: number; skipped: number }>(`/nurture/sequences/${sequenceId}/enroll`, {
     method: 'POST',
-    body: JSON.stringify({ lead_ids: leadIds, start_at: startAt }),
+    body: JSON.stringify({
+      lead_ids: leadIds,
+      group_ids: opts?.groupIds ?? [],
+      start_at: opts?.startAt,
+    }),
   });
 }
 
