@@ -107,11 +107,11 @@ export default function HomePage() {
     Promise.all([
       getLeadStats().catch(() => null),
       getLeadStatsOverTime(30).catch(() => null),
-      apiFetch<any>('/leads/?per_page=5&page=1').catch(() => ({ leads: [] })),
-    ]).then(([s, ts, leads]) => {
+      apiFetch<any>('/contacts-v2/?per_page=5&page=1').catch(() => ({ contacts: [] })),
+    ]).then(([s, ts, contacts]) => {
       setStats(s);
       setTimeSeries(ts);
-      setRecentLeads(leads?.leads || []);
+      setRecentLeads(contacts?.contacts || []);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -140,8 +140,8 @@ export default function HomePage() {
           <h1 className="text-2xl font-bold text-text-primary">{greeting()}, {firstName}</h1>
           <p className="text-sm text-text-secondary mt-0.5">{today}</p>
         </div>
-        <Link href="/leads" className="text-sm text-accent hover:underline flex items-center gap-1">
-          View all leads <ArrowRight className="w-3.5 h-3.5" />
+        <Link href="/contacts" className="text-sm text-accent hover:underline flex items-center gap-1">
+          View all contacts <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
 
@@ -242,8 +242,8 @@ export default function HomePage() {
           {/* Recent Leads */}
           <div className="rounded-xl border border-border-color bg-card-bg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-color">
-              <h3 className="text-sm font-semibold text-text-primary">Recent Leads</h3>
-              <Link href="/leads" className="text-xs text-accent hover:underline flex items-center gap-1">
+              <h3 className="text-sm font-semibold text-text-primary">Recent Contacts</h3>
+              <Link href="/contacts" className="text-xs text-accent hover:underline flex items-center gap-1">
                 View all <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
@@ -252,7 +252,7 @@ export default function HomePage() {
                 {recentLeads.map((lead: any) => (
                   <Link
                     key={lead.id}
-                    href={`/leads/${lead.id}`}
+                    href={`/contacts/${lead.id}`}
                     className="flex items-center justify-between px-4 py-3 hover:bg-bg-secondary/50 transition-colors"
                   >
                     <div className="min-w-0 flex-1">

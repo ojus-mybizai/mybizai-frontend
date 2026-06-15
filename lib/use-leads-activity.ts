@@ -12,7 +12,7 @@ export function useLeadsActivity(days: number = 30) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['leads-activity', days],
     queryFn: ({ signal }) =>
-      apiFetch<{ series: LeadsActivityPoint[] }>(`/leads/stats/over_time?days=${days}`, {
+      apiFetch<{ series: LeadsActivityPoint[] }>(`/contacts-v2/stats/over_time?days=${days}`, {
         method: 'GET',
         signal,
       }).then((res) => (Array.isArray(res.series) ? res.series : [])),

@@ -17,7 +17,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { listAgents } from '@/services/agents';
 import { listEmployees } from '@/services/employees';
-import { getLeadTemplate } from '@/services/lead-templates';
 import { getLeadStats, type LeadStats } from '@/services/customers';
 import { listModels } from '@/services/dynamic-data';
 import { listChannels } from '@/services/channels';
@@ -45,19 +44,6 @@ export function useEmployeeList() {
     queryKey: queryKeys.employees(),
     queryFn: () => listEmployees(),
     staleTime: 10 * 60 * 1000, // 10 minutes
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Lead template by ID — stale after 10 minutes
-// Template definitions rarely change during a session.
-// ---------------------------------------------------------------------------
-export function useLeadTemplate(templateId: number | null | undefined) {
-  return useQuery({
-    queryKey: queryKeys.leadTemplate(templateId ?? 0),
-    queryFn: () => getLeadTemplate(templateId!),
-    staleTime: 10 * 60 * 1000,
-    enabled: templateId != null && templateId > 0,
   });
 }
 

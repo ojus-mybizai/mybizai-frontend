@@ -1097,7 +1097,7 @@ export default function EmployeeDetailPage() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <Link
-                                href={`/leads/${lead.id}`}
+                                href={`/contacts/${lead.id}`}
                                 className="text-xs font-semibold text-accent hover:underline"
                               >
                                 Open →

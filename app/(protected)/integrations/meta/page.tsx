@@ -26,8 +26,11 @@ import {
   type MetaFormRoutingConfig,
   type MetaOAuthPage,
 } from '@/services/meta-integration';
-import { listPipelineStages, type LeadPipelineStage } from '@/services/customers';
 import { listAgents, type Agent } from '@/services/agents';
+
+// Pipeline stages were removed with the leads module. Local type kept so the
+// stage selectors still render (empty) until this config UI is retired.
+type LeadPipelineStage = { id: number; name: string };
 import { FacebookSDKLoader } from '@/components/integrations/FacebookSDKLoader';
 
 // ─── Meta brand colours ───────────────────────────────────────────────────────
@@ -73,7 +76,7 @@ export default function MetaAdsIntegrationPage() {
   const [view, setView] = useState<PageView>('overview');
 
   // Reference data
-  const [stages, setStages] = useState<LeadPipelineStage[]>([]);
+  const [stages] = useState<LeadPipelineStage[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
 
   // OAuth flow state (set after FB.login() popup resolves)
@@ -102,13 +105,11 @@ export default function MetaAdsIntegrationPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const [intg, stageList, agentList] = await Promise.allSettled([
+        const [intg, agentList] = await Promise.allSettled([
           getMetaIntegration(),
-          listPipelineStages(),
           listAgents(),
         ]);
         if (intg.status === 'fulfilled') setIntegration(intg.value);
-        if (stageList.status === 'fulfilled') setStages(stageList.value);
         if (agentList.status === 'fulfilled') setAgents(agentList.value);
       } finally {
         setLoading(false);

@@ -11,6 +11,7 @@ import {
   type ContactTag,
   type ContactSavedView,
   type ContactStats,
+  type ContactFilterCounts,
   type ContactActivity,
   type ContactNote,
   type ContactProcessEntry,
@@ -45,6 +46,10 @@ export interface ContactV2State {
   savedViews: ContactSavedView[];
   stats: ContactStats | null;
   loadingStats: boolean;
+
+  // Smart-filter segment counts
+  filterCounts: ContactFilterCounts | null;
+  loadingFilterCounts: boolean;
 
   // Groups
   groups: ContactGroup[];
@@ -87,6 +92,7 @@ export interface ContactV2State {
   loadTags(groupId?: number | null): Promise<void>;
   loadSavedViews(): Promise<void>;
   loadStats(): Promise<void>;
+  loadFilterCounts(ctx?: { group_id?: number | null; search?: string }): Promise<void>;
   createTag(payload: { name: string; color?: string; group_id?: number | null }): Promise<ContactTag>;
   updateTag(tagId: number, payload: { name?: string; color?: string }): Promise<ContactTag>;
   deleteTag(tagId: number): Promise<void>;
@@ -116,6 +122,8 @@ const DEFAULT_FILTERS: ContactFilters = {
 // Monotonic id for list requests — lets us drop out-of-order responses when
 // the user switches groups/filters faster than the network responds.
 let listSeq = 0;
+// Same idea for filter-count requests (group/search switches).
+let countsSeq = 0;
 
 export const useContactV2Store = create<ContactV2State>((set, get) => ({
   // ── Initial state ──────────────────────────────────────────────────────────
@@ -139,6 +147,9 @@ export const useContactV2Store = create<ContactV2State>((set, get) => ({
   savedViews: [],
   stats: null,
   loadingStats: false,
+
+  filterCounts: null,
+  loadingFilterCounts: false,
 
   groups: [],
   loadingGroups: false,
@@ -340,6 +351,18 @@ export const useContactV2Store = create<ContactV2State>((set, get) => ({
       set({ stats: data, loadingStats: false });
     } catch {
       set({ loadingStats: false });
+    }
+  },
+
+  async loadFilterCounts(ctx = {}) {
+    const seq = ++countsSeq;
+    set({ loadingFilterCounts: true });
+    try {
+      const data = await contactsV2Service.getFilterCounts(ctx);
+      if (seq !== countsSeq) return; // superseded by a newer context
+      set({ filterCounts: data, loadingFilterCounts: false });
+    } catch {
+      if (seq === countsSeq) set({ loadingFilterCounts: false });
     }
   },
 

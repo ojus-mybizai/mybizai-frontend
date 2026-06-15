@@ -285,30 +285,30 @@ export const unknownSendersService = {
   },
 };
 
-// ── Lead routing ──────────────────────────────────────────────────────────────
+// ── Contact routing ──────────────────────────────────────────────────────────
 
-/** Apply routing to ALL channels of a lead at once (bulk convenience). */
-export const updateLeadRouting = async (leadId: number, routingMode: RoutingMode, aiAgentId?: number | null) => {
-  return apiFetch(`/leads/${leadId}/routing`, {
+/** Apply routing to ALL channels of a contact at once (bulk convenience). */
+export const updateLeadRouting = async (contactId: number, routingMode: RoutingMode, aiAgentId?: number | null) => {
+  return apiFetch(`/contacts-v2/${contactId}/routing`, {
     method: 'PATCH',
     body: JSON.stringify({ routing_mode: routingMode, ai_agent_id: aiAgentId ?? null }),
   });
 };
 
-/** List all channels a lead is active on with per-channel routing config. */
-export const getLeadChannels = async (leadId: number): Promise<ContactChannelConfig[]> => {
-  const raw = await apiFetch<Record<string, unknown>[]>(`/leads/${leadId}/channels`);
+/** List all channels a contact is active on with per-channel routing config. */
+export const getLeadChannels = async (contactId: number): Promise<ContactChannelConfig[]> => {
+  const raw = await apiFetch<Record<string, unknown>[]>(`/contacts-v2/${contactId}/channels`);
   return raw.map(mapChannel);
 };
 
-/** Update routing for one specific (lead, channel) pair. */
+/** Update routing for one specific (contact, channel) pair. */
 export const updateLeadChannelRouting = async (
-  leadId: number,
+  contactId: number,
   channelId: number,
   routingMode: RoutingMode | null,
   agentId?: number | null,
 ): Promise<void> => {
-  await apiFetch(`/leads/${leadId}/channels/${channelId}`, {
+  await apiFetch(`/contacts-v2/${contactId}/channels/${channelId}`, {
     method: 'PATCH',
     body: JSON.stringify({ routing_mode: routingMode, agent_id: agentId ?? null }),
   });

@@ -2,48 +2,26 @@
 
 /**
  * File import audience component — upload a CSV/Excel file, preview rows,
- * confirm import into Leads, and auto-select the imported leads as audience.
+ * confirm import into Contacts, and auto-select the imported contacts as audience.
  *
- * Reuses the existing lead-import backend endpoints:
- *   POST /leads/import/preview   → parse file + preview
- *   POST /leads/import/confirm   → insert into Leads table
+ * Uses the contact import backend endpoints:
+ *   POST /contacts/import/preview   → parse file + preview
+ *   POST /contacts/import/confirm   → insert into contacts table
  *
- * After confirm, returns the created lead IDs so the campaign wizard can
+ * After confirm, returns the created contact IDs so the campaign wizard can
  * plug them into audience_config as {lead_ids: [...]}.
  */
 
 import { useCallback, useState } from 'react';
-import { apiFetch } from '@/lib/api-client';
+import {
+  previewImport,
+  confirmImport,
+  type ContactImportPreviewResponse,
+  type ContactImportConfirmResult,
+} from '@/services/contact-import';
 
 interface Props {
   onImported: (leadIds: number[]) => void;
-}
-
-interface PreviewRow {
-  row_number: number;
-  import_status: 'new' | 'duplicate' | 'error';
-  name: string | null;
-  phone: string | null;
-  email: string | null;
-  error_reason?: string | null;
-}
-
-interface PreviewResponse {
-  total: number;
-  new_count: number;
-  duplicate_count: number;
-  error_count: number;
-  columns_found: string[];
-  column_mapping: Array<{ file_column: string; lead_field: string | null }>;
-  rows: PreviewRow[];
-}
-
-interface ConfirmResult {
-  imported: number;
-  updated: number;
-  skipped: number;
-  errors: number;
-  lead_ids?: number[];
 }
 
 type Step = 'upload' | 'preview' | 'importing' | 'done';
@@ -51,8 +29,8 @@ type Step = 'upload' | 'preview' | 'importing' | 'done';
 export function FileImportAudience({ onImported }: Props) {
   const [step, setStep] = useState<Step>('upload');
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<PreviewResponse | null>(null);
-  const [result, setResult] = useState<ConfirmResult | null>(null);
+  const [preview, setPreview] = useState<ContactImportPreviewResponse | null>(null);
+  const [result, setResult] = useState<ContactImportConfirmResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -61,13 +39,7 @@ export function FileImportAudience({ onImported }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const resp = await apiFetch<PreviewResponse>('/leads/import/preview', {
-        method: 'POST',
-        body: formData,
-        headers: {}, // let browser set multipart content-type
-      });
+      const resp = await previewImport(file);
       setPreview(resp);
       setStep('preview');
     } catch (err) {
@@ -84,20 +56,18 @@ export function FileImportAudience({ onImported }: Props) {
     try {
       // Build confirm rows — import all "new" rows, skip duplicates
       const rows = preview.rows.map((r) => ({
-        ...r,
-        action: r.import_status === 'new' ? 'import' : 'skip',
+        row_index: r.row_index,
+        action: (r.import_status === 'new' ? 'import' : 'skip') as 'import' | 'skip',
+        data: r.data,
       }));
 
-      const resp = await apiFetch<ConfirmResult>('/leads/import/confirm', {
-        method: 'POST',
-        body: JSON.stringify({ rows }),
-      });
+      const resp = await confirmImport({ rows });
       setResult(resp);
       setStep('done');
 
-      // Return imported lead IDs to the wizard
-      if (resp.lead_ids && resp.lead_ids.length > 0) {
-        onImported(resp.lead_ids);
+      // Return imported contact IDs to the wizard
+      if (resp.contact_ids && resp.contact_ids.length > 0) {
+        onImported(resp.contact_ids);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed');
@@ -192,10 +162,10 @@ export function FileImportAudience({ onImported }: Props) {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-neutral-900">
                 {preview.rows.slice(0, 50).map((r) => (
-                  <tr key={r.row_number}>
-                    <td className="px-2 py-1 text-gray-400">{r.row_number}</td>
-                    <td className="px-2 py-1">{r.name || '—'}</td>
-                    <td className="px-2 py-1 font-mono">{r.phone || '—'}</td>
+                  <tr key={r.row_index}>
+                    <td className="px-2 py-1 text-gray-400">{r.row_index}</td>
+                    <td className="px-2 py-1">{r.data.name || '—'}</td>
+                    <td className="px-2 py-1 font-mono">{r.data.phone || '—'}</td>
                     <td className="px-2 py-1">
                       <span
                         className={

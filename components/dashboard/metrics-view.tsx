@@ -40,7 +40,7 @@ export default function MetricsView({
       <div className="grid gap-4 sm:grid-cols-2">
         <button
           type="button"
-          onClick={() => router.push('/leads')}
+          onClick={() => router.push('/contacts')}
           className="rounded-xl border border-border-color bg-card-bg px-4 py-3 text-left shadow-sm transition-transform hover:-translate-y-px hover:border-accent hover:shadow-md"
         >
           <div className="mb-1 text-sm font-medium text-text-secondary">Total leads</div>
@@ -53,7 +53,7 @@ export default function MetricsView({
         </button>
         <button
           type="button"
-          onClick={() => router.push('/leads')}
+          onClick={() => router.push('/contacts')}
           className="rounded-xl border border-border-color bg-card-bg px-4 py-3 text-left shadow-sm transition-transform hover:-translate-y-px hover:border-accent hover:shadow-md"
         >
           <div className="mb-1 text-sm font-medium text-text-secondary">Conversion rate</div>
@@ -182,7 +182,7 @@ export default function MetricsView({
               <p>Enable Lead Management System to see insights from your leads.</p>
               <button
                 type="button"
-                onClick={() => router.push('/leads')}
+                onClick={() => router.push('/contacts')}
                 className="mt-1 inline-flex rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
               >
                 Go to leads

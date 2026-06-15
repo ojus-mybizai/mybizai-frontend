@@ -102,7 +102,7 @@ export function GlobalSearch() {
     setOpen(false);
     setQuery('');
     if (item.entity_type === 'lead') {
-      router.push(`/leads/${item.id}`);
+      router.push(`/contacts/${item.id}`);
     } else {
       router.push(`/contacts?highlight=${item.id}`);
     }

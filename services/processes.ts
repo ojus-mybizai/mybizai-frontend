@@ -600,7 +600,7 @@ export async function getLeadPipelineEntries(
   status?: string,
 ): Promise<ProcessEntryWithProcess[]> {
   const qs = status ? `?status=${status}` : '';
-  return apiFetch<ProcessEntryWithProcess[]>(`/leads/${leadId}/pipeline-entries${qs}`, { method: 'GET', auth: true });
+  return apiFetch<ProcessEntryWithProcess[]>(`/contacts/${leadId}/pipeline-entries${qs}`, { method: 'GET', auth: true });
 }
 
 export async function listProcessesForEntityType(entityType: 'lead' | 'contact' | 'datasheet_record'): Promise<BusinessProcessListItem[]> {

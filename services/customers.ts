@@ -105,6 +105,77 @@ export interface Conversation {
   lastAgentMessageAt?: string | null;
 }
 
+// ── Rich message metadata (Message._metadata on the backend) ────────────────
+// Discriminated on `type`. For file-backed media the backend injects a fresh
+// presigned `url` at read time (short-lived — never cache it across sessions).
+
+export type MediaKind = 'image' | 'video' | 'audio' | 'document' | 'sticker';
+
+export interface MediaMetadata {
+  type: MediaKind;
+  /** pending = download worker still fetching; ready = url usable; failed = gave up */
+  status?: 'pending' | 'ready' | 'failed';
+  file_id?: number;
+  url?: string;
+  caption?: string | null;
+  filename?: string | null;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+  error?: string | null;
+}
+
+export interface LocationMetadata {
+  type: 'location';
+  latitude?: number | null;
+  longitude?: number | null;
+  name?: string | null;
+  address?: string | null;
+}
+
+export interface ButtonReplyMetadata {
+  type: 'button_reply';
+  button_id?: string | null;
+  title?: string | null;
+}
+
+export interface ListReplyMetadata {
+  type: 'list_reply';
+  row_id?: string | null;
+  title?: string | null;
+  description?: string | null;
+}
+
+export interface ContactsMetadata {
+  type: 'contacts';
+  contacts?: Array<{ name?: { formatted_name?: string }; phones?: Array<{ phone?: string }> }>;
+}
+
+// Outbound shapes (persisted from Phase 3 send paths) — rendered defensively already
+export interface InteractiveButtonsMetadata {
+  type: 'interactive_buttons';
+  body?: string | null;
+  buttons?: Array<{ id?: string; title?: string }>;
+}
+
+export interface TemplateMetadata {
+  type: 'template';
+  template_id?: number;
+  template_name?: string | null;
+  header?: { format?: string | null; file_id?: number; url?: string | null } | null;
+  body?: string | null;
+  footer?: string | null;
+  buttons?: Array<{ type?: string; text?: string; url?: string | null }>;
+}
+
+export type MessageMetadata =
+  | MediaMetadata
+  | LocationMetadata
+  | ButtonReplyMetadata
+  | ListReplyMetadata
+  | ContactsMetadata
+  | InteractiveButtonsMetadata
+  | TemplateMetadata;
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -117,6 +188,8 @@ export interface Message {
   read?: boolean;
   error_code?: string | null;
   error_detail?: string | null;
+  /** Rich payload (media/location/buttons/template) — null/undefined for plain text */
+  metadata?: MessageMetadata | null;
 }
 
 export interface ConversationSession {
@@ -185,8 +258,9 @@ function primaryChannel(lead: Lead): Channel {
   return (lead.source as Channel) || 'whatsapp';
 }
 
+// Shape of GET /contacts-v2/ — contacts replaced the removed leads module.
 type LeadListResponse = {
-  leads: Lead[];
+  contacts: Lead[];
   total: number;
   page: number;
   per_page: number;
@@ -250,6 +324,7 @@ type PaginatedMessages = {
     read?: boolean;
     error_code?: string | null;
     error_detail?: string | null;
+    metadata?: MessageMetadata | null;
   }>;
 };
 
@@ -329,8 +404,8 @@ export async function listLeadsForSelect(params: { search?: string; per_page?: n
   searchParams.set('page', '1');
   searchParams.set('per_page', String(perPage));
   if (params.search) searchParams.set('search', params.search);
-  const data = await apiFetch<LeadListResponse>(`/leads?${searchParams.toString()}`, { method: 'GET' });
-  return (data.leads ?? []).map((l) => ({
+  const data = await apiFetch<LeadListResponse>(`/contacts-v2/?${searchParams.toString()}`, { method: 'GET' });
+  return (data.contacts ?? []).map((l) => ({
     id: l.id,
     name: l.name ?? null,
     phone: l.phone ?? '',
@@ -361,10 +436,10 @@ export async function listCustomers(filters: CustomerFilters = {}) {
   if (filters.meta_campaign_id) params.set('meta_campaign_id', filters.meta_campaign_id);
   if (filters.meta_form_id) params.set('meta_form_id', filters.meta_form_id);
 
-  const data = await apiFetch<LeadListResponse>(`/leads?${params.toString()}`, { method: 'GET' });
+  const data = await apiFetch<LeadListResponse>(`/contacts-v2/?${params.toString()}`, { method: 'GET' });
 
   // Convo data is now enriched server-side — no waterfall needed
-  const items: Customer[] = data.leads.map((l) => {
+  const items: Customer[] = data.contacts.map((l) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = l as any;
     const lastActivity = raw.last_message_at ?? l.updated_at ?? l.created_at;
@@ -420,87 +495,6 @@ export async function listCustomers(filters: CustomerFilters = {}) {
     perPage: data.per_page,
     totalPages: Math.max(1, Math.ceil(data.total / data.per_page)),
   };
-}
-
-export interface BulkActionPayload {
-  lead_ids: number[];
-  action: 'change_stage' | 'change_priority' | 'assign' | 'delete';
-  pipeline_stage_id?: number;
-  priority?: 'low' | 'medium' | 'high';
-  assigned_to_id?: number | null;
-}
-
-export async function bulkLeadAction(payload: BulkActionPayload): Promise<{ affected: number; action: string }> {
-  return apiFetch('/leads/bulk-action', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function exportLeadsCSV(filters: CustomerFilters = {}): Promise<Customer[]> {
-  const result = await listCustomers({ ...filters, page: 1, perPage: 1000 });
-  return result.items;
-}
-
-export async function getCustomer(id: string): Promise<Customer | null> {
-  // Use direct lead-by-id endpoint
-  const leadId = Number(id);
-  const lead = await apiFetch<Lead>(`/leads/${leadId}`, { method: 'GET' });
-  
-  // Fetch conversations to enrich data
-  const convos = await apiFetch<ConvoOut[]>(`/convo/lead/${leadId}`, { method: 'GET' });
-  const latestConvo = convos.length > 0 
-    ? [...convos].sort((a, b) => {
-        const tsA = a.last_message_at ?? a.updated_at ?? '';
-        const tsB = b.last_message_at ?? b.updated_at ?? '';
-        return new Date(tsB).getTime() - new Date(tsA).getTime();
-      })[0]
-    : null;
-  
-  const { leadScore, lastScoreUpdate, customFields, templateId, lastFilled } = parseExtraData(lead.extra_data);
-  const last = latestConvo?.last_message_at ?? latestConvo?.updated_at ?? lead.updated_at ?? lead.created_at;
-  return {
-    id: String(lead.id),
-    name: lead.name ?? null,
-    company: lead.company ?? null,
-    phone: lead.phone ?? '',
-    email: lead.email ?? null,
-    channel: primaryChannel(lead),
-    linkedChannels: lead.linked_channels ?? [],
-    assignedAgent: latestConvo?.agent_name ?? '—',
-    assignedToId: lead.assigned_to_id ?? null,
-    assignedAt: lead.assigned_at ?? null,
-    assignmentLockedUntil: lead.assignment_locked_until ?? null,
-    lastActivity: last,
-    lastMessagePreview: latestConvo?.summary ?? '—',
-    aiActive: (latestConvo?.mode ?? 'ai') === 'ai',
-    priority: lead.priority as 'low' | 'medium' | 'high' | undefined,
-    source: lead.source ?? undefined,
-    notes: lead.notes ?? null,
-    leadScore,
-    lastScoreUpdate,
-    customFields,
-    templateId,
-    lastFilled,
-    createdAt: lead.created_at,
-    updatedAt: lead.updated_at ?? undefined,
-  };
-}
-
-function mapConvosToConversations(leadId: number, convos: ConvoOut[]): Conversation[] {
-  return convos.map((c) => ({
-    id: String(c.id),
-    customerId: String(c.lead_id),
-    agentId: c.agent_id ?? null,
-    agentName: c.agent_name ?? '—',
-    status: c.mode,
-    updatedAt: c.updated_at ?? c.last_message_at ?? new Date().toISOString(),
-    lastMessagePreview: c.last_message_preview ?? c.summary ?? '—',
-    totalMessages: c.total_messages ?? 0,
-    unreadCount: c.unread_count ?? 0,
-    lastUserMessageAt: c.last_user_message_at ?? null,
-    lastAgentMessageAt: c.last_agent_message_at ?? null,
-  }));
 }
 
 /** Inbox list item: conversation with lead/contact and channel names for display. */
@@ -579,68 +573,6 @@ export async function listAllConversations(
   return mapConvosToInboxConversations(convos);
 }
 
-export async function listConversations(customerId: string): Promise<Conversation[]> {
-  const leadId = Number(customerId);
-  const convos = await apiFetch<ConvoOut[]>(`/convo/lead/${leadId}`, { method: 'GET' });
-  return mapConvosToConversations(leadId, convos);
-}
-
-export interface CustomerDetailResult {
-  customer: Customer;
-  conversations: Conversation[];
-}
-
-/** Fetches lead + convos once; use to avoid duplicate GET /convo/lead/:id. */
-export async function fetchCustomerDetail(id: string): Promise<CustomerDetailResult> {
-  const leadId = Number(id);
-  const [lead, convos] = await Promise.all([
-    apiFetch<Lead>(`/leads/${leadId}`, { method: 'GET' }),
-    apiFetch<ConvoOut[]>(`/convo/lead/${leadId}`, { method: 'GET' }),
-  ]);
-  const latestConvo =
-    convos.length > 0
-      ? [...convos].sort((a, b) => {
-          const tsA = a.last_message_at ?? a.updated_at ?? '';
-          const tsB = b.last_message_at ?? b.updated_at ?? '';
-          return new Date(tsB).getTime() - new Date(tsA).getTime();
-        })[0]
-      : null;
-  const { leadScore, lastScoreUpdate, customFields, templateId, lastFilled } = parseExtraData(lead.extra_data);
-  const last = latestConvo?.last_message_at ?? latestConvo?.updated_at ?? lead.updated_at ?? lead.created_at;
-  const customer: Customer = {
-    id: String(lead.id),
-    name: lead.name ?? null,
-    company: lead.company ?? null,
-    phone: lead.phone ?? '',
-    email: lead.email ?? null,
-    assignedToId: lead.assigned_to_id ?? null,
-    assignedAt: lead.assigned_at ?? null,
-    assignmentLockedUntil: lead.assignment_locked_until ?? null,
-    channel: primaryChannel(lead),
-    linkedChannels: lead.linked_channels ?? [],
-    assignedAgent: latestConvo?.agent_name ?? '—',
-    lastActivity: last,
-    lastMessagePreview: latestConvo?.summary ?? '—',
-    aiActive: (latestConvo?.mode ?? 'ai') === 'ai',
-    priority: lead.priority as 'low' | 'medium' | 'high' | undefined,
-    source: lead.source ?? undefined,
-    notes: lead.notes ?? null,
-    leadScore,
-    lastScoreUpdate,
-    customFields,
-    templateId,
-    lastFilled,
-    createdAt: lead.created_at,
-    updatedAt: lead.updated_at ?? undefined,
-    aiAgentId: (lead as any).ai_agent_id ?? null,
-    routingMode: ((lead as any).routing_mode ?? 'manual') as 'ai' | 'manual' | 'blocked',
-    expectedValue: (lead as any).expected_value != null ? Number((lead as any).expected_value) : null,
-    expectedCloseDate: (lead as any).expected_close_date ?? null,
-  };
-  const conversations = mapConvosToConversations(leadId, convos);
-  return { customer, conversations };
-}
-
 export async function listMessages(conversationId: string): Promise<Message[]> {
   const convoId = Number(conversationId);
   const data = await apiFetch<PaginatedMessages>(`/convo/${convoId}/messages?page=1&limit=50`, {
@@ -658,6 +590,7 @@ export async function listMessages(conversationId: string): Promise<Message[]> {
     read: m.read,
     error_code: m.error_code ?? null,
     error_detail: m.error_detail ?? null,
+    metadata: m.metadata ?? null,
   }));
 }
 
@@ -711,6 +644,7 @@ export async function appendMessage(
         role: created.role,
         content: created.content,
         timestamp: created.timestamp,
+        metadata: created.metadata ?? null,
       },
     };
   } catch (err: any) {
@@ -728,35 +662,6 @@ export async function toggleConversationStatus(conversationId: string, status: C
   return true;
 }
 
-// Lead Management Types
-export interface LeadCreate {
-  name: string;
-  company?: string;
-  phone: string;
-  email?: string;
-  priority?: 'low' | 'medium' | 'high';
-  source?: string;
-  notes?: string;
-  expected_value?: number;
-  expected_close_date?: string;
-  extra_data?: Record<string, any>;
-}
-
-export interface LeadUpdate {
-  name?: string;
-  company?: string;
-  phone?: string;
-  email?: string;
-  priority?: 'low' | 'medium' | 'high';
-  source?: string;
-  notes?: string;
-  expected_value?: number | null;
-  expected_close_date?: string | null;
-  extra_data?: Record<string, any>;
-  assigned_to_id?: number | null;
-  pipeline_stage_id?: number | null;
-}
-
 export interface LeadStats {
   total_leads: number;
   by_stage: Record<string, number>;
@@ -764,164 +669,28 @@ export interface LeadStats {
   by_source: Record<string, number>;
 }
 
-// Lead Management Functions
-export async function createLead(data: LeadCreate): Promise<Customer> {
-  const created = await apiFetch<Lead>('/leads', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-  
-  // Fetch the created lead with full data
-  return getCustomer(String(created.id)) as Promise<Customer>;
-}
-
-/** Lightweight PATCH — no round-trip GET after PUT. Use for inline edits. */
-export async function patchLead(id: string, data: LeadUpdate): Promise<void> {
-  await apiFetch<Lead>(`/leads/${Number(id)}`, { method: 'PUT', body: JSON.stringify(data) });
-}
-
-// ─── Saved views ─────────────────────────────────────────────────────────────
-
-export interface SavedViewRecord {
-  id: number;
-  name: string;
-  filters: Record<string, unknown>;
-  created_at?: string | null;
-}
-
-export async function listSavedViews(): Promise<SavedViewRecord[]> {
-  return apiFetch<SavedViewRecord[]>('/leads/saved-views');
-}
-
-export async function createSavedView(name: string, filters: Record<string, unknown>): Promise<SavedViewRecord> {
-  return apiFetch<SavedViewRecord>('/leads/saved-views', {
-    method: 'POST',
-    body: JSON.stringify({ name, filters }),
-  });
-}
-
-export async function deleteSavedView(viewId: number): Promise<void> {
-  await apiFetch<void>(`/leads/saved-views/${viewId}`, { method: 'DELETE' });
-}
-
-// ─── Tag management ───────────────────────────────────────────────────────────
-
-export async function listLeadTags(): Promise<LeadTag[]> {
-  return apiFetch<LeadTag[]>('/leads/tags');
-}
-
-export async function createLeadTag(name: string, color?: string): Promise<LeadTag> {
-  return apiFetch<LeadTag>('/leads/tags', {
-    method: 'POST',
-    body: JSON.stringify({ name, color }),
-  });
-}
-
-export async function deleteLeadTag(tagId: number): Promise<void> {
-  await apiFetch<void>(`/leads/tags/${tagId}`, { method: 'DELETE' });
-}
-
-export async function assignTagToLead(leadId: string, tagId: number): Promise<void> {
-  await apiFetch<void>(`/leads/${Number(leadId)}/tags/${tagId}`, { method: 'POST' });
-}
-
-export async function unassignTagFromLead(leadId: string, tagId: number): Promise<void> {
-  await apiFetch<void>(`/leads/${Number(leadId)}/tags/${tagId}`, { method: 'DELETE' });
-}
-
-/** Lightweight assign — no round-trip GET after PUT. Use for inline edits. */
-export async function patchAssign(id: string, assignedToId: number | null): Promise<void> {
-  await apiFetch<void>(`/leads/${Number(id)}/assign`, {
-    method: 'PUT',
-    body: JSON.stringify({ assigned_to_id: assignedToId, force_reassign: false }),
-  });
-}
-
-export async function updateLead(id: string, data: LeadUpdate): Promise<Customer> {
-  const leadId = Number(id);
-  await apiFetch<Lead>(`/leads/${leadId}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
-  
-  // Fetch updated lead with full data
-  return getCustomer(id) as Promise<Customer>;
-}
-
-export async function assignLead(
-  id: string,
-  assignedToId: number | null,
-  forceReassign = false,
-): Promise<Customer> {
-  const leadId = Number(id);
-  await apiFetch<Lead>(`/leads/${leadId}/assign`, {
-    method: 'PUT',
-    body: JSON.stringify({ assigned_to_id: assignedToId, force_reassign: forceReassign }),
-  });
-  return getCustomer(id) as Promise<Customer>;
-}
-
-export async function deleteLead(id: string): Promise<void> {
-  const leadId = Number(id);
-  await apiFetch(`/leads/${leadId}`, {
-    method: 'DELETE',
-  });
-}
-
-export interface RescoreResult {
-  leadId: number;
-  leadLevelScore: number;
-  previousScore: number | null;
-  lastScoreUpdate: string;
-  sessionsConsidered: number;
-  sessionBreakdown: Array<{
-    sessionId: number;
-    createdAt: string | null;
-    ageDays: number;
-    weight: number;
-    messagesCount: number;
-    sessionScore: number;
-    weightedContribution: number;
-  }>;
-}
-
-/**
- * Recompute the lead-level score on demand (calls the same scorer the
- * session analytics worker uses). Returns the new score plus a breakdown
- * of which sessions contributed to it.
- */
-export async function rescoreLead(id: string): Promise<RescoreResult> {
-  const leadId = Number(id);
-  const raw = await apiFetch<any>(`/leads/${leadId}/rescore`, {
-    method: 'POST',
-    body: JSON.stringify({}),
-  });
+/** Contact stats, adapted from /contacts-v2/stats to the legacy LeadStats shape (by_stage now carries group breakdowns). */
+export async function getLeadStats(): Promise<LeadStats> {
+  const raw = await apiFetch<{
+    total: number;
+    by_group: Record<string, number>;
+    by_priority: Record<string, number>;
+    by_source: Record<string, number>;
+  }>('/contacts-v2/stats', { method: 'GET' });
   return {
-    leadId: raw.lead_id,
-    leadLevelScore: raw.lead_level_score,
-    previousScore: raw.previous_score ?? null,
-    lastScoreUpdate: raw.last_score_update,
-    sessionsConsidered: raw.sessions_considered ?? 0,
-    sessionBreakdown: (raw.session_breakdown ?? []).map((s: any) => ({
-      sessionId: s.session_id,
-      createdAt: s.created_at ?? null,
-      ageDays: s.age_days,
-      weight: s.weight,
-      messagesCount: s.messages_count,
-      sessionScore: s.session_score,
-      weightedContribution: s.weighted_contribution,
-    })),
+    total_leads: raw.total,
+    by_stage: raw.by_group ?? {},
+    by_priority: raw.by_priority ?? {},
+    by_source: raw.by_source ?? {},
   };
 }
 
-export async function getLeadStats(): Promise<LeadStats> {
-  return apiFetch<LeadStats>('/leads/stats', { method: 'GET' });
-}export interface LeadStatsOverTime {
+export interface LeadStatsOverTime {
   series: Array<{ date: string; count: number }>;
 }
 
 export async function getLeadStatsOverTime(days = 30): Promise<LeadStatsOverTime> {
-  return apiFetch<LeadStatsOverTime>(`/leads/stats/over_time?days=${days}`, { method: 'GET' });
+  return apiFetch<LeadStatsOverTime>(`/contacts-v2/stats/over_time?days=${days}`, { method: 'GET' });
 }
 
 export async function recalcConversationAnalytics(conversationId: string): Promise<void> {
@@ -931,175 +700,3 @@ export async function recalcConversationAnalytics(conversationId: string): Promi
   });
 }
 
-// ─── Lead Notes ───────────────────────────────────────────────────────────────
-
-export interface LeadNote {
-  id: number;
-  lead_id: number;
-  content: string;
-  category: string | null;
-  source: string; // "manual" | "agent"
-  created_at: string | null;
-}
-
-export interface LeadNoteCreate {
-  content: string;
-  category?: string;
-}
-
-export async function listLeadNotes(leadId: number | string): Promise<LeadNote[]> {
-  return apiFetch<LeadNote[]>(`/leads/${leadId}/notes`, { method: 'GET', auth: true });
-}
-
-export async function createLeadNote(leadId: number | string, payload: LeadNoteCreate): Promise<LeadNote> {
-  return apiFetch<LeadNote>(`/leads/${leadId}/notes`, {
-    method: 'POST',
-    auth: true,
-    body: JSON.stringify(payload),
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-export async function deleteLeadNote(leadId: number | string, noteId: number): Promise<void> {
-  await apiFetch<void>(`/leads/${leadId}/notes/${noteId}`, { method: 'DELETE', auth: true });
-}
-
-
-// ---------- Pipeline Stages ----------
-
-export interface LeadPipelineStage {
-  id: number;
-  business_id: number;
-  name: string;
-  color: string | null;
-  stage_type: 'open' | 'won' | 'lost';
-  sort_order: number;
-  is_default: boolean;
-  auto_create_work: boolean;
-  work_template_id: number | null;
-  work_template_name: string | null;
-  lead_count: number;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export async function listPipelineStages(): Promise<LeadPipelineStage[]> {
-  return apiFetch<LeadPipelineStage[]>('/leads/pipeline-stages', { method: 'GET', auth: true });
-}
-
-export async function createPipelineStage(payload: {
-  name: string; color?: string; stage_type?: string; sort_order?: number; is_default?: boolean;
-}): Promise<LeadPipelineStage> {
-  return apiFetch<LeadPipelineStage>('/leads/pipeline-stages', {
-    method: 'POST', auth: true,
-    body: JSON.stringify(payload),
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-export async function updatePipelineStage(stageId: number, payload: Partial<{
-  name: string; color: string; stage_type: string; sort_order: number; is_default: boolean;
-}>): Promise<LeadPipelineStage> {
-  return apiFetch<LeadPipelineStage>(`/leads/pipeline-stages/${stageId}`, {
-    method: 'PUT', auth: true,
-    body: JSON.stringify(payload),
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-export async function deletePipelineStage(stageId: number): Promise<void> {
-  await apiFetch(`/leads/pipeline-stages/${stageId}`, { method: 'DELETE', auth: true });
-}
-
-export async function moveLeadToStage(leadId: number | string, pipelineStageId: number): Promise<Customer> {
-  return apiFetch<Customer>(`/leads/${leadId}/move-stage`, {
-    method: 'PUT', auth: true,
-    body: JSON.stringify({ pipeline_stage_id: pipelineStageId }),
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-
-// ---------- Lead Activities ----------
-
-export interface LeadActivity {
-  id: number;
-  lead_id: number;
-  user_id: number | null;
-  user_name: string | null;
-  activity_type: string;
-  description: string | null;
-  metadata_json: Record<string, unknown> | null;
-  created_at?: string;
-}
-
-export async function listLeadActivities(leadId: number | string, page = 1, perPage = 50): Promise<LeadActivity[]> {
-  return apiFetch<LeadActivity[]>(`/leads/${leadId}/activities?page=${page}&per_page=${perPage}`, {
-    method: 'GET', auth: true,
-  });
-}
-
-
-// ---------- Lead-Linked Datasheets ----------
-
-/** A datasheet that has a relation field pointing to Leads (business-level). */
-export interface LeadLinkedModel {
-  model_id: number;
-  display_name: string;
-  field_name: string;
-}
-
-/** Legacy shape returned by per-lead linked-datasheets endpoint. */
-export interface LinkedDatasheet {
-  model_id: number;
-  name: string;
-  display_name: string;
-  record_count: number;
-}
-
-export interface LinkedRecordField {
-  id: number;
-  name: string;
-  display_name: string;
-  field_type: string;
-  is_required: boolean;
-  config: Record<string, unknown> | null;
-}
-
-export interface LinkedRecord {
-  id: number;
-  data: Record<string, unknown>;
-  record_key: string | null;
-  status: string | null;
-  created_at: string | null;
-}
-
-export interface LinkedRecordsResponse {
-  fields: LinkedRecordField[];
-  records: LinkedRecord[];
-  total_count?: number;
-}
-
-/** Business-level: which datasheets have a relation field to Leads. */
-export async function getLeadLinkedModels(): Promise<LeadLinkedModel[]> {
-  return apiFetch<LeadLinkedModel[]>('/leads/linked-models', { method: 'GET', auth: true });
-}
-
-/** Per-lead: datasheets with record counts for a specific lead. */
-export async function getLinkedDatasheets(leadId: number | string): Promise<LinkedDatasheet[]> {
-  return apiFetch<LinkedDatasheet[]>(`/leads/${leadId}/linked-datasheets`, { method: 'GET', auth: true });
-}
-
-export async function getLinkedRecords(leadId: number | string, modelId: number): Promise<LinkedRecordsResponse> {
-  return apiFetch<LinkedRecordsResponse>(`/leads/${leadId}/linked-records/${modelId}`, { method: 'GET', auth: true });
-}
-
-export async function setLeadAiAgent(
-  leadId: number | string,
-  agentId: number | null,
-): Promise<{ lead_id: number; ai_agent_id: number | null }> {
-  return apiFetch(`/leads/${leadId}/ai-agent`, {
-    method: 'PUT',
-    body: JSON.stringify({ agent_id: agentId }),
-  });
-}

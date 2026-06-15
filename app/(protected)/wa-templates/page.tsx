@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   FileText, Zap, List, PlusCircle, Edit2, Trash2,
-  CheckCircle, Upload, X,
+  CheckCircle, Upload, X, UserPlus,
 } from 'lucide-react';
 import {
   listTemplates, createTemplate, updateTemplate, deleteTemplate,
-  publishFlow, getButtonPresets, getDailyReportScaffold,
+  publishFlow, getButtonPresets, getDailyReportScaffold, seedAddContactTemplate,
   type WaTemplate, type WaTemplateCreate, type WaTemplateType, type ButtonDef,
   type DatasheetFieldMap, type FlowFieldType,
 } from '@/services/waTemplates';
@@ -149,6 +149,7 @@ export default function WaTemplatesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editTemplate, setEditTemplate] = useState<WaTemplate | null>(null);
   const [publishing, setPublishing] = useState<number | null>(null);
+  const [seeding, setSeeding] = useState(false);
   const [buttonPresets, setButtonPresets] = useState<Record<string, ButtonDef[]>>({});
 
   const [formType, setFormType] = useState<WaTemplateType>('simple_task');
@@ -310,6 +311,24 @@ export default function WaTemplatesPage() {
     }
   }
 
+  async function handleSeedAddContact() {
+    setSeeding(true);
+    try {
+      const tmpl = await seedAddContactTemplate();
+      await load();
+      const published = tmpl.meta_flow_status === 'published';
+      alert(
+        published
+          ? `"${tmpl.name}" is ready. Employees can text a keyword to add contacts.`
+          : `"${tmpl.name}" created. Click the Publish (⬆) button on its card to push it to Meta, then employees can use it.`,
+      );
+    } catch (e: unknown) {
+      alert((e as Error).message || 'Failed to create the Add Contact form');
+    } finally {
+      setSeeding(false);
+    }
+  }
+
   async function handlePublishFlow(tmpl: WaTemplate) {
     setPublishing(tmpl.id);
     try {
@@ -371,13 +390,24 @@ export default function WaTemplatesPage() {
             Create templates to send tasks, forms, and lead lists to your team
           </p>
         </div>
-        <button
-          onClick={() => { resetForm(); setShowCreate(true); }}
-          className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white rounded-lg shadow-sm"
-        >
-          <PlusCircle className="w-4 h-4" />
-          New Template
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSeedAddContact}
+            disabled={seeding}
+            title="Create the prebuilt Add-Contact WhatsApp form"
+            className="flex items-center gap-2 px-4 py-2 text-sm border border-border-color bg-card-bg hover:bg-bg-secondary text-text-primary rounded-lg shadow-sm disabled:opacity-50"
+          >
+            <UserPlus className="w-4 h-4" />
+            {seeding ? 'Adding…' : 'Add Contact form'}
+          </button>
+          <button
+            onClick={() => { resetForm(); setShowCreate(true); }}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white rounded-lg shadow-sm"
+          >
+            <PlusCircle className="w-4 h-4" />
+            New Template
+          </button>
+        </div>
       </div>
 
       {/* Template type legend */}

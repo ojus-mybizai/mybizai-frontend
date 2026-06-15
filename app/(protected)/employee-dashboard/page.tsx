@@ -937,7 +937,7 @@ export default function EmployeeDashboardPage() {
                 { href: '/work?filter=overdue', icon: '⚠', label: 'Overdue work' },
                 { href: '/work', icon: '📋', label: 'All assigned work' },
                 { href: '/inbox', icon: '💬', label: 'Inbox' },
-                { href: '/leads', icon: '👥', label: 'Customers' },
+                { href: '/contacts', icon: '👥', label: 'Contacts' },
               ].map((l) => (
                 <Link
                   key={l.href}

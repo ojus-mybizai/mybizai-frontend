@@ -2,13 +2,14 @@
 
 import { FormEvent, KeyboardEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { FileText, Search, RefreshCw, ArrowLeft, ExternalLink, MessageCircle, Bot, ChevronDown, BookmarkCheck, SlidersHorizontal, X, Send, Lock } from 'lucide-react';
+import { FileText, Search, RefreshCw, ArrowLeft, ExternalLink, MessageCircle, Bot, ChevronDown, BookmarkCheck, SlidersHorizontal, X, Send, Lock, MessageSquarePlus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AIStatusBadge } from '@/components/customers/ai-status-badge';
 import { MessageBubble } from '@/components/customers/message-bubble';
 import { ConversationRowSkeleton } from '@/components/conversations/ConversationRowSkeleton';
 import { TemplatePickerModal } from '@/components/conversations/TemplatePickerModal';
 import { SavedViewsPanel } from '@/components/conversations/SavedViewsPanel';
+import { NewConversationModal } from '@/components/conversations/NewConversationModal';
 import { ContactRail, ContactRailOverlay } from '@/components/inbox/contact-rail';
 import { useUIStore } from '@/lib/ui-store';
 import {
@@ -542,9 +543,10 @@ function FiltersPopover({
 }
 
 
-export function ConversationsView({ initialConversationId, agentFilter, initialViewId }: { initialConversationId?: string; agentFilter?: string; initialViewId?: number }) {
+export function ConversationsView({ initialConversationId, agentFilter, initialViewId, initialNew }: { initialConversationId?: string; agentFilter?: string; initialViewId?: number; initialNew?: { phone?: string; name?: string } }) {
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
+  const [showNewConvo, setShowNewConvo] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [conversationAnalytics, setConversationAnalytics] = useState<ConversationAnalyticsResponse | null>(null);
@@ -586,6 +588,9 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
   const inboxRailCollapsed = useUIStore((s) => s.inboxRailCollapsed);
   const toggleInboxRail = useUIStore((s) => s.toggleInboxRail);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const prevMsgCountRef = useRef(0);
+  const prevSelectedRef = useRef<string | null>(null);
   const chatHeaderRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -595,6 +600,14 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
       setShowChatPanel(true);
     }
   }, [initialConversationId]);
+
+  // Deep-linked from a contact with no existing conversation — open the
+  // New Conversation composer prefilled with that contact.
+  useEffect(() => {
+    if (initialNew && (initialNew.phone || initialNew.name)) {
+      setShowNewConvo(true);
+    }
+  }, [initialNew]);
 
   // Apply all filter states from a saved view (null = clear to defaults)
   const applyView = useCallback((view: ConversationSavedView | null) => {
@@ -737,9 +750,25 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
     };
   }, [selectedId]);
 
+  // Smart auto-scroll: jump to the bottom when opening a conversation, and on
+  // new messages only if the user is already near the bottom — so scrolling up
+  // to read history isn't yanked back down by the 15s poll.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const convoChanged = prevSelectedRef.current !== selectedId;
+    const grew = messages.length > prevMsgCountRef.current;
+    prevSelectedRef.current = selectedId;
+    prevMsgCountRef.current = messages.length;
+
+    const container = messagesScrollRef.current;
+    if (convoChanged || !container) {
+      endRef.current?.scrollIntoView();
+      return;
+    }
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (grew && distanceFromBottom < 140) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, selectedId]);
 
   // Auto-grow the composer textarea up to ~6 lines so long replies are visible
   // without scrolling, while a short reply keeps the panel slim.
@@ -944,6 +973,14 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                   })()}
                 </div>
                 <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewConvo(true)}
+                    title="Start a new conversation"
+                    className="p-1.5 rounded-lg text-accent hover:bg-accent/10 transition-colors"
+                  >
+                    <MessageSquarePlus className="h-4 w-4" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => fetchConversations()}
@@ -1274,7 +1311,8 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   <>
                       <div
-                        className="flex-1 overflow-y-auto bg-bg-secondary/40 p-3"
+                        ref={messagesScrollRef}
+                        className="flex-1 overflow-y-auto overflow-x-hidden bg-bg-secondary/40 px-3 py-4 sm:px-5"
                       >
                         {loadingMessages ? (
                           <div aria-label="Loading messages" className="space-y-3">
@@ -1298,36 +1336,60 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                           </div>
                         ) : (
                           <>
-                            {messages.map((m, i) => {
-                              const msgDate = m.timestamp ? new Date(m.timestamp).toDateString() : null;
-                              const prevDate = i > 0 && messages[i - 1].timestamp
-                                ? new Date(messages[i - 1].timestamp).toDateString()
-                                : null;
-                              const showSeparator = msgDate && msgDate !== prevDate;
-                              const today = new Date().toDateString();
-                              const yesterday = new Date(Date.now() - 86400000).toDateString();
-                              const separatorLabel = msgDate === today
-                                ? 'Today'
-                                : msgDate === yesterday
-                                ? 'Yesterday'
-                                : msgDate
-                                  ? new Date(m.timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-                                  : null;
-                              return (
-                                <div key={m.id}>
-                                  {showSeparator && separatorLabel && (
-                                    <div className="flex items-center gap-2 my-3">
-                                      <div className="flex-1 h-px bg-border-color" />
-                                      <span className="text-[10px] font-medium text-text-secondary px-2 py-0.5 rounded-full bg-bg-secondary border border-border-color shrink-0">
-                                        {separatorLabel}
-                                      </span>
-                                      <div className="flex-1 h-px bg-border-color" />
-                                    </div>
-                                  )}
-                                  <MessageBubble message={m} />
-                                </div>
+                            {(() => {
+                              const peerInitial = getInitials(
+                                selected.leadName || selected.customerId || 'Unknown',
+                                'U',
                               );
-                            })}
+                              const GROUP_GAP_MS = 4 * 60 * 1000;
+                              return messages.map((m, i) => {
+                                const msgDate = m.timestamp ? new Date(m.timestamp).toDateString() : null;
+                                const prev = messages[i - 1];
+                                const next = messages[i + 1];
+                                const prevDate = prev?.timestamp ? new Date(prev.timestamp).toDateString() : null;
+                                const showSeparator = !!msgDate && msgDate !== prevDate;
+                                const today = new Date().toDateString();
+                                const yesterday = new Date(Date.now() - 86400000).toDateString();
+                                const separatorLabel = msgDate === today
+                                  ? 'Today'
+                                  : msgDate === yesterday
+                                  ? 'Yesterday'
+                                  : msgDate
+                                    ? new Date(m.timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+                                    : null;
+
+                                // Group consecutive same-sender messages sent close in time
+                                // so they read as one block (tighter spacing, one avatar +
+                                // timestamp per group, tail only on the last bubble).
+                                const msgTime = m.timestamp ? new Date(m.timestamp).getTime() : 0;
+                                const sameAsPrev = !!prev && prev.role === m.role && !showSeparator
+                                  && msgTime - new Date(prev.timestamp).getTime() < GROUP_GAP_MS;
+                                const nextDate = next?.timestamp ? new Date(next.timestamp).toDateString() : null;
+                                const nextHasSeparator = !!nextDate && nextDate !== msgDate;
+                                const sameAsNext = !!next && next.role === m.role && !nextHasSeparator
+                                  && new Date(next.timestamp).getTime() - msgTime < GROUP_GAP_MS;
+
+                                return (
+                                  <div key={m.id}>
+                                    {showSeparator && separatorLabel && (
+                                      <div className="flex items-center gap-2 my-4">
+                                        <div className="flex-1 h-px bg-border-color" />
+                                        <span className="text-[10px] font-medium text-text-secondary px-2 py-0.5 rounded-full bg-bg-secondary border border-border-color shrink-0">
+                                          {separatorLabel}
+                                        </span>
+                                        <div className="flex-1 h-px bg-border-color" />
+                                      </div>
+                                    )}
+                                    <MessageBubble
+                                      message={m}
+                                      isFirstInGroup={!sameAsPrev}
+                                      isLastInGroup={!sameAsNext}
+                                      avatarInitial={peerInitial}
+                                    />
+                                  </div>
+                                );
+                              });
+                            })()}
                             <div ref={endRef} />
                           </>
                         )}
@@ -1360,7 +1422,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                               }
                             }}
                             rows={1}
-                            placeholder="Type a reply…  (Enter to send · Shift+Enter for newline)"
+                            placeholder="Type a reply…"
                             className="min-w-0 flex-1 resize-none rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm leading-6 text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent"
                             style={{ minHeight: '40px', maxHeight: '144px' }}
                           />
@@ -1456,14 +1518,28 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
               {toastMessage}
             </div>
           )}
+
+          <NewConversationModal
+            open={showNewConvo}
+            onClose={() => setShowNewConvo(false)}
+            initialPhone={initialNew?.phone}
+            initialName={initialNew?.name}
+            onCreated={(result) => {
+              setSelectedId(String(result.conversation_id));
+              setShowChatPanel(true);
+              fetchConversations();
+            }}
+          />
         </div>
   );
 }
 
 export default function ConversationsPage() {
-  // Read ?agent= and ?view= query parameters
+  // Read ?agent=, ?view=, ?c= (conversation deep-link) and ?new= query parameters
   const [agentFilter, setAgentFilter] = useState<string | undefined>();
   const [initialViewId, setInitialViewId] = useState<number | undefined>();
+  const [initialConversationId, setInitialConversationId] = useState<string | undefined>();
+  const [initialNew, setInitialNew] = useState<{ phone?: string; name?: string } | undefined>();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1472,8 +1548,23 @@ export default function ConversationsPage() {
       if (agent) setAgentFilter(agent);
       const view = params.get('view');
       if (view && !Number.isNaN(Number(view))) setInitialViewId(Number(view));
+      const convo = params.get('c');
+      if (convo && !Number.isNaN(Number(convo))) setInitialConversationId(convo);
+      if (params.get('new') === '1') {
+        setInitialNew({
+          phone: params.get('phone') ?? undefined,
+          name: params.get('name') ?? undefined,
+        });
+      }
     }
   }, []);
 
-  return <ConversationsView agentFilter={agentFilter} initialViewId={initialViewId} />;
+  return (
+    <ConversationsView
+      agentFilter={agentFilter}
+      initialViewId={initialViewId}
+      initialConversationId={initialConversationId}
+      initialNew={initialNew}
+    />
+  );
 }

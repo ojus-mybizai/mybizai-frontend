@@ -531,11 +531,11 @@ const FIELD_TYPE_ICONS: Record<FieldType, React.ElementType> = {
 };
 
 interface FieldDefsTabProps {
-  groupId: number;
+  groupId: number | null;   // null = business-wide (global) fields
   groupName: string;
 }
 
-function FieldDefsTab({ groupId, groupName }: FieldDefsTabProps) {
+export function FieldDefsTab({ groupId, groupName }: FieldDefsTabProps) {
   const [fields, setFields] = useState<ContactFieldDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -553,7 +553,8 @@ function FieldDefsTab({ groupId, groupName }: FieldDefsTabProps) {
 
   useEffect(() => {
     setLoading(true);
-    listFieldDefs(groupId).then(setFields).finally(() => setLoading(false));
+    // null → global only (group_id=0); a group id → that group's scoped fields
+    listFieldDefs(groupId == null ? 0 : groupId).then(setFields).finally(() => setLoading(false));
   }, [groupId]);
 
   const needsOptions = (t: FieldType) => t === 'select' || t === 'multi_select';

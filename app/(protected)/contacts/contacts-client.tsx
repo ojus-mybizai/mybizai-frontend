@@ -6,7 +6,7 @@ import {
   Search, Plus, SlidersHorizontal, BarChart2, Download,
   FileSpreadsheet, Loader2, Users, Phone, Mail, Building2,
   Tag, Bot, UserCheck, UserX, Trash2, X, Check, ChevronDown,
-  Bookmark, BookmarkPlus, FolderKanban, Lock, RefreshCw,
+  Bookmark, BookmarkPlus, FolderKanban, Lock, RefreshCw, LayoutList, MessageSquare,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
@@ -14,13 +14,16 @@ import { useContactV2Store } from '@/lib/contact-v2-store';
 import { contactsV2Service } from '@/services/contacts-v2';
 import type { Contact, ContactFilters, Priority, RoutingMode, ContactGroup } from '@/services/contacts-v2';
 import { CreateContactModal } from '@/components/contacts-v2/create-contact-modal';
-import { ContactFiltersDrawer } from '@/components/contacts-v2/contact-filters-drawer';
+import { ContactFilterRail } from '@/components/contacts-v2/contact-filter-rail';
 import { ContactAnalytics } from '@/components/contacts-v2/contact-analytics';
 import { GroupRoutingPanel } from '@/components/contacts-v2/group-routing-panel';
 import { TagPicker } from '@/components/contacts/TagPicker';
 import { TagManagerPanel } from '@/components/contacts/TagManagerPanel';
 import { gmailIntegrationService, type GmailStatus } from '@/services/gmailIntegration';
 import { listChannels, type Channel as BusinessChannel } from '@/services/channels';
+import { listSourceDefs, type ContactSourceDef } from '@/services/contact-source-defs';
+import { listFieldDefs, type ContactFieldDef } from '@/services/contact-field-defs';
+import { ManageFieldsModal } from '@/components/contacts-v2/manage-fields-modal';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   hot:    'text-red-500 bg-red-50 border-red-200',
@@ -37,19 +40,17 @@ const ROUTING_COLORS: Record<RoutingMode, string> = {
   blocked: 'text-red-600  bg-red-50   border-red-200',
 };
 
-// Team members type for assignment filter
-interface TeamMember { id: number; name: string }
-
 export default function ContactsClient() {
   const {
     contacts: _contacts, total, loading, loadingMore,
     tags: _tags, savedViews: _savedViews,
     groups: _groups,
+    filterCounts, loadingFilterCounts,
     selectedIds,
     list, loadMore, refresh,
     remove, bulkAction,
     toggleSelectId, selectAll, clearSelection,
-    loadTags, loadSavedViews, loadGroups,
+    loadTags, loadSavedViews, loadGroups, loadFilterCounts,
     addToGroup,
     createSavedView, deleteSavedView,
   } = useContactV2Store();
@@ -63,7 +64,7 @@ export default function ContactsClient() {
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilterRail, setShowFilterRail] = useState(true);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showSaveView, setShowSaveView] = useState(false);
   const [saveViewName, setSaveViewName] = useState('');
@@ -71,12 +72,14 @@ export default function ContactsClient() {
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [showGroups, setShowGroups] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
-  const [teamMembers] = useState<TeamMember[]>([]);
   const [importMsg, setImportMsg] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [channelInstances, setChannelInstances] = useState<BusinessChannel[]>([]);
   const [gmailSyncing, setGmailSyncing] = useState(false);
+  const [sourceDefs, setSourceDefs] = useState<ContactSourceDef[]>([]);
+  const [fieldDefs, setFieldDefs] = useState<ContactFieldDef[]>([]);
+  const [showFields, setShowFields] = useState(false);
   const searchParams = useSearchParams();
   const router = useRouter();
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
@@ -96,8 +99,17 @@ export default function ContactsClient() {
     filters.tag_id,
     filters.source,
     filters.channel_id,
+    filters.engagement,
+    filters.created_within,
+    filters.attention,
     activeGroupId,
-  ].filter(v => v != null).length;
+  ].filter(v => v != null).length + (filters.custom_filters?.length ?? 0);
+
+  // Filter-count context — depends only on the active group + search, not on the
+  // segment filters themselves (counts show "how many if I applied this").
+  const reloadCounts = useCallback(() => {
+    void loadFilterCounts({ group_id: activeGroupId, search: search || undefined });
+  }, [activeGroupId, search, loadFilterCounts]);
 
   // Load reference data once
   useEffect(() => {
@@ -106,7 +118,30 @@ export default function ContactsClient() {
     loadGroups();
     gmailIntegrationService.getStatus().then(setGmailStatus).catch(() => {});
     listChannels().then(chs => setChannelInstances(chs.filter(c => c.isConnected))).catch(() => {});
+    listSourceDefs().then(setSourceDefs).catch(() => {});
   }, []);
+
+  // Load the custom-field defs applicable to the current context: global fields
+  // always, plus the active group's scoped fields. Prune any custom filters that
+  // reference fields no longer in scope so the filter set stays consistent.
+  const loadFieldDefs = useCallback(() => {
+    const calls = [listFieldDefs(0)];                       // global only
+    if (activeGroupId != null) calls.push(listFieldDefs(activeGroupId));
+    Promise.all(calls)
+      .then(results => {
+        const seen = new Set<number>();
+        const merged = results.flat().filter(f => (seen.has(f.id) ? false : seen.add(f.id)));
+        setFieldDefs(merged);
+        setFilters(f => {
+          if (!f.custom_filters?.length) return f;
+          const valid = f.custom_filters.filter(cf => seen.has(cf.field_id));
+          return valid.length === f.custom_filters.length ? f : { ...f, custom_filters: valid };
+        });
+      })
+      .catch(() => setFieldDefs([]));
+  }, [activeGroupId]);
+
+  useEffect(() => { loadFieldDefs(); }, [loadFieldDefs]);
 
   // Handle ?gmail=connected redirect — auto-trigger sync
   useEffect(() => {
@@ -130,7 +165,12 @@ export default function ContactsClient() {
     void list(merged);
   }, [filters, activeGroupId]);
 
-  // Debounced search
+  // Reload segment counts when the context (group) changes
+  useEffect(() => {
+    reloadCounts();
+  }, [activeGroupId]);
+
+  // Debounced search — drives both the list and the count badges
   const handleSearch = (val: string) => {
     setSearch(val);
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -139,6 +179,7 @@ export default function ContactsClient() {
       if (activeGroupId !== null) merged.group_id = activeGroupId;
       if (val) merged.search = val;
       void list(merged);
+      void loadFilterCounts({ group_id: activeGroupId, search: val || undefined });
     }, 300);
   };
 
@@ -167,12 +208,30 @@ export default function ContactsClient() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const applyFilters = (f: ContactFilters) => {
-    setFilters(f);
+  const handleFilterPatch = (patch: Partial<ContactFilters>) => {
+    setFilters(f => ({ ...f, ...patch }));
+  };
+
+  const handleResetFilters = () => {
+    setFilters({ sort_by: filters.sort_by, sort_dir: filters.sort_dir });
   };
 
   const applyGroupFilter = (groupId: number | null) => {
     setActiveGroupId(groupId);
+  };
+
+  // Open the contact's conversation in the inbox. If they already have one,
+  // deep-link straight to it; otherwise open the inbox composer prefilled so
+  // a new conversation can be started.
+  const handleOpenConversation = (contact: Contact) => {
+    if (contact.latest_conversation_id != null) {
+      router.push(`/inbox?c=${contact.latest_conversation_id}`);
+      return;
+    }
+    const params = new URLSearchParams({ new: '1' });
+    if (contact.phone) params.set('phone', contact.phone);
+    if (contact.name) params.set('name', contact.name);
+    router.push(`/inbox?${params.toString()}`);
   };
 
   const handleApplySavedView = (view: { filters: ContactFilters }) => {
@@ -198,6 +257,7 @@ export default function ContactsClient() {
     setDeletingIds(prev => new Set(prev).add(id));
     try {
       await remove(id);
+      reloadCounts();
     } finally {
       setDeletingIds(prev => { const n = new Set(prev); n.delete(id); return n; });
     }
@@ -206,6 +266,7 @@ export default function ContactsClient() {
   const handleBulkDelete = async () => {
     if (!selectedIds.size) return;
     await bulkAction({ action: 'delete', contact_ids: Array.from(selectedIds) });
+    reloadCounts();
   };
 
   const handleBulkAddToGroup = async (groupId: number) => {
@@ -222,6 +283,7 @@ export default function ContactsClient() {
   const handleBulkPriority = async (priority: Priority) => {
     if (!selectedIds.size) return;
     await bulkAction({ action: 'change_priority', contact_ids: Array.from(selectedIds), priority });
+    reloadCounts();
   };
 
   const handleGmailConnect = async () => {
@@ -241,6 +303,7 @@ export default function ContactsClient() {
       const updatedStatus = await gmailIntegrationService.getStatus();
       setGmailStatus(updatedStatus);
       void refresh();
+      reloadCounts();
     } catch {
       setImportMsg('Google Contacts sync failed. Please try again.');
     } finally {
@@ -268,6 +331,7 @@ export default function ContactsClient() {
       }
       setImportMsg(`Imported ${imported} contacts from file`);
       void refresh();
+      reloadCounts();
     };
     reader.readAsBinaryString(file);
     e.target.value = '';
@@ -425,10 +489,10 @@ export default function ContactsClient() {
             </div>
             <input ref={xlsxRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelImport} />
 
-            {/* Filters */}
+            {/* Filters — toggles the smart-filter rail */}
             <button
-              onClick={() => setShowFilters(true)}
-              className={`relative flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${activeFilterCount > 0 ? 'bg-accent/10 border-accent/30 text-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}
+              onClick={() => setShowFilterRail(o => !o)}
+              className={`relative flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${showFilterRail || activeFilterCount > 0 ? 'bg-accent/10 border-accent/30 text-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}
             >
               <SlidersHorizontal className="w-4 h-4" />
               Filters
@@ -446,6 +510,15 @@ export default function ContactsClient() {
             >
               <Tag className="w-4 h-4" />
               Tags
+            </button>
+
+            {/* Custom fields */}
+            <button
+              onClick={() => setShowFields(true)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${showFields ? 'bg-accent/10 border-accent/30 text-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}
+            >
+              <LayoutList className="w-4 h-4" />
+              Fields
             </button>
 
             {/* Save view */}
@@ -585,6 +658,22 @@ export default function ContactsClient() {
 
       {/* ── Body ─────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
+        {/* Smart-filter rail */}
+        {showFilterRail && (
+          <ContactFilterRail
+            filters={filters}
+            counts={filterCounts}
+            loadingCounts={loadingFilterCounts}
+            tags={tags}
+            channelInstances={channelInstances}
+            sourceDefs={sourceDefs}
+            fieldDefs={fieldDefs}
+            onChange={handleFilterPatch}
+            onReset={handleResetFilters}
+            onCollapse={() => setShowFilterRail(false)}
+          />
+        )}
+
         {/* Contact list */}
         <div className="flex-1 overflow-auto flex flex-col">
           {loading ? (
@@ -628,6 +717,7 @@ export default function ContactsClient() {
                       deleting={deletingIds.has(contact.id)}
                       onDelete={() => handleDelete(contact.id)}
                       onOpen={() => router.push(`/contacts/${contact.id}`)}
+                      onMessage={() => handleOpenConversation(contact)}
                       groups={groups}
                       onAddToGroup={(groupId) => addToGroup(groupId, [contact.id])}
                     />
@@ -745,14 +835,11 @@ export default function ContactsClient() {
         editContact={editContact}
       />
 
-      <ContactFiltersDrawer
-        open={showFilters}
-        onClose={() => setShowFilters(false)}
-        filters={filters}
-        onApply={applyFilters}
-        teamMembers={teamMembers}
-        channelInstances={channelInstances}
+      <ManageFieldsModal
+        open={showFields}
+        onClose={() => { setShowFields(false); loadFieldDefs(); }}
       />
+
     </div>
   );
 }
@@ -760,7 +847,7 @@ export default function ContactsClient() {
 // ── Contact row ────────────────────────────────────────────────
 
 function ContactRow({
-  contact, selected, active, onToggle, deleting, onDelete, onOpen, groups, onAddToGroup,
+  contact, selected, active, onToggle, deleting, onDelete, onOpen, onMessage, groups, onAddToGroup,
 }: {
   contact: Contact;
   selected: boolean;
@@ -769,6 +856,7 @@ function ContactRow({
   deleting: boolean;
   onDelete: () => void;
   onOpen: () => void;
+  onMessage: () => void;
   groups: ContactGroup[];
   onAddToGroup: (groupId: number) => Promise<void>;
 }) {
@@ -872,6 +960,15 @@ function ContactRow({
       {/* Row actions */}
       <td className="px-3 py-3.5" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-1">
+          {/* Open / start conversation */}
+          <button
+            onClick={e => { e.stopPropagation(); onMessage(); }}
+            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md text-text-secondary hover:text-accent hover:bg-accent/10 transition-all"
+            title={contact.latest_conversation_id != null ? 'Open conversation' : 'Start conversation'}
+          >
+            <MessageSquare className="w-4 h-4" />
+          </button>
+
           {/* Add to group */}
           {groups.length > 0 && (
             <div className="relative" ref={groupMenuRef}>

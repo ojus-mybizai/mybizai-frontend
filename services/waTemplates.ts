@@ -46,6 +46,8 @@ export interface WaTemplate {
   meta_template_status: MetaTemplateStatus | null;
   meta_template_language: string | null;
   meta_category: string | null;
+  // What a form submission does: "datasheet" (default) | "create_contact"
+  submit_action?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string | null;
@@ -128,6 +130,15 @@ export async function getButtonPresets(): Promise<ButtonPresets> {
 
 export async function getDailyReportScaffold(): Promise<Record<string, unknown>> {
   return apiFetch('/wa/templates/scaffold/daily-report');
+}
+
+/**
+ * One-click create of the prebuilt "Add Contact" WhatsApp form (idempotent —
+ * returns the existing template if one already exists). After this, call
+ * publishFlow(template.id) to push it to Meta.
+ */
+export async function seedAddContactTemplate(): Promise<WaTemplate> {
+  return apiFetch('/wa/templates/seed/add-contact', { method: 'POST' });
 }
 
 export async function createTemplate(data: WaTemplateCreate): Promise<WaTemplate> {

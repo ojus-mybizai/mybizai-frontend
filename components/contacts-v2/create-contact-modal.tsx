@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, User, Phone, Mail, Building2, Tag, Loader2 } from 'lucide-react';
+import { X, User, Mail, Building2, Loader2 } from 'lucide-react';
 import { useContactV2Store } from '@/lib/contact-v2-store';
 import type { Contact, Priority } from '@/services/contacts-v2';
+import { PhoneInput, validatePhone } from '@/components/ui/phone-input';
+import { listSourceDefs, type ContactSourceDef } from '@/services/contact-source-defs';
 
 interface Props {
   open: boolean;
@@ -18,7 +20,16 @@ const PRIORITIES: { value: Priority; label: string; color: string }[] = [
   { value: 'low',    label: '↓ Low',    color: 'text-blue-400' },
 ];
 
-const SOURCES = ['manual', 'whatsapp', 'instagram', 'meta_ads', 'csv', 'api', 'web_form'];
+// Fallback used only until the configurable source registry loads.
+const FALLBACK_SOURCES: { key: string; label: string }[] = [
+  { key: 'manual', label: 'Manual' },
+  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'meta_ads', label: 'Meta Ads' },
+  { key: 'csv', label: 'CSV Import' },
+  { key: 'api', label: 'API' },
+  { key: 'web_form', label: 'Web Form' },
+];
 
 export function CreateContactModal({ open, onClose, editContact }: Props) {
   const { create, update } = useContactV2Store();
@@ -35,6 +46,9 @@ export function CreateContactModal({ open, onClose, editContact }: Props) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [sourceDefs, setSourceDefs] = useState<ContactSourceDef[]>([]);
 
   // Populate form when editing
   useEffect(() => {
@@ -53,7 +67,18 @@ export function CreateContactModal({ open, onClose, editContact }: Props) {
       setForm(f => ({ ...f, name: '', phone: '', email: '', company: '', notes: '' }));
     }
     setError(null);
+    setPhoneError(null);
   }, [editContact, open]);
+
+  // Load the business-configurable source registry when the modal opens.
+  useEffect(() => {
+    if (!open) return;
+    listSourceDefs().then(setSourceDefs).catch(() => setSourceDefs([]));
+  }, [open]);
+
+  const sourceOptions = sourceDefs.length > 0
+    ? sourceDefs.map(s => ({ key: s.key, label: s.label }))
+    : FALLBACK_SOURCES;
 
   if (!open) return null;
 
@@ -66,8 +91,18 @@ export function CreateContactModal({ open, onClose, editContact }: Props) {
       setError('Name or phone is required.');
       return;
     }
+    // Validate phone format only when one was entered (phone is optional here).
+    if (form.phone) {
+      const validation = validatePhone(form.phone);
+      if (!validation.valid) {
+        setPhoneError(validation.error ?? 'Invalid phone number.');
+        return;
+      }
+    }
+    setPhoneError(null);
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
       if (editContact) {
         await update(editContact.id, {
@@ -79,7 +114,7 @@ export function CreateContactModal({ open, onClose, editContact }: Props) {
           notes: form.notes || undefined,
         });
       } else {
-        await create({
+        const created = await create({
           name: form.name || undefined,
           phone: form.phone || undefined,
           email: form.email || undefined,
@@ -89,6 +124,15 @@ export function CreateContactModal({ open, onClose, editContact }: Props) {
           contact_source: form.contact_source,
           routing_mode: form.routing_mode,
         });
+        // Dedup hit — the backend returned an existing contact instead of
+        // creating a new one. Tell the user rather than silently closing.
+        if (created?.is_duplicate) {
+          setNotice(
+            `A contact with this phone or email already exists${created.name ? ` (${created.name})` : ''}. No duplicate was created.`,
+          );
+          setSaving(false);
+          return;
+        }
       }
       onClose();
     } catch (err: unknown) {
@@ -126,6 +170,12 @@ export function CreateContactModal({ open, onClose, editContact }: Props) {
             </div>
           )}
 
+          {notice && (
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-500">
+              {notice}
+            </div>
+          )}
+
           {/* Name + Phone row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -143,16 +193,13 @@ export function CreateContactModal({ open, onClose, editContact }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1">Phone</label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
-                <input
-                  type="tel"
-                  placeholder="+91 98765..."
-                  value={form.phone}
-                  onChange={e => set('phone', e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-border-color bg-bg-secondary text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent"
-                />
-              </div>
+              <PhoneInput
+                value={form.phone}
+                onChange={(v) => { set('phone', v); if (phoneError) setPhoneError(null); }}
+                defaultCountry="IN"
+                error={phoneError ?? undefined}
+                className="rounded-lg"
+              />
             </div>
           </div>
 
@@ -210,8 +257,12 @@ export function CreateContactModal({ open, onClose, editContact }: Props) {
                   onChange={e => set('contact_source', e.target.value)}
                   className="w-full px-3 py-2 text-sm rounded-lg border border-border-color bg-bg-secondary text-text-primary focus:outline-none focus:border-accent"
                 >
-                  {SOURCES.map(s => (
-                    <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                  {/* Keep the contact's current source selectable even if it's not in the registry */}
+                  {form.contact_source && !sourceOptions.some(o => o.key === form.contact_source) && (
+                    <option value={form.contact_source}>{form.contact_source.replace(/_/g, ' ')}</option>
+                  )}
+                  {sourceOptions.map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
                   ))}
                 </select>
               </div>

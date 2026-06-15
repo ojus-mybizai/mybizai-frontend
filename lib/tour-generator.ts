@@ -128,7 +128,7 @@ export function generateTourFromTemplate(
       id: 'view-pipeline',
       title: 'View your lead pipeline',
       description: 'See how leads flow through your stages',
-      href: '/leads',
+      href: '/contacts',
       icon: 'funnel',
     });
   }

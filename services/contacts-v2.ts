@@ -115,6 +115,9 @@ export interface Contact {
   meta_campaign_name: string | null;
   ctwa_clid: string | null;
   ad_headline: string | null;
+  // Set by the create endpoint when this request matched an existing contact
+  // (dedup by phone/email) and returned that contact instead of a new one.
+  is_duplicate?: boolean;
 }
 
 // ── List response ─────────────────────────────────────────────────────────────
@@ -128,6 +131,20 @@ export interface ContactListResponse {
 
 // ── Filters ───────────────────────────────────────────────────────────────────
 
+export type Engagement   = 'active' | 'recent' | 'cold' | 'never';
+export type CreatedWithin = 'today' | '7d' | '30d';
+export type Attention    = 'unassigned' | 'overdue_followup' | 'missing_contact';
+
+// A single custom-field filter condition.
+//   op: 'eq' (exact) | 'contains' (text substring) | 'in' (any of) |
+//       'has' (multi-select contains) | 'bool' (yes/no)
+export type CustomFilterOp = 'eq' | 'contains' | 'in' | 'has' | 'bool';
+export interface CustomFilter {
+  field_id: number;
+  op: CustomFilterOp;
+  value: string | string[] | boolean;
+}
+
 export interface ContactFilters {
   search?: string;
   group_id?: number | null;
@@ -137,10 +154,27 @@ export interface ContactFilters {
   tag_id?: number | null;
   source?: string | null;
   channel_id?: number | null;
+  engagement?: Engagement | null;
+  created_within?: CreatedWithin | null;
+  attention?: Attention | null;
+  custom_filters?: CustomFilter[] | null;
   sort_by?: string;
   sort_dir?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
+}
+
+// ── Smart-filter segment counts ────────────────────────────────────────────────
+// Live counts per segment, scoped to the current context (group + search).
+export interface ContactFilterCounts {
+  total: number;
+  priority: Partial<Record<Priority, number>>;
+  routing: Partial<Record<RoutingMode, number>>;
+  source: Record<string, number>;
+  lifecycle: Partial<Record<CreatedWithin, number>>;
+  attention: Partial<Record<Attention, number>>;
+  engagement: Partial<Record<Engagement, number>>;
+  tags: Record<string, number>;   // keyed by tag id (as string)
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -316,14 +350,29 @@ export const contactsV2Service = {
       group_id:        filters.group_id,
       priority:        filters.priority,
       assigned_to_id:  filters.assigned_to_id,
+      routing_mode:    filters.routing_mode,
+      tag_id:          filters.tag_id,
       source:          filters.source,
       channel_id:      filters.channel_id,
+      engagement:      filters.engagement,
+      created_within:  filters.created_within,
+      attention:       filters.attention,
+      // Dynamic custom-field filters — JSON-encoded array of {field_id, op, value}
+      custom_filters:  filters.custom_filters && filters.custom_filters.length > 0
+        ? JSON.stringify(filters.custom_filters)
+        : undefined,
       sort_by:         filters.sort_by ?? 'created_at',
       sort_dir:        filters.sort_dir ?? 'desc',
       page,
       per_page:        perPage,
     });
     return apiFetch<ContactListResponse>(`/contacts-v2?${qs}`);
+  },
+
+  // ── Filter segment counts ───────────────────────────────────────────────────
+  getFilterCounts: (ctx: { group_id?: number | null; search?: string } = {}): Promise<ContactFilterCounts> => {
+    const qs = buildQs({ group_id: ctx.group_id, search: ctx.search });
+    return apiFetch<ContactFilterCounts>(`/contacts-v2/filter-counts${qs ? `?${qs}` : ''}`);
   },
 
   // ── Single ────────────────────────────────────────────────────────────────
