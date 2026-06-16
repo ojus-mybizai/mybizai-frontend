@@ -8,7 +8,8 @@ import {
   TrendingUp, TrendingDown, Users, MessageSquare, Clock, BarChart3,
   X, ArrowUpRight, Zap, Database, LayoutGrid,
   UsersRound, Send,
-  Wallet, Bot, Activity, Megaphone, Mail, Phone, ListChecks, Radio, Tag,
+  Wallet, Bot, Activity, Megaphone, Mail, ListChecks, Radio, Tag,
+  Settings2, Calendar, Maximize2, ChevronDown,
 } from 'lucide-react';
 import {
   DndContext,
@@ -46,8 +47,40 @@ interface WidgetMeta {
   source_type: string;
   display_type: string;
   size: string;
+  date_range: string;
   sort_order: number;
 }
+
+// Per-widget date-window override options (settings popover)
+const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'global',        label: 'Dashboard range' },
+  { value: 'today',         label: 'Today' },
+  { value: 'last_7_days',   label: 'Last 7 days' },
+  { value: 'last_30_days',  label: 'Last 30 days' },
+  { value: 'month_to_date', label: 'Month to date' },
+  { value: 'last_90_days',  label: 'Last 90 days' },
+];
+const SIZE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'small',  label: 'Small' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'large',  label: 'Large' },
+];
+
+// Source types whose value ignores the date window (live snapshots / all-time).
+// Everything else honors the dashboard range and gets the inline date control.
+const WINDOW_IGNORED = new Set<string>([
+  'contacts_total', 'contacts_by_group', 'wallet_balance', 'agents_active',
+  'agents_total_runs', 'agents_by_status', 'top_agents', 'conversations_unread',
+  'unknown_senders', 'channels_health', 'ai_insights', 'campaigns_active',
+  'campaigns_by_status', 'nurture_active', 'nurture_completion_rate',
+  'work_overdue', 'work_by_priority', 'team_active_employees',
+  'pipeline_open_value', 'pipeline_weighted_value',
+  'pipeline_total_open_value', 'pipeline_closing_week', 'pipeline_win_rate_all',
+  'pipeline_stuck_all', 'pipeline_added_today_all',
+]);
+const usesDateWindow = (sourceType: string) => !WINDOW_IGNORED.has(sourceType);
+const rangeLabel = (v: string) =>
+  DATE_RANGE_OPTIONS.find((o) => o.value === v)?.label ?? v;
 
 interface WidgetDataItem {
   label: string;
@@ -110,6 +143,15 @@ const fetchOptions = async () => (await apiFetch<{ options: WidgetOption[] }>('/
 const deleteWidget   = (id: number) => apiFetch<void>(`/widgets/${id}`, { method: 'DELETE' });
 const reorderWidgets = (ids: number[]) =>
   apiFetch<void>('/widgets/reorder', { method: 'PATCH', body: JSON.stringify({ ordered_ids: ids }) });
+const updateWidget   = (id: number, patch: { title?: string; size?: string; date_range?: string }) =>
+  apiFetch<WidgetMeta>(`/widgets/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+const fetchOneData   = (id: number, startDate?: string, endDate?: string) => {
+  const params = new URLSearchParams();
+  if (startDate) params.set('start_date', startDate);
+  if (endDate)   params.set('end_date',   endDate);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<WidgetData>(`/widgets/${id}/data${qs}`);
+};
 
 async function createWidget(payload: {
   title: string; source_type: string; display_type: string;
@@ -124,14 +166,30 @@ async function createWidget(payload: {
 // ── Per-source icon + color config ───────────────────────────────────────────
 
 const SOURCE_CONFIG: Record<string, { icon: React.ElementType; bg: string; icon_color: string }> = {
-  leads_today:            { icon: TrendingUp,    bg: 'bg-orange-100 dark:bg-orange-500/15',   icon_color: 'text-orange-500'  },
-  leads_total:            { icon: Users,         bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
+  contacts_new:           { icon: TrendingUp,    bg: 'bg-orange-100 dark:bg-orange-500/15',   icon_color: 'text-orange-500'  },
+  contacts_total:         { icon: Users,         bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
+  contacts_trend:         { icon: TrendingUp,    bg: 'bg-sky-100 dark:bg-sky-500/15',         icon_color: 'text-sky-500'     },
+  contacts_timeseries:    { icon: TrendingUp,    bg: 'bg-sky-100 dark:bg-sky-500/15',         icon_color: 'text-sky-500'     },
+  contacts_by_source:     { icon: Zap,           bg: 'bg-amber-100 dark:bg-amber-500/15',     icon_color: 'text-amber-500'   },
+  contacts_by_meta_campaign: { icon: Zap,        bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
+  recent_contacts:        { icon: Users,         bg: 'bg-sky-100 dark:bg-sky-500/15',         icon_color: 'text-sky-500'     },
+  pipeline_by_stage:      { icon: BarChart3,     bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
+  pipeline_value_by_stage:{ icon: BarChart3,     bg: 'bg-emerald-100 dark:bg-emerald-500/15', icon_color: 'text-emerald-500' },
+  pipeline_funnel:        { icon: BarChart3,     bg: 'bg-violet-100 dark:bg-violet-500/15',   icon_color: 'text-violet-500'  },
+  pipeline_open_value:    { icon: Wallet,        bg: 'bg-emerald-100 dark:bg-emerald-500/15', icon_color: 'text-emerald-500' },
+  pipeline_weighted_value:{ icon: TrendingUp,    bg: 'bg-emerald-100 dark:bg-emerald-500/15', icon_color: 'text-emerald-500' },
+  pipeline_added:         { icon: TrendingUp,    bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
+  pipeline_won:           { icon: Check,         bg: 'bg-green-100 dark:bg-green-500/15',     icon_color: 'text-green-500'   },
+  pipeline_win_rate:      { icon: BarChart3,     bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
+  pipeline_velocity:      { icon: TrendingUp,    bg: 'bg-sky-100 dark:bg-sky-500/15',         icon_color: 'text-sky-500'     },
+  pipeline_total_open_value: { icon: Wallet,     bg: 'bg-emerald-100 dark:bg-emerald-500/15', icon_color: 'text-emerald-500' },
+  pipeline_closing_week:  { icon: Clock,         bg: 'bg-amber-100 dark:bg-amber-500/15',     icon_color: 'text-amber-500'   },
+  pipeline_win_rate_all:  { icon: BarChart3,     bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
+  pipeline_stuck_all:     { icon: Clock,         bg: 'bg-red-100 dark:bg-red-500/15',         icon_color: 'text-red-500'     },
+  pipeline_added_today_all: { icon: TrendingUp,  bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
   conversations_unread:   { icon: MessageSquare, bg: 'bg-emerald-100 dark:bg-emerald-500/15', icon_color: 'text-emerald-500' },
-  conversations_today:    { icon: MessageSquare, bg: 'bg-teal-100 dark:bg-teal-500/15',       icon_color: 'text-teal-500'    },
+  conversations_active:   { icon: MessageSquare, bg: 'bg-teal-100 dark:bg-teal-500/15',       icon_color: 'text-teal-500'    },
   followups_due:          { icon: Clock,         bg: 'bg-violet-100 dark:bg-violet-500/15',   icon_color: 'text-violet-500'  },
-  leads_by_stage:         { icon: BarChart3,     bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
-  leads_by_source:        { icon: Zap,           bg: 'bg-amber-100 dark:bg-amber-500/15',     icon_color: 'text-amber-500'   },
-  recent_leads:           { icon: Users,         bg: 'bg-sky-100 dark:bg-sky-500/15',         icon_color: 'text-sky-500'     },
   recent_conversations:   { icon: MessageSquare, bg: 'bg-green-100 dark:bg-green-500/15',     icon_color: 'text-green-500'   },
   // datasheet family — all share the indigo palette
   datasheet_count:        { icon: Database,      bg: 'bg-indigo-100 dark:bg-indigo-500/15',   icon_color: 'text-indigo-500'  },
@@ -144,7 +202,7 @@ const SOURCE_CONFIG: Record<string, { icon: React.ElementType; bg: string; icon_
   agents_active:          { icon: Bot,           bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
   recent_activity:        { icon: Activity,      bg: 'bg-cyan-100 dark:bg-cyan-500/15',       icon_color: 'text-cyan-500'    },
   // P4 sources
-  agents_runs_today:      { icon: Bot,           bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
+  agents_total_runs:      { icon: Bot,           bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
   agents_by_status:       { icon: Bot,           bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
   ai_vs_manual_split:     { icon: MessageSquare, bg: 'bg-purple-100 dark:bg-purple-500/15',   icon_color: 'text-purple-500'  },
   campaigns_active:       { icon: Megaphone,     bg: 'bg-pink-100 dark:bg-pink-500/15',       icon_color: 'text-pink-500'    },
@@ -157,12 +215,8 @@ const SOURCE_CONFIG: Record<string, { icon: React.ElementType; bg: string; icon_
   unknown_senders:        { icon: MessageSquare, bg: 'bg-orange-100 dark:bg-orange-500/15',   icon_color: 'text-orange-500'  },
   work_by_status:         { icon: ListChecks,    bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
   work_overdue:           { icon: Clock,         bg: 'bg-red-100 dark:bg-red-500/15',         icon_color: 'text-red-500'     },
+  work_completed:         { icon: ListChecks,    bg: 'bg-green-100 dark:bg-green-500/15',     icon_color: 'text-green-500'   },
   work_by_priority:       { icon: ListChecks,    bg: 'bg-amber-100 dark:bg-amber-500/15',     icon_color: 'text-amber-500'   },
-  calls_total:            { icon: Phone,         bg: 'bg-green-100 dark:bg-green-500/15',     icon_color: 'text-green-500'   },
-  calls_missed:           { icon: Phone,         bg: 'bg-red-100 dark:bg-red-500/15',         icon_color: 'text-red-500'     },
-  leads_by_meta_campaign: { icon: Zap,           bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
-  leads_timeseries:       { icon: TrendingUp,    bg: 'bg-sky-100 dark:bg-sky-500/15',         icon_color: 'text-sky-500'     },
-  contacts_total:         { icon: Users,         bg: 'bg-blue-100 dark:bg-blue-500/15',       icon_color: 'text-blue-500'    },
   contacts_by_tag:        { icon: Tag,           bg: 'bg-violet-100 dark:bg-violet-500/15',   icon_color: 'text-violet-500'  },
   contacts_by_group:      { icon: UsersRound,    bg: 'bg-indigo-100 dark:bg-indigo-500/15',   icon_color: 'text-indigo-500'  },
   // Team Pulse / Channels / Insights replacements
@@ -227,10 +281,54 @@ function DeltaBadge({ delta }: { delta: number }) {
   );
 }
 
+// Sources where a non-zero value is something the owner should act on — colour the
+// number by urgency instead of the default neutral.
+const URGENCY_SOURCES = new Set([
+  'conversations_unread', 'work_overdue', 'unknown_senders', 'followups_due',
+]);
+
+// Mini inline sparkline for stat cards that carry a daily series.
+function Sparkline({ series, positive }: { series: SeriesPoint[]; positive: boolean }) {
+  const w = 110, h = 28;
+  const max = Math.max(1, ...series.map((p) => p.value));
+  const step = series.length > 1 ? w / (series.length - 1) : 0;
+  const pts = series.map((p, i) => `${i * step},${h - (p.value / max) * h}`).join(' ');
+  const stroke = positive ? '#10B981' : '#EF4444';
+  const fillId = `sx-${Math.round(max)}-${series.length}`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-7 mt-2" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={stroke} stopOpacity={0.18} />
+          <stop offset="100%" stopColor={stroke} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <polygon points={`0,${h} ${pts} ${w},${h}`} fill={`url(#${fillId})`} />
+      <polyline points={pts} fill="none" stroke={stroke} strokeWidth={1.5}
+        strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function StatCard({ data, editing, onDelete }: { data: WidgetData; editing: boolean; onDelete: () => void }) {
   const cfg = getSourceConfig(data.source_type);
   const Icon = cfg.icon;
   const hasDelta = data.delta_pct !== null && data.delta_pct !== undefined;
+  const series = data.series ?? [];
+  const hasSpark = series.length > 1;
+  const value = data.value ?? 0;
+  const unit = (data.unit ?? '').trim();   // currency symbol for pipeline value cards
+
+  // Threshold colour: urgent sources with a non-zero value read in amber/red.
+  const urgent = URGENCY_SOURCES.has(data.source_type) && value > 0;
+  const numberCls = urgent
+    ? (data.source_type === 'work_overdue' ? 'text-red-500' : 'text-amber-500')
+    : 'text-text-primary';
+
+  // Sparkline direction follows the period delta (fallback: series slope).
+  const sparkPositive = hasDelta
+    ? (data.delta_pct as number) >= 0
+    : series[series.length - 1]?.value >= (series[0]?.value ?? 0);
 
   const inner = (
     <div className="relative p-5">
@@ -246,18 +344,22 @@ function StatCard({ data, editing, onDelete }: { data: WidgetData; editing: bool
         )}
       </div>
 
-      {/* Number */}
-      <p className="text-[28px] font-bold tracking-tight text-text-primary leading-none mb-1.5">
-        {(data.value ?? 0).toLocaleString()}
-      </p>
-
-      {/* Label + delta */}
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-text-secondary leading-snug truncate">
-          {data.title}
+      {/* Number + delta */}
+      <div className="flex items-end justify-between gap-2 mb-1.5">
+        <p className={`text-[28px] font-bold tracking-tight leading-none ${numberCls}`}>
+          {unit && <span className="text-[18px] font-semibold align-top mr-0.5">{unit}</span>}
+          {value.toLocaleString()}
         </p>
         {hasDelta && <DeltaBadge delta={data.delta_pct as number} />}
       </div>
+
+      {/* Label */}
+      <p className="text-xs font-medium text-text-secondary leading-snug truncate">
+        {data.title}
+      </p>
+
+      {/* Sparkline (only when a daily series is present) */}
+      {hasSpark && <Sparkline series={series} positive={sparkPositive} />}
     </div>
   );
 
@@ -399,6 +501,149 @@ function ListWidget({ data, editing, onDelete }: { data: WidgetData; editing: bo
   );
 }
 
+// ── Per-widget settings popover ───────────────────────────────────────────────
+
+function WidgetSettings({
+  meta, onClose, onSave,
+}: {
+  meta: WidgetMeta;
+  onClose: () => void;
+  onSave: (patch: { title?: string; size?: string; date_range?: string }) => Promise<void> | void;
+}) {
+  const [title, setTitle]   = useState(meta.title);
+  const [size, setSize]     = useState(meta.size);
+  const [range, setRange]   = useState(meta.date_range || 'global');
+  const [saving, setSaving] = useState(false);
+
+  // Time-series & funnel widgets are forced to span 3 cols — size control is moot.
+  const sizeLocked = meta.display_type === 'timeseries' || meta.display_type === 'funnel';
+  // Snapshot/structural widgets ignore the date window — hide the control for them.
+  const rangeApplies = usesDateWindow(meta.source_type);
+
+  async function handleSave() {
+    setSaving(true);
+    await onSave({
+      title: title.trim() || meta.title,
+      size: sizeLocked ? meta.size : size,
+      date_range: rangeApplies ? range : 'global',
+    });
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <>
+      {/* click-away backdrop */}
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute top-10 right-2 z-50 w-60 bg-card-bg border border-border-color rounded-xl shadow-xl p-3 space-y-3">
+        <div>
+          <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Title</label>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+          />
+        </div>
+
+        {!sizeLocked && (
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary flex items-center gap-1">
+              <Maximize2 size={10} /> Size
+            </label>
+            <div className="mt-1 flex gap-1">
+              {SIZE_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  onClick={() => setSize(o.value)}
+                  className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                    size === o.value
+                      ? 'bg-accent text-white border-accent'
+                      : 'bg-bg-secondary text-text-secondary border-border-color hover:text-text-primary'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {rangeApplies && (
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary flex items-center gap-1">
+              <Calendar size={10} /> Date window
+            </label>
+            <select
+              value={range}
+              onChange={(e) => setRange(e.target.value)}
+              className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+            >
+              {DATE_RANGE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full px-3 py-1.5 rounded-lg text-xs font-semibold bg-accent hover:bg-accent/90 text-white transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ── Inline per-widget date control (normal view, date-sensitive widgets) ──────
+
+function WidgetDateControl({
+  value, loading, onChange,
+}: {
+  value: string; loading: boolean; onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="absolute top-2.5 right-2.5 z-20">
+      <button
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }}
+        className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-bg-secondary/90 backdrop-blur border border-border-color text-text-secondary hover:text-text-primary transition-colors"
+      >
+        {loading
+          ? <span className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />
+          : <Calendar size={9} />}
+        {value === 'global' ? 'Range' : rangeLabel(value)}
+        <ChevronDown size={9} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={(e) => { e.preventDefault(); setOpen(false); }} />
+          <div className="absolute top-7 right-0 z-40 w-40 bg-card-bg border border-border-color rounded-xl shadow-xl py-1">
+            {DATE_RANGE_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                onClick={(e) => {
+                  e.preventDefault(); e.stopPropagation(); setOpen(false);
+                  if (o.value !== value) onChange(o.value);
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                  o.value === value
+                    ? 'text-accent font-semibold'
+                    : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── SortableWidget wrapper ────────────────────────────────────────────────────
 
 function colSpan(size: string, displayType?: string): React.CSSProperties['gridColumn'] {
@@ -411,10 +656,14 @@ function colSpan(size: string, displayType?: string): React.CSSProperties['gridC
 }
 
 function SortableWidget({
-  meta, data, editing, onDelete,
+  meta, data, editing, loading, onDelete, onUpdate, onDateChange,
 }: {
-  meta: WidgetMeta; data?: WidgetData; editing: boolean; onDelete: (id: number) => void;
+  meta: WidgetMeta; data?: WidgetData; editing: boolean; loading: boolean;
+  onDelete: (id: number) => void;
+  onUpdate: (id: number, patch: { title?: string; size?: string; date_range?: string }) => Promise<void> | void;
+  onDateChange: (id: number, range: string) => void;
 }) {
+  const [showSettings, setShowSettings] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: meta.id, disabled: !editing });
 
@@ -449,6 +698,42 @@ function SortableWidget({
         </div>
       )}
 
+      {/* Settings button + popover (left of the delete button) */}
+      {editing && (
+        <>
+          <button
+            onClick={() => setShowSettings((s) => !s)}
+            className="absolute top-3 right-11 z-20 w-6 h-6 rounded-full bg-card-bg border border-border-color text-text-secondary hover:text-text-primary flex items-center justify-center shadow-sm transition-colors"
+          >
+            <Settings2 size={12} />
+          </button>
+          {showSettings && (
+            <WidgetSettings
+              meta={meta}
+              onClose={() => setShowSettings(false)}
+              onSave={(patch) => onUpdate(meta.id, patch)}
+            />
+          )}
+        </>
+      )}
+
+      {/* Inline date control — date-sensitive compact cards, normal view only.
+          Header-style cards (breakdown/list/table/funnel) keep their "All →"
+          link and use the edit-mode settings popover for window overrides. */}
+      {!editing && usesDateWindow(meta.source_type)
+        && ['stat', 'trend', 'gauge'].includes(meta.display_type) && (
+        <WidgetDateControl
+          value={meta.date_range || 'global'}
+          loading={loading}
+          onChange={(v) => onDateChange(meta.id, v)}
+        />
+      )}
+
+      {/* Per-widget loading shimmer */}
+      {loading && (
+        <div className="absolute inset-0 z-[15] rounded-2xl bg-card-bg/40 animate-pulse pointer-events-none" />
+      )}
+
       {data.display_type === 'stat'       && <StatCard        data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
       {data.display_type === 'breakdown'  && <BreakdownWidget data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
       {data.display_type === 'list'       && <ListWidget      data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
@@ -466,28 +751,46 @@ function SortableWidget({
 /* Maps source_type → user-facing category label */
 function getSourceCategory(opt: WidgetOption): string {
   switch (opt.source_type) {
-    case 'leads_today':
-    case 'leads_total':
-    case 'leads_by_stage':
-    case 'leads_by_source':
-    case 'recent_leads':
-    case 'leads_trend':
-    case 'leads_timeseries':
-    case 'leads_by_meta_campaign':
+    case 'contacts_new':
+    case 'contacts_total':
+    case 'contacts_trend':
+    case 'contacts_timeseries':
+    case 'contacts_by_source':
+    case 'contacts_by_meta_campaign':
+    case 'contacts_by_tag':
+    case 'contacts_by_group':
+    case 'recent_contacts':
+      return 'Contacts';
+    case 'pipeline_total_open_value':
+    case 'pipeline_closing_week':
+    case 'pipeline_win_rate_all':
+    case 'pipeline_stuck_all':
+    case 'pipeline_added_today_all':
+      return 'Pipeline';
+    // Per-pipeline widgets carry source_name → one tab per pipeline (like datasheets)
+    case 'pipeline_open_value':
+    case 'pipeline_weighted_value':
+    case 'pipeline_added':
+    case 'pipeline_won':
+    case 'pipeline_win_rate':
+    case 'pipeline_by_stage':
+    case 'pipeline_value_by_stage':
     case 'pipeline_funnel':
-      return 'Leads';
+    case 'pipeline_velocity':
+      return opt.source_name ?? 'Pipeline';
     case 'conversations_unread':
-    case 'conversations_today':
+    case 'conversations_active':
     case 'recent_conversations':
     case 'conversations_timeseries':
     case 'ai_vs_manual_split':
     case 'messages_by_channel':
     case 'unknown_senders':
+    case 'channels_health':
       return 'Conversations';
     case 'followups_due':
       return 'Follow-ups';
     case 'agents_active':
-    case 'agents_runs_today':
+    case 'agents_total_runs':
     case 'agents_by_status':
     case 'top_agents':
       return 'AI Agents';
@@ -500,18 +803,13 @@ function getSourceCategory(opt: WidgetOption): string {
       return 'Campaigns';
     case 'work_by_status':
     case 'work_overdue':
+    case 'work_completed':
     case 'work_by_priority':
-    case 'calls_total':
-    case 'calls_missed':
       return 'Work';
     case 'wallet_balance':
     case 'wallet_spend':
     case 'wallet_usage_gauge':
-      return 'Wallet';
-    case 'contacts_total':
-    case 'contacts_by_tag':
-    case 'contacts_by_group':
-      return 'Contacts';
+      return 'Money';
     case 'recent_activity':
     case 'ai_insights':
       return 'Activity';
@@ -520,8 +818,6 @@ function getSourceCategory(opt: WidgetOption): string {
     case 'team_live_tasks':
     case 'team_completion_rate':
       return 'Team';
-    case 'channels_health':
-      return 'Conversations';
     // All datasheet-derived source types use source_name as the tab label
     case 'datasheet_count':
     case 'datasheet_recent':
@@ -536,14 +832,14 @@ function getSourceCategory(opt: WidgetOption): string {
 
 /* Icon + colour per category */
 const CATEGORY_META: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  'Leads':         { icon: Users,         color: 'text-blue-600 dark:text-blue-400',       bg: 'bg-blue-50 dark:bg-blue-900/30'       },
+  'Contacts':      { icon: Users,         color: 'text-blue-600 dark:text-blue-400',       bg: 'bg-blue-50 dark:bg-blue-900/30'       },
+  'Pipeline':      { icon: BarChart3,     color: 'text-violet-600 dark:text-violet-400',   bg: 'bg-violet-50 dark:bg-violet-900/30'   },
   'Conversations': { icon: MessageSquare, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
   'Follow-ups':    { icon: Clock,         color: 'text-violet-600 dark:text-violet-400',   bg: 'bg-violet-50 dark:bg-violet-900/30'   },
   'AI Agents':     { icon: Bot,           color: 'text-purple-600 dark:text-purple-400',   bg: 'bg-purple-50 dark:bg-purple-900/30'   },
   'Campaigns':     { icon: Megaphone,     color: 'text-pink-600 dark:text-pink-400',       bg: 'bg-pink-50 dark:bg-pink-900/30'       },
   'Work':          { icon: ListChecks,    color: 'text-amber-600 dark:text-amber-400',     bg: 'bg-amber-50 dark:bg-amber-900/30'     },
-  'Wallet':        { icon: Wallet,        color: 'text-green-600 dark:text-green-400',     bg: 'bg-green-50 dark:bg-green-900/30'     },
-  'Contacts':      { icon: Users,         color: 'text-indigo-600 dark:text-indigo-400',   bg: 'bg-indigo-50 dark:bg-indigo-900/30'   },
+  'Money':         { icon: Wallet,        color: 'text-green-600 dark:text-green-400',     bg: 'bg-green-50 dark:bg-green-900/30'     },
   'Activity':      { icon: Activity,      color: 'text-cyan-600 dark:text-cyan-400',       bg: 'bg-cyan-50 dark:bg-cyan-900/30'       },
   'Team':          { icon: UsersRound,    color: 'text-green-600 dark:text-green-400',     bg: 'bg-green-50 dark:bg-green-900/30'     },
 };
@@ -582,7 +878,7 @@ function AddWidgetModal({
     const seen = new Set<string>();
     const result: string[] = [];
     // Fixed order for core sources first
-    for (const cat of ['Leads', 'Contacts', 'Conversations', 'AI Agents', 'Campaigns', 'Work', 'Team', 'Follow-ups', 'Wallet', 'Activity']) {
+    for (const cat of ['Contacts', 'Pipeline', 'Conversations', 'AI Agents', 'Campaigns', 'Work', 'Team', 'Money', 'Follow-ups', 'Activity']) {
       if (options.some(o => getSourceCategory(o) === cat)) {
         seen.add(cat);
         result.push(cat);
@@ -801,6 +1097,7 @@ export default function NewDashboardPage() {
   const [editing,   setEditing]   = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
+  const [loadingIds, setLoadingIds] = useState<Set<number>>(new Set());
   const [layouts,   setLayouts]   = useState<Layout[]>([]);
   const activeLayoutId = layouts.find((l) => l.is_active)?.id ?? null;
 
@@ -845,6 +1142,8 @@ export default function NewDashboardPage() {
   useEffect(() => {
     if (activeLayoutId === null) return;
     setDataLoading(true);
+    // Shimmer every date-sensitive card while the new range loads.
+    setLoadingIds(new Set(widgets.filter((w) => usesDateWindow(w.source_type)).map((w) => w.id)));
     Promise.all([
       fetchWidgets(activeLayoutId),
       fetchAllData(startDate, endDate, activeLayoutId),
@@ -856,7 +1155,8 @@ export default function NewDashboardPage() {
         setDataMap(map);
       })
       .catch(() => {})
-      .finally(() => setDataLoading(false));
+      .finally(() => { setDataLoading(false); setLoadingIds(new Set()); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLayoutId, startDate, endDate]);
 
   // SSE live refresh — re-fetch widgets and layouts on tick
@@ -889,6 +1189,34 @@ export default function NewDashboardPage() {
   async function handleDelete(id: number) {
     setWidgets(prev => prev.filter(w => w.id !== id));
     await deleteWidget(id);
+  }
+
+  async function handleUpdate(id: number, patch: { title?: string; size?: string; date_range?: string }) {
+    // Optimistic meta update so title/size/chip change instantly…
+    setWidgets(prev => prev.map(w => (w.id === id ? { ...w, ...patch } : w)));
+    await updateWidget(id, patch);
+    // …then re-fetch just this widget (size/title/window only affects itself).
+    setLoadingIds(prev => new Set(prev).add(id));
+    try {
+      const d = await fetchOneData(id, startDate, endDate);
+      setDataMap(prev => { const m = new Map(prev); m.set(id, d); return m; });
+    } finally {
+      setLoadingIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+    }
+  }
+
+  // Inline date change (normal view) — persist + refetch only this widget.
+  async function handleInlineDate(id: number, range: string) {
+    setWidgets(prev => prev.map(w => (w.id === id ? { ...w, date_range: range } : w)));
+    setLoadingIds(prev => new Set(prev).add(id));
+    try {
+      await updateWidget(id, { date_range: range });
+      const d = await fetchOneData(id, startDate, endDate);
+      setDataMap(prev => { const m = new Map(prev); m.set(id, d); return m; });
+    } catch { /* keep previous data on failure */ }
+    finally {
+      setLoadingIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+    }
   }
 
   async function handleAdd(opt: WidgetOption) {
@@ -975,13 +1303,9 @@ export default function NewDashboardPage() {
           </div>
         </div>
 
-        {/* Hardcoded P2 rows removed — every previous row is now an addable widget:
-            • AI insights → "Needs Attention" (list)
-            • Headline KPIs → individual stats (leads_today, conversations_today, …)
-            • Team Pulse → team_active_employees / team_attendance / team_live_tasks / team_completion_rate
-            • Channels health → channels_health (table)
-            • Activity feed → recent_activity (list)
-            The dashboard is empty until the user adds widgets from the modal. */}
+        {/* Every metric is an addable widget — see the Add Widget modal. New layouts
+            seed the "Owner Cockpit" (new contacts, replies owed, money, pipeline,
+            needs-attention). The dashboard stays empty until widgets are added. */}
 
         {/* ── Widget grid ── */}
         {widgets.length === 0 ? (
@@ -1010,7 +1334,10 @@ export default function NewDashboardPage() {
                     meta={meta}
                     data={dataMap.get(meta.id)}
                     editing={editing}
+                    loading={loadingIds.has(meta.id)}
                     onDelete={handleDelete}
+                    onUpdate={handleUpdate}
+                    onDateChange={handleInlineDate}
                   />
                 ))}
               </div>
