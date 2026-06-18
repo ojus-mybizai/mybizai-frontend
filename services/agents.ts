@@ -413,12 +413,35 @@ export async function bindChannels(agentId: string, channelIds: string[]): Promi
   });
 }
 
-export async function testAgent(id: string, userMessage: string, sessionId?: string): Promise<string> {
-  const res = await apiFetch<{ response: string }>(`/agents/${id}/test`, {
+export interface TestToolCall {
+  skill: string;
+  args: Record<string, unknown>;
+  success: boolean;
+  mocked: boolean;
+}
+
+export interface TestAgentResult {
+  response: string;
+  toolCalls: TestToolCall[];
+}
+
+export async function testAgent(id: string, userMessage: string, sessionId?: string): Promise<TestAgentResult> {
+  const res = await apiFetch<{
+    response: string;
+    tool_calls?: Array<{ skill: string; args?: Record<string, unknown>; success?: boolean; mocked?: boolean }>;
+  }>(`/agents/${id}/test`, {
     method: 'POST',
     body: JSON.stringify({ user_message: userMessage, session_id: sessionId ?? null }),
   });
-  return res.response;
+  return {
+    response: res.response,
+    toolCalls: (res.tool_calls ?? []).map((t) => ({
+      skill: t.skill,
+      args: t.args ?? {},
+      success: t.success ?? true,
+      mocked: t.mocked ?? false,
+    })),
+  };
 }
 
 // ---------- AI Agent Builder ----------

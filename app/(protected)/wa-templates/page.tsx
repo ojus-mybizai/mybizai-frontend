@@ -12,6 +12,8 @@ import {
   type DatasheetFieldMap, type FlowFieldType,
 } from '@/services/waTemplates';
 import DatasheetMappingPanel, { type GeneratedFieldWithMapping } from '@/components/wa-templates/DatasheetMappingPanel';
+import ContactMappingPanel from '@/components/wa-templates/ContactMappingPanel';
+import type { ContactFieldMap } from '@/services/waTemplates';
 
 const TYPE_META: Record<WaTemplateType, { label: string; icon: React.ReactNode; color: string; desc: string }> = {
   simple_task: {
@@ -73,7 +75,13 @@ const labelCls = 'text-sm font-medium text-text-primary';
 const subtleCls = 'text-xs text-text-secondary';
 
 // Fix 1: removed data_api_version — static flows don't need a Data API endpoint.
-function generateFlowJson(fields: FlowField[]): Record<string, unknown> {
+function generateFlowJson(
+  fields: FlowField[],
+  opts?: { contactMode?: boolean; pipelineInForm?: boolean },
+): Record<string, unknown> {
+  const contactMode = !!opts?.contactMode;
+  const pipelineInForm = !!opts?.pipelineInForm;
+
   const formChildren: unknown[] = fields.map((f) => {
     // Map logical types to Meta Flow component names.
     const componentType =
@@ -87,16 +95,31 @@ function generateFlowJson(fields: FlowField[]): Record<string, unknown> {
     if (f.type === 'number') base['input-type'] = 'number';
     if (f.type === 'phone') base['input-type'] = 'phone';
     if (['Dropdown', 'CheckboxGroup', 'RadioButtonsGroup'].includes(f.type)) {
-      const opts = (f.options && f.options.length > 0) ? f.options : ['Option 1', 'Option 2'];
-      base['data-source'] = opts.map((o) => ({ id: o, title: o }));
+      const opts2 = (f.options && f.options.length > 0) ? f.options : ['Option 1', 'Option 2'];
+      base['data-source'] = opts2.map((o) => ({ id: o, title: o }));
     }
     // OptIn requires the label inside `on-click-action` style copy.
     // Meta's OptIn renders the label as the consent text — no extra config needed.
     return base;
   });
 
+  // Contact mode: optional dynamic pipeline picker. Options are injected at
+  // send time as data.pipeline_options (same contract as the prebuilt form).
+  if (contactMode && pipelineInForm) {
+    formChildren.push({
+      type: 'Dropdown',
+      label: 'Add to pipeline',
+      name: 'pipeline_target',
+      required: false,
+      'data-source': '${data.pipeline_options}',
+    });
+  }
+
   const payload: Record<string, string> = {};
   fields.forEach((f) => { payload[f.name] = `\${form.${f.name}}`; });
+  if (contactMode && pipelineInForm) {
+    payload['pipeline_target'] = '${form.pipeline_target}';
+  }
 
   formChildren.push({
     type: 'Footer',
@@ -104,19 +127,30 @@ function generateFlowJson(fields: FlowField[]): Record<string, unknown> {
     'on-click-action': { name: 'complete', payload },
   });
 
-  return {
-    version: '6.3',
-    routing_model: { FORM_SCREEN: [] },
-    screens: [{
-      id: 'FORM_SCREEN',
-      title: 'Form',
-      terminal: true,
-      layout: {
-        type: 'SingleColumnLayout',
-        children: [{ type: 'Form', name: 'task_form', children: formChildren }],
-      },
-    }],
+  const form: Record<string, unknown> = { type: 'Form', name: 'task_form', children: formChildren };
+  const screen: Record<string, unknown> = {
+    id: 'FORM_SCREEN',
+    title: 'Form',
+    terminal: true,
+    layout: { type: 'SingleColumnLayout', children: [form] },
   };
+
+  // Create-contact flows must declare the data the dispatcher injects
+  // (pipeline_options + init_values) or Meta rejects the send. init-values is
+  // bound on the Form; unmatched keys are ignored by Meta.
+  if (contactMode) {
+    form['init-values'] = '${data.init_values}';
+    screen['data'] = {
+      pipeline_options: {
+        type: 'array',
+        items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' } } },
+        __example__: [{ id: '0', title: '— No pipeline —' }],
+      },
+      init_values: { type: 'object', __example__: {} },
+    };
+  }
+
+  return { version: '6.3', routing_model: { FORM_SCREEN: [] }, screens: [screen] };
 }
 
 function extractFlowFields(flowJson: Record<string, unknown> | null | undefined): FlowField[] {
@@ -172,6 +206,12 @@ export default function WaTemplatesPage() {
   const [dsEnabled, setDsEnabled] = useState(false);
   const [dsModelId, setDsModelId] = useState<number | null>(null);
   const [dsMapping, setDsMapping] = useState<DatasheetFieldMap | null>(null);
+  // Submission target + contact mapping (whatsapp_form only)
+  const [submitAction, setSubmitAction] = useState<'datasheet' | 'create_contact'>('datasheet');
+  const [contactGroupId, setContactGroupId] = useState<number | null>(null);
+  const [contactProcessId, setContactProcessId] = useState<number | null>(null);
+  const [pipelineInForm, setPipelineInForm] = useState(false);
+  const [contactMapping, setContactMapping] = useState<ContactFieldMap | null>(null);
   // Keyword-triggered self-service (whatsapp_form only)
   const [triggerEnabled, setTriggerEnabled] = useState(false);
   const [triggerKeywords, setTriggerKeywords] = useState<string[]>([]);
@@ -209,6 +249,11 @@ export default function WaTemplatesPage() {
     setDsEnabled(false);
     setDsModelId(null);
     setDsMapping(null);
+    setSubmitAction('datasheet');
+    setContactGroupId(null);
+    setContactProcessId(null);
+    setPipelineInForm(false);
+    setContactMapping(null);
     setTriggerEnabled(false);
     setTriggerKeywords([]);
     setTriggerCooldownSec(60);
@@ -243,6 +288,12 @@ export default function WaTemplatesPage() {
     setDsModelId(tmpl.linked_dynamic_model_id ?? null);
     setDsMapping(tmpl.datasheet_field_map ?? null);
 
+    setSubmitAction(tmpl.submit_action === 'create_contact' ? 'create_contact' : 'datasheet');
+    setContactGroupId(tmpl.target_group_id ?? null);
+    setContactProcessId(tmpl.target_process_id ?? null);
+    setPipelineInForm(Boolean(tmpl.pipeline_in_form));
+    setContactMapping(tmpl.contact_field_map ?? null);
+
     setTriggerEnabled(Boolean(tmpl.trigger_enabled));
     setTriggerKeywords(tmpl.trigger_keywords ?? []);
     setTriggerCooldownSec(tmpl.trigger_cooldown_sec ?? 60);
@@ -273,14 +324,31 @@ export default function WaTemplatesPage() {
         type: formType,
         message_body: formType === 'simple_task' || formType === 'checklist' ? formBody : undefined,
         buttons,
-        flow_json: formType === 'whatsapp_form' ? generateFlowJson(flowFields) : undefined,
+        flow_json: formType === 'whatsapp_form'
+          ? generateFlowJson(flowFields, {
+              contactMode: submitAction === 'create_contact',
+              pipelineInForm: submitAction === 'create_contact' && pipelineInForm,
+            })
+          : undefined,
         meta_template_language: formLanguage || 'en',
       };
 
       if (formType === 'whatsapp_form') {
-        payload.datasheet_write_enabled = dsEnabled;
-        payload.linked_dynamic_model_id = dsEnabled ? dsModelId : null;
-        payload.datasheet_field_map = dsEnabled ? dsMapping : null;
+        payload.submit_action = submitAction;
+        if (submitAction === 'create_contact') {
+          // Contact mode: map fields → contact, optional group/pipeline.
+          payload.contact_field_map = contactMapping;
+          payload.target_group_id = contactGroupId;
+          payload.target_process_id = pipelineInForm ? null : contactProcessId;
+          payload.pipeline_in_form = pipelineInForm;
+          payload.datasheet_write_enabled = false;
+          payload.linked_dynamic_model_id = null;
+          payload.datasheet_field_map = null;
+        } else {
+          payload.datasheet_write_enabled = dsEnabled;
+          payload.linked_dynamic_model_id = dsEnabled ? dsModelId : null;
+          payload.datasheet_field_map = dsEnabled ? dsMapping : null;
+        }
         payload.trigger_enabled = triggerEnabled;
         payload.trigger_keywords = triggerEnabled ? triggerKeywords : [];
         payload.trigger_cooldown_sec = Math.max(0, triggerCooldownSec | 0);
@@ -781,6 +849,32 @@ export default function WaTemplatesPage() {
               {/* ── WhatsApp Form ── */}
               {formType === 'whatsapp_form' && (
                 <div className="space-y-5">
+                  {/* What a submission becomes */}
+                  <div>
+                    <label className={`${labelCls} block mb-2`}>On submit, save as</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { v: 'datasheet', label: 'Datasheet row', desc: 'Write a row into a datasheet' },
+                        { v: 'create_contact', label: 'Contact', desc: 'Create/Update a CRM contact' },
+                      ] as const).map((opt) => (
+                        <button
+                          key={opt.v}
+                          type="button"
+                          onClick={() => setSubmitAction(opt.v)}
+                          className={`text-left p-3 border rounded-xl transition-all ${
+                            submitAction === opt.v
+                              ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-950/30 ring-1 ring-green-500 dark:ring-green-400'
+                              : 'border-border-color bg-card-bg hover:bg-bg-secondary'
+                          }`}
+                        >
+                          <div className="font-medium text-sm text-text-primary">{opt.label}</div>
+                          <p className="text-xs text-text-secondary">{opt.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {submitAction === 'datasheet' && (
                   <DatasheetMappingPanel
                     flowFields={flowFields.map((f) => ({
                       id: f.id,
@@ -799,6 +893,7 @@ export default function WaTemplatesPage() {
                     }}
                     onGenerateFromDatasheet={handleGenerateFromDatasheet}
                   />
+                  )}
 
                   {/* ── Keyword trigger panel ────────────────────────────── */}
                   <div className="border border-border-color rounded-xl bg-card-bg p-4">
@@ -1039,6 +1134,24 @@ export default function WaTemplatesPage() {
                     <p className={`${subtleCls} mt-3`}>
                       After saving, click <strong className="text-text-primary">Publish</strong> on the template card to make it live on WhatsApp.
                     </p>
+                  )}
+
+                  {submitAction === 'create_contact' && (
+                    <ContactMappingPanel
+                      flowFields={flowFields.map((f) => ({
+                        id: f.id, type: f.type, name: f.name, label: f.label, required: f.required,
+                      }))}
+                      groupId={contactGroupId}
+                      processId={contactProcessId}
+                      pipelineInForm={pipelineInForm}
+                      mapping={contactMapping}
+                      onChange={({ groupId, processId, pipelineInForm: pif, mapping }) => {
+                        setContactGroupId(groupId);
+                        setContactProcessId(processId);
+                        setPipelineInForm(pif);
+                        setContactMapping(mapping);
+                      }}
+                    />
                   )}
                 </div>
               )}

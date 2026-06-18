@@ -5,12 +5,13 @@ import { ChatBubble } from '@/components/agents/chat-bubble';
 import { EmptyState } from '@/components/agents/empty-state';
 import { useAgentStore } from '@/lib/agent-store';
 import { useShallow } from 'zustand/react/shallow';
-import { testAgent } from '@/services/agents';
+import { testAgent, type TestToolCall } from '@/services/agents';
 
 interface TestMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  toolCalls?: TestToolCall[];
 }
 
 export default function AgentTestPage() {
@@ -65,8 +66,8 @@ export default function AgentTestPage() {
     setIsTyping(true);
 
     try {
-      const replyText = await testAgent(String(current.id), trimmed, sessionIdRef.current);
-      const reply: TestMessage = { id: crypto.randomUUID(), role: 'assistant', content: replyText };
+      const { response, toolCalls } = await testAgent(String(current.id), trimmed, sessionIdRef.current);
+      const reply: TestMessage = { id: crypto.randomUUID(), role: 'assistant', content: response, toolCalls };
       setMessages((prev) => [...prev, reply]);
     } catch (err) {
       setError((err as Error).message || 'Failed to test agent');
@@ -123,7 +124,16 @@ export default function AgentTestPage() {
 
       <div className="flex flex-col gap-3">
         {messages.map((msg) => (
-          <ChatBubble key={msg.id} role={msg.role} content={msg.content} />
+          <div key={msg.id} className="flex flex-col gap-1.5">
+            <ChatBubble role={msg.role} content={msg.content} />
+            {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && (
+              <div className="flex flex-col gap-1 pl-1">
+                {msg.toolCalls.map((tc, i) => (
+                  <ToolCallChip key={i} call={tc} />
+                ))}
+              </div>
+            )}
+          </div>
         ))}
         {isTyping && <div className="text-xs text-text-secondary">Assistant is typing…</div>}
         <div ref={endRef} />
@@ -144,6 +154,33 @@ export default function AgentTestPage() {
           Send
         </button>
       </form>
+    </div>
+  );
+}
+
+function ToolCallChip({ call }: { call: TestToolCall }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-amber-300/50 bg-amber-50 px-2.5 py-1.5 text-[11px] dark:border-amber-800/40 dark:bg-amber-900/15">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 text-left text-amber-800 dark:text-amber-300"
+      >
+        <span>🔧</span>
+        <code className="font-semibold">{call.skill}</code>
+        {call.mocked && (
+          <span className="rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-800/40 dark:text-amber-200">
+            mocked
+          </span>
+        )}
+        <span className="ml-auto text-amber-500">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <pre className="mt-1.5 overflow-x-auto rounded bg-amber-100/60 p-2 text-[10px] text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          {JSON.stringify(call.args, null, 2)}
+        </pre>
+      )}
     </div>
   );
 }

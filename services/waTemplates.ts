@@ -32,6 +32,44 @@ export interface DatasheetFieldMap {
   mappings: DatasheetFieldMappingEntry[];
 }
 
+// ── Contact form mapping (submit_action="create_contact") ──────────────────
+export type ContactTarget =
+  | 'name' | 'phone' | 'email' | 'company' | 'source' | 'note' | 'custom';
+
+export interface ContactFieldMappingEntry {
+  flow_field_name: string;
+  target: ContactTarget;
+  custom_field_def_id?: number | null;
+}
+
+export interface ContactFieldMap {
+  version: 1;
+  mappings: ContactFieldMappingEntry[];
+}
+
+export interface ContactFieldTarget {
+  target: string;                 // attribute name, or 'custom'
+  label: string;
+  kind: 'attribute' | 'custom';
+  custom_field_def_id?: number;
+  field_type?: string;
+  options?: string[] | null;
+  group_id?: number | null;
+  required?: boolean;
+}
+
+export interface ContactFieldTargetsResponse {
+  core: ContactFieldTarget[];
+  custom: ContactFieldTarget[];
+}
+
+/** Mappable contact targets for the Create-Contact form builder. Pass groupId
+ *  to include that group's group-scoped custom fields. */
+export async function getContactFieldTargets(groupId?: number): Promise<ContactFieldTargetsResponse> {
+  const q = groupId ? `?group_id=${groupId}` : '';
+  return apiFetch<ContactFieldTargetsResponse>(`/wa/templates/contact-field-targets${q}`);
+}
+
 export interface WaTemplate {
   id: number;
   name: string;
@@ -48,6 +86,11 @@ export interface WaTemplate {
   meta_category: string | null;
   // What a form submission does: "datasheet" (default) | "create_contact"
   submit_action?: string;
+  // Contact integration (submit_action="create_contact")
+  contact_field_map?: ContactFieldMap | null;
+  target_group_id?: number | null;
+  target_process_id?: number | null;
+  pipeline_in_form?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string | null;
@@ -70,6 +113,11 @@ export interface WaTemplateCreate {
   flow_json?: Record<string, unknown>;
   meta_category?: string;
   meta_template_language?: string;
+  submit_action?: string;
+  contact_field_map?: ContactFieldMap | null;
+  target_group_id?: number | null;
+  target_process_id?: number | null;
+  pipeline_in_form?: boolean;
   linked_dynamic_model_id?: number | null;
   datasheet_write_enabled?: boolean;
   datasheet_field_map?: DatasheetFieldMap | null;
@@ -87,6 +135,11 @@ export interface WaTemplateUpdate {
   is_active?: boolean;
   meta_category?: string;
   meta_template_language?: string;
+  submit_action?: string;
+  contact_field_map?: ContactFieldMap | null;
+  target_group_id?: number | null;
+  target_process_id?: number | null;
+  pipeline_in_form?: boolean;
   linked_dynamic_model_id?: number | null;
   datasheet_write_enabled?: boolean;
   datasheet_field_map?: DatasheetFieldMap | null;

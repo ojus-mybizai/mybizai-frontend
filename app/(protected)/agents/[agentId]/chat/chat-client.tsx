@@ -6,8 +6,9 @@ import { useShallow } from 'zustand/react/shallow';
 import type { ReplyLength } from '@/services/agents';
 import {
   Save, Loader2, MessageSquare, Settings, Shield,
-  ArrowUpRight, MessagesSquare, Info,
+  ArrowUpRight, MessagesSquare, Info, ListChecks,
 } from 'lucide-react';
+import ResponsePlaybook from '@/components/agents/response-playbook';
 
 // ─── Collapsible Section ─────────────────────────────────────
 
@@ -217,12 +218,19 @@ export default function ChatSettingsClient() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-4">
+      <div>
+        <div className="space-y-4">
 
           {/* Chat Instructions */}
-          <Section title="Chat instructions" icon={MessageSquare} defaultOpen
+          <Section title="Chat instructions" icon={MessageSquare}
             description="The agent's core behaviour when talking to customers.">
+            <div className="flex items-start gap-2 rounded-lg border border-border-color bg-bg-secondary px-3 py-2 text-[11px] text-text-secondary">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+              <span>
+                This box is for overall behaviour. For how the agent should answer specific kinds of
+                questions, use the <strong className="text-text-primary">Responses</strong> section below.
+              </span>
+            </div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-medium text-text-secondary">Instructions</span>
               <ActiveBadge />
@@ -240,8 +248,14 @@ export default function ChatSettingsClient() {
             </p>
           </Section>
 
+          {/* Responses (per-question-type playbook) */}
+          <Section title="Responses" icon={ListChecks}
+            description="How the agent should answer each kind of question.">
+            <ResponsePlaybook />
+          </Section>
+
           {/* Persona & style */}
-          <Section title="Persona & style" icon={Settings} defaultOpen
+          <Section title="Persona & style" icon={Settings}
             description="How the agent identifies itself and formats replies.">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -428,33 +442,6 @@ export default function ChatSettingsClient() {
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save Changes
           </button>
-        </div>
-
-        {/* Right: What's active */}
-        <div className="space-y-4">
-          <div className="rounded-xl border border-border-color bg-card-bg p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-text-primary">What reaches the prompt</h3>
-            <ul className="space-y-2 text-xs">
-              {[
-                { label: 'Instructions', active: true },
-                { label: 'Persona name', active: true },
-                { label: 'Tone', active: true },
-                { label: 'Reply language', active: true },
-                { label: 'Reply length', active: true },
-                { label: 'Use bullets', active: true },
-                { label: 'Use emojis', active: true },
-                { label: 'Fallback message', active: true },
-                { label: 'Business context hint', active: true },
-                { label: 'Guardrails (never/always/prohibited)', active: true },
-                { label: 'Escalation policy', active: true },
-              ].map(({ label, active }) => (
-                <li key={label} className="flex items-center gap-2">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-emerald-500' : 'bg-text-secondary/30'}`} />
-                  <span className={active ? 'text-text-primary' : 'text-text-secondary line-through'}>{label}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
         </div>
       </div>
     </div>
