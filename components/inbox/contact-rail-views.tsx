@@ -26,7 +26,7 @@ import {
   type Priority,
   type RoutingMode,
 } from '@/services/contacts-v2';
-import { listEmployees, type Employee } from '@/services/employees';
+import { listEmployees, type WaEmployee } from '@/services/waEmployees';
 import { AddToPipelineModal } from '@/components/contacts/add-to-pipeline-modal';
 import { moveEntry, type ProcessEntryWithProcess } from '@/services/processes';
 import { getTemplateDatasheetSources, type DatasheetSource } from '@/services/message-templates';
@@ -299,7 +299,7 @@ function AssigneeChip({
       triggerLabel={
         <>
           <User2 className="h-3 w-3" />
-          <span>{contact.assigned_to_name ?? 'Unassigned'}</span>
+          <span>{contact.assigned_wa_employee_name ?? 'Unassigned'}</span>
         </>
       }
     >
@@ -310,18 +310,18 @@ function AssigneeChip({
             <button
               type="button"
               onClick={() => assign(null, close)}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-left hover:bg-bg-secondary transition-colors ${BTN} ${contact.assigned_to_id == null ? 'font-semibold text-accent' : 'text-text-primary'}`}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-left hover:bg-bg-secondary transition-colors ${BTN} ${contact.assigned_wa_employee_id == null ? 'font-semibold text-accent' : 'text-text-primary'}`}
             >
               <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-bg-secondary text-[9px] text-text-secondary">—</span>
               <span className="flex-1">Unassigned</span>
-              {contact.assigned_to_id == null && <Check className="h-3 w-3 text-accent" />}
+              {contact.assigned_wa_employee_id == null && <Check className="h-3 w-3 text-accent" />}
             </button>
             <div className="my-1 border-t border-border-color" />
             {employees.length === 0 ? (
               <p className="px-3 py-2 text-xs text-text-secondary">No employees</p>
             ) : (
-              employees.filter((e: Employee) => e.is_active).map((e: Employee) => {
-                const active = contact.assigned_to_id === e.id;
+              employees.filter((e: WaEmployee) => e.is_active && e.status === 'active').map((e: WaEmployee) => {
+                const active = contact.assigned_wa_employee_id === e.id;
                 return (
                   <button
                     key={e.id}
@@ -330,10 +330,10 @@ function AssigneeChip({
                     className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-left hover:bg-bg-secondary transition-colors ${BTN}`}
                   >
                     <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-accent/15 text-[9px] font-bold text-accent">
-                      {getInitials(e.name, e.email)}
+                      {getInitials(e.name, e.whatsapp_number)}
                     </span>
                     <span className={`flex-1 truncate ${active ? 'font-semibold text-accent' : 'text-text-primary'}`}>
-                      {e.name || e.email}
+                      {e.name || e.whatsapp_number}
                     </span>
                     {active && <Check className="h-3 w-3 text-accent" />}
                   </button>

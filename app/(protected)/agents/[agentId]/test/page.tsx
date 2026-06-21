@@ -6,6 +6,8 @@ import { EmptyState } from '@/components/agents/empty-state';
 import { useAgentStore } from '@/lib/agent-store';
 import { useShallow } from 'zustand/react/shallow';
 import { testAgent, type TestToolCall } from '@/services/agents';
+import { useBuilderChatStore } from '@/lib/agent-builder-chat-store';
+import { Sparkles } from 'lucide-react';
 
 interface TestMessage {
   id: string;
@@ -16,6 +18,7 @@ interface TestMessage {
 
 export default function AgentTestPage() {
   const { current } = useAgentStore(useShallow((s) => ({ current: s.current })));
+  const referToBuilder = useBuilderChatStore((s) => s.startRefineFromTranscript);
   const [messages, setMessages] = useState<TestMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -123,7 +126,7 @@ export default function AgentTestPage() {
       )}
 
       <div className="flex flex-col gap-3">
-        {messages.map((msg) => (
+        {messages.map((msg, idx) => (
           <div key={msg.id} className="flex flex-col gap-1.5">
             <ChatBubble role={msg.role} content={msg.content} />
             {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && (
@@ -132,6 +135,23 @@ export default function AgentTestPage() {
                   <ToolCallChip key={i} call={tc} />
                 ))}
               </div>
+            )}
+            {msg.role === 'assistant' && msg.content && (
+              <button
+                type="button"
+                onClick={() =>
+                  referToBuilder({
+                    customer_msg:
+                      [...messages.slice(0, idx)].reverse().find((m) => m.role === 'user')?.content ?? '',
+                    agent_reply: msg.content,
+                  })
+                }
+                className="ml-1 inline-flex w-fit items-center gap-1 rounded-full border border-border-color px-2 py-0.5 text-[11px] font-medium text-text-secondary hover:border-accent hover:text-accent"
+                title="Send this reply to the AI builder to fix"
+              >
+                <Sparkles className="h-3 w-3" />
+                Refer to builder
+              </button>
             )}
           </div>
         ))}

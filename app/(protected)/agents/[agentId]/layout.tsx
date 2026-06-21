@@ -3,11 +3,13 @@
 import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter } from 'next/navigation';
-import { Lock } from 'lucide-react';
+import { Lock, Sparkles, Bot, MessageSquare, Zap } from 'lucide-react';
 import ModuleGuard from '@/components/module-guard';
 import { AgentStatusBadge } from '@/components/agents/agent-status-badge';
 import { DeployButton } from '@/components/agents/deploy-button';
 import { EmptyState } from '@/components/agents/empty-state';
+import BuilderChatPanel from '@/components/agents/builder-chat/BuilderChatPanel';
+import { useBuilderChatStore } from '@/lib/agent-builder-chat-store';
 import { useAgentStore } from '@/lib/agent-store';
 import { useAuthStore } from '@/lib/auth-store';
 import { useShallow } from 'zustand/react/shallow';
@@ -36,6 +38,12 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
     loading: s.loading,
     select: s.select,
     setStatus: s.setStatus,
+  })));
+
+  // Builder chat panel open/close (persisted)
+  const { panelOpen, setPanelOpen } = useBuilderChatStore(useShallow((s) => ({
+    panelOpen: s.isOpen,
+    setPanelOpen: s.setOpen,
   })));
 
   // Read plan from global store (cached across navigations — no flash)
@@ -98,7 +106,8 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
 
   return (
     <ModuleGuard module="agents">
-        <div className="mx-auto max-w-6xl space-y-5">
+        <div className="mx-auto max-w-7xl space-y-5">
+          {/* Full-width page header — breadcrumb spans the whole page */}
           <nav className="text-xs text-text-secondary">
             <Link href="/agents" className="font-semibold text-accent hover:underline">
               Agents
@@ -113,24 +122,33 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
             )}
           </nav>
 
-          <div className="flex flex-col gap-3 rounded-2xl border border-border-color bg-card-bg p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold text-text-primary sm:text-2xl">{current.name}</h1>
-                <AgentStatusBadge status={current.status} />
+          {/* Below the header: workspace + AI panel side-by-side. The panel's
+              top now aligns with the bottom of the breadcrumb header. */}
+          <div className={panelOpen ? 'flex flex-col gap-5 md:flex-row md:items-start' : ''}>
+          <div className="min-w-0 flex-1 space-y-5">
+          <div className="flex flex-col gap-4 rounded-2xl border border-border-color bg-card-bg p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                <Bot className="h-6 w-6" />
               </div>
-              <div className="flex items-center gap-2 text-sm text-text-secondary">
-                <span className="capitalize">{current.role} agent</span>
-                {current.chatEnabled !== false && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                    Chat
-                  </span>
-                )}
-                {current.automationEnabled && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                    Auto
-                  </span>
-                )}
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="truncate text-xl font-semibold text-text-primary sm:text-2xl">{current.name}</h1>
+                  <AgentStatusBadge status={current.status} />
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-sm text-text-secondary">
+                  <span className="capitalize">{current.role} agent</span>
+                  {chatOn && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                      <MessageSquare className="h-3 w-3" /> Chat
+                    </span>
+                  )}
+                  {autoOn && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                      <Zap className="h-3 w-3" /> Automation
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <DeployButton
@@ -141,7 +159,7 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
             />
           </div>
 
-          <div className="flex gap-1 overflow-x-auto rounded-xl border border-border-color bg-bg-primary px-1 py-1 text-sm">
+          <div className="flex gap-1 overflow-x-auto rounded-xl border border-border-color bg-bg-secondary p-1 text-sm">
             {tabs.map((tab) => {
               const href = `${base}/${tab.slug}`;
               const active = pathname?.startsWith(href);
@@ -150,9 +168,12 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
                 <Link
                   key={tab.slug}
                   href={href}
-                  className={`rounded-lg px-3 py-2 font-semibold transition ${
-                    active ? 'bg-card-bg text-text-primary border border-border-color' : 'text-text-secondary hover:text-text-primary'
-                  } ${locked ? 'opacity-70' : ''}`}
+                  aria-current={active ? 'page' : undefined}
+                  className={`shrink-0 rounded-lg px-3.5 py-2 font-semibold transition ${
+                    active
+                      ? 'bg-card-bg text-text-primary shadow-sm'
+                      : 'text-text-secondary hover:bg-card-bg/60 hover:text-text-primary'
+                  } ${locked ? 'opacity-80' : ''}`}
                 >
                   <span className="inline-flex items-center gap-1.5">
                     {tab.label}
@@ -203,7 +224,34 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
               children
             )}
           </div>
+          </div>{/* /left workspace column */}
+
+          {/* AI builder — docked SIDE PANEL on the right edge, full height,
+              side-by-side (md+). Not a modal: the workspace shrinks beside it. */}
+          {panelOpen && (
+            <aside className="w-full md:w-[380px] xl:w-[420px] md:shrink-0">
+              <div className="h-[75vh] md:sticky md:top-4 md:h-[calc(100vh-6rem)]">
+                <BuilderChatPanel
+                  agentId={Number(current.id)}
+                  className="h-full"
+                />
+              </div>
+            </aside>
+          )}
+          </div>{/* /workspace + panel row */}
         </div>
+
+        {/* Floating reopen button when the panel is closed */}
+        {!panelOpen && (
+          <button
+            type="button"
+            onClick={() => setPanelOpen(true)}
+            className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:opacity-90"
+          >
+            <Sparkles className="h-4 w-4" />
+            Build with AI
+          </button>
+        )}
     </ModuleGuard>
   );
 }

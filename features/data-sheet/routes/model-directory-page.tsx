@@ -21,6 +21,7 @@ export function ModelDirectoryPage() {
   const [error, setError] = useState<string | ReturnType<typeof normalizeApiError> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DynamicModel | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteBlock, setDeleteBlock] = useState<ReturnType<typeof normalizeApiError> | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const { isStarred, toggleStar } = useStarredDatasheets();
 
@@ -46,16 +47,23 @@ export function ModelDirectoryPage() {
     if (searchParams?.get('create') === '1') setCreateModalOpen(true);
   }, [searchParams]);
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = async (detach: boolean) => {
     if (!deleteTarget) return;
     setDeleting(true);
     setError(null);
     try {
-      await deleteModel(deleteTarget.id);
+      await deleteModel(deleteTarget.id, detach);
       setDeleteTarget(null);
+      setDeleteBlock(null);
       await loadModels();
     } catch (e) {
-      setError(normalizeApiError(e));
+      const norm = normalizeApiError(e);
+      if (norm.referencing_fields && norm.referencing_fields.length > 0) {
+        setDeleteBlock(norm);
+      } else {
+        setError(norm);
+        setDeleteTarget(null);
+      }
     } finally {
       setDeleting(false);
     }
@@ -80,13 +88,21 @@ export function ModelDirectoryPage() {
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setCreateModalOpen(true)}
-          className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-base font-semibold text-white hover:opacity-90"
-        >
-          Create model
-        </button>
+        <div className="flex gap-2">
+          <Link
+            href="/data-sheet/designer"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2.5 text-base font-semibold text-accent hover:bg-accent/20"
+          >
+            <span aria-hidden>✨</span> Design with AI
+          </Link>
+          <button
+            type="button"
+            onClick={() => setCreateModalOpen(true)}
+            className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-base font-semibold text-white hover:opacity-90"
+          >
+            Create model
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -180,7 +196,7 @@ export function ModelDirectoryPage() {
                     <span className="text-base leading-none">{isStarred(model.id) ? '★' : '☆'}</span>
                   </button>
                   <div className="relative">
-                    <CardActionsMenu model={model} onDelete={() => setDeleteTarget(model)} />
+                    <CardActionsMenu model={model} onDelete={() => { setDeleteBlock(null); setDeleteTarget(model); }} />
                   </div>
                 </div>
               </div>
@@ -213,8 +229,10 @@ export function ModelDirectoryPage() {
         <DeleteModelModal
           model={deleteTarget}
           onConfirm={handleDeleteConfirm}
-          onClose={() => setDeleteTarget(null)}
+          onClose={() => { setDeleteTarget(null); setDeleteBlock(null); }}
           deleting={deleting}
+          referencingFields={deleteBlock?.referencing_fields}
+          canDetach={deleteBlock?.can_detach}
         />
       )}
 
@@ -228,6 +246,7 @@ export function ModelDirectoryPage() {
           }}
         />
       )}
+
     </div>
   );
 }

@@ -124,6 +124,7 @@ export function SettingsPage() {
   const [editFieldId, setEditFieldId] = useState<number | null>(null);
   const [deleteModelOpen, setDeleteModelOpen] = useState(false);
   const [deletingModel, setDeletingModel] = useState(false);
+  const [deleteBlock, setDeleteBlock] = useState<ReturnType<typeof normalizeApiError> | null>(null);
   const [confirmDeleteField, setConfirmDeleteField] = useState<DynamicField | null>(null);
   const [deletingField, setDeletingField] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
@@ -243,16 +244,25 @@ export function SettingsPage() {
     [saving, ctx?.refetchFields]
   );
 
-  const handleDeleteModelConfirm = useCallback(async () => {
+  const handleDeleteModelConfirm = useCallback(async (detach: boolean) => {
     if (!modelId || deletingModel) return;
     setDeletingModel(true);
     setError(null);
     try {
-      await deleteModel(modelId);
+      await deleteModel(modelId, detach);
       setDeleteModelOpen(false);
+      setDeleteBlock(null);
       router.push('/data-sheet');
     } catch (e) {
-      setError(normalizeApiError(e));
+      const norm = normalizeApiError(e);
+      // Blocked because other sheets reference this one → keep the modal open and
+      // show which sheets/columns so the user can detach & delete.
+      if (norm.referencing_fields && norm.referencing_fields.length > 0) {
+        setDeleteBlock(norm);
+      } else {
+        setError(norm);
+        setDeleteModelOpen(false);
+      }
     } finally {
       setDeletingModel(false);
     }
@@ -539,7 +549,7 @@ export function SettingsPage() {
             </p>
             <button
               type="button"
-              onClick={() => setDeleteModelOpen(true)}
+              onClick={() => { setDeleteBlock(null); setDeleteModelOpen(true); }}
               className="mt-3 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 transition-colors dark:border-red-700 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
             >
               Delete this datasheet
@@ -588,8 +598,10 @@ export function SettingsPage() {
         <DeleteModelModal
           model={{ id: model.id, name: model.name, display_name: model.display_name }}
           onConfirm={handleDeleteModelConfirm}
-          onClose={() => setDeleteModelOpen(false)}
+          onClose={() => { setDeleteModelOpen(false); setDeleteBlock(null); }}
           deleting={deletingModel}
+          referencingFields={deleteBlock?.referencing_fields}
+          canDetach={deleteBlock?.can_detach}
         />
       )}
     </div>

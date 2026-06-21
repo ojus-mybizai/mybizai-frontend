@@ -6,7 +6,7 @@ import PermissionGuard from '@/components/permission-guard';
 import { useAgentStore } from '@/lib/agent-store';
 import { useShallow } from 'zustand/react/shallow';
 import type { AgentTemplate, AgentRole } from '@/services/agents';
-import { ArrowLeft, Loader2, Bot } from 'lucide-react';
+import { ArrowLeft, Loader2, Bot, Sparkles } from 'lucide-react';
 
 export default function NewAgentPage() {
   const router = useRouter();
@@ -56,6 +56,19 @@ export default function NewAgentPage() {
     [createFromTemplate, router],
   );
 
+  // Generate with AI — create a blank agent and drop straight into the
+  // build-first chat on the agent page (the rail greets "what should it do?").
+  const handleGenerateWithAI = useCallback(async () => {
+    try {
+      const agent = await create({ name: 'New AI Agent', role: 'general', tone: 'friendly' });
+      // createAgent injects placeholder instructions — clear them so the agent
+      // is genuinely empty and the builder opens in BUILD mode (not edit).
+      const { updateAgent } = await import('@/services/agents');
+      await updateAgent(agent.id, { instructions: '' });
+      router.push(`/agents/${agent.id}/overview`);
+    } catch { /* store handles error */ }
+  }, [create, router]);
+
   return (
     <PermissionGuard permission="manage_agents" module="agents">
       <div className="mx-auto max-w-2xl space-y-6 py-2">
@@ -69,6 +82,27 @@ export default function NewAgentPage() {
             <p className="text-xs text-text-secondary">Start from a template or build from scratch</p>
           </div>
         </div>
+
+        {/* Generate with AI — build-first entry */}
+        <button
+          type="button"
+          onClick={handleGenerateWithAI}
+          disabled={loading}
+          className="group flex w-full items-center gap-4 rounded-2xl border border-accent/40 bg-accent/5 p-5 text-left transition hover:border-accent hover:bg-accent/10 disabled:opacity-50"
+        >
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15">
+            {loading ? <Loader2 className="h-5 w-5 animate-spin text-accent" /> : <Sparkles className="h-5 w-5 text-accent" />}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-text-primary">Generate with AI</span>
+              <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-white">Recommended</span>
+            </div>
+            <p className="mt-0.5 text-xs text-text-secondary">
+              Describe what you want in plain language — the AI builder asks a few questions and sets up the whole agent for you.
+            </p>
+          </div>
+        </button>
 
         {/* Templates */}
         {templates.filter((t) => t.id !== 'custom').length > 0 && (

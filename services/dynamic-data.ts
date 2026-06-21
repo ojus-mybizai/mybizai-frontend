@@ -212,8 +212,9 @@ export async function updateModel(
   });
 }
 
-export async function deleteModel(id: number | string): Promise<void> {
-  await apiFetch(`/dynamic-data/models/${id}`, { method: 'DELETE' });
+export async function deleteModel(id: number | string, detach = false): Promise<void> {
+  const suffix = detach ? '?detach=true' : '';
+  await apiFetch(`/dynamic-data/models/${id}${suffix}`, { method: 'DELETE' });
 }
 
 // Fields

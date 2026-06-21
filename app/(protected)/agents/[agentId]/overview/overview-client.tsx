@@ -54,34 +54,44 @@ export default function AgentOverviewClient() {
   const autoOn = current.automationEnabled === true;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <div className="space-y-5">
+
+    {/* ─── Metrics strip — scannable, perfectly gridded ─── */}
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <StatCard icon={Activity} label="Total runs" value={String(current.totalRuns ?? 0)} />
+      <StatCard icon={Radio} label="Channels" value={String(current.channelIds?.length ?? 0)} />
+      <StatCard icon={Puzzle} label="Skills" value={String(current.skills?.length ?? 0)} />
+      <StatCard icon={Clock} label="Last run" value={current.lastRunAt ? relativeTime(current.lastRunAt) : 'Never'} />
+    </div>
+
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
 
       {/* ─── LEFT: Status + Config summary ─────────────── */}
-      <div className="lg:col-span-2 space-y-4">
+      <div className="space-y-5 lg:col-span-2">
 
         {/* Setup alert */}
         {chatOn && !checklist.ready && (
-          <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-4 space-y-2 dark:border-amber-800/40 dark:bg-amber-900/20">
+          <div className="space-y-3 rounded-2xl border border-amber-300/60 bg-amber-50 p-4 dark:border-amber-800/40 dark:bg-amber-900/20">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">Setup required before going live</h3>
             </div>
-            <ul className="space-y-1.5 text-xs">
+            <ul className="space-y-2 text-sm">
               {checklist.missing.includes('no_channels') && (
                 <li>
                   <Link href={`/agents/${current.id}/channels`}
-                    className="flex items-center justify-between gap-2 rounded-md border border-amber-300/60 bg-white px-2 py-1.5 text-amber-900 hover:bg-amber-100 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
-                    <span className="flex items-center gap-1.5"><Radio className="w-3 h-3" /> No channels linked</span>
-                    <ChevronRight className="w-3 h-3" />
+                    className="flex items-center justify-between gap-2 rounded-lg border border-amber-300/60 bg-white px-3 py-2 text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
+                    <span className="flex items-center gap-2"><Radio className="h-4 w-4" /> No channels linked</span>
+                    <ChevronRight className="h-4 w-4" />
                   </Link>
                 </li>
               )}
               {checklist.missing.includes('no_send_message') && (
                 <li>
                   <Link href={`/agents/${current.id}/skills`}
-                    className="flex items-center justify-between gap-2 rounded-md border border-amber-300/60 bg-white px-2 py-1.5 text-amber-900 hover:bg-amber-100 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
-                    <span className="flex items-center gap-1.5"><Puzzle className="w-3 h-3" /> <code className="text-[10px]">send_message</code> skill not enabled</span>
-                    <ChevronRight className="w-3 h-3" />
+                    className="flex items-center justify-between gap-2 rounded-lg border border-amber-300/60 bg-white px-3 py-2 text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
+                    <span className="flex items-center gap-2"><Puzzle className="h-4 w-4" /> <code className="text-xs">send_message</code> skill not enabled</span>
+                    <ChevronRight className="h-4 w-4" />
                   </Link>
                 </li>
               )}
@@ -90,145 +100,114 @@ export default function AgentOverviewClient() {
         )}
 
         {chatOn && checklist.ready && current.status === 'active' && (
-          <div className="rounded-xl border border-emerald-300/60 bg-emerald-50 p-3 flex items-center gap-2 text-xs text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/20 dark:text-emerald-200">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>Ready to chat — channels and <code className="text-[10px]">send_message</code> are configured.</span>
+          <div className="flex items-center gap-2 rounded-2xl border border-emerald-300/60 bg-emerald-50 p-3.5 text-sm text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/20 dark:text-emerald-200">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>Ready to chat — channels and <code className="text-xs">send_message</code> are configured.</span>
           </div>
         )}
 
         {/* Phase-5 — instructions failed validation at build time. The AI still
             has SOME instructions, but the owner should review them. */}
         {current.instructionsQuality === 'needs_review' && (
-          <div className="rounded-xl border border-orange-300/60 bg-orange-50 p-4 space-y-2 dark:border-orange-800/40 dark:bg-orange-900/20">
+          <div className="space-y-2 rounded-2xl border border-orange-300/60 bg-orange-50 p-4 dark:border-orange-800/40 dark:bg-orange-900/20">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+              <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
               <h3 className="text-sm font-semibold text-orange-900 dark:text-orange-200">
                 Instructions need review
               </h3>
             </div>
-            <p className="text-xs text-orange-800 dark:text-orange-300">
+            <p className="text-sm text-orange-800 dark:text-orange-300">
               The AI Agent Builder generated instructions for this agent, but
               they failed our quality check (missing sections, or one of the
-              configured skills wasn't mentioned in the usage rules). Open
-              the Instructions tab to review and edit.
+              configured skills wasn't mentioned in the usage rules). Open the
+              {chatOn ? ' Chat' : ' Automation'} tab to review and edit.
             </p>
             <Link
-              href={`/agents/${current.id}/instructions`}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-orange-100 hover:bg-orange-200 text-orange-900 text-xs font-medium dark:bg-orange-900/30 dark:hover:bg-orange-900/50 dark:text-orange-200"
+              href={`/agents/${current.id}/${chatOn ? 'chat' : 'automation'}`}
+              className="inline-flex items-center gap-1 rounded-lg bg-orange-100 px-3 py-1.5 text-sm font-medium text-orange-900 transition-colors hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-200 dark:hover:bg-orange-900/50"
             >
               Review instructions
-              <ChevronRight className="w-3 h-3" />
+              <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </div>
         )}
 
         {/* Mode cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Chat card */}
-          <div className={`rounded-xl border p-4 space-y-3 ${chatOn ? 'border-blue-200 bg-blue-50/40 dark:border-blue-800/40 dark:bg-blue-900/10' : 'border-border-color bg-card-bg opacity-50'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`rounded-lg p-1.5 ${chatOn ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-bg-secondary'}`}>
-                  <MessageSquare className={`w-4 h-4 ${chatOn ? 'text-blue-600 dark:text-blue-300' : 'text-text-secondary'}`} />
-                </div>
-                <span className="text-sm font-semibold text-text-primary">Chat</span>
-              </div>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${chatOn ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-bg-secondary text-text-secondary'}`}>
-                {chatOn ? 'Enabled' : 'Disabled'}
-              </span>
-            </div>
-            <p className="text-xs text-text-secondary">Replies to customers on WhatsApp, Instagram, and other channels.</p>
-            <Link href={`/agents/${current.id}/chat`}
-              className="inline-flex items-center gap-1 text-xs text-accent hover:underline font-medium">
-              Configure chat settings <ChevronRight className="w-3 h-3" />
-            </Link>
-          </div>
-
-          {/* Automation card */}
-          <div className={`rounded-xl border p-4 space-y-3 ${autoOn ? 'border-amber-200 bg-amber-50/40 dark:border-amber-800/40 dark:bg-amber-900/10' : 'border-border-color bg-card-bg opacity-50'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`rounded-lg p-1.5 ${autoOn ? 'bg-amber-100 dark:bg-amber-900/40' : 'bg-bg-secondary'}`}>
-                  <Zap className={`w-4 h-4 ${autoOn ? 'text-amber-600 dark:text-amber-300' : 'text-text-secondary'}`} />
-                </div>
-                <span className="text-sm font-semibold text-text-primary">Automation</span>
-              </div>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${autoOn ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-bg-secondary text-text-secondary'}`}>
-                {autoOn ? 'Enabled' : 'Disabled'}
-              </span>
-            </div>
-            <p className="text-xs text-text-secondary">Runs on schedules or events — scoring leads, sending reports, and more.</p>
-            <Link href={`/agents/${current.id}/automation`}
-              className="inline-flex items-center gap-1 text-xs text-accent hover:underline font-medium">
-              Configure automation <ChevronRight className="w-3 h-3" />
-            </Link>
-          </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <ModeCard
+            icon={MessageSquare}
+            title="Chat"
+            description="Replies to customers on WhatsApp, Instagram, and other channels."
+            enabled={chatOn}
+            tone="blue"
+            href={`/agents/${current.id}/chat`}
+            ctaLabel={chatOn ? 'Configure chat settings' : 'Set up chat'}
+          />
+          <ModeCard
+            icon={Zap}
+            title="Automation"
+            description="Runs on schedules or events — scoring leads, sending reports, and more."
+            enabled={autoOn}
+            tone="amber"
+            href={`/agents/${current.id}/automation`}
+            ctaLabel={autoOn ? 'Configure automation' : 'Set up automation'}
+          />
         </div>
 
         {/* Config summary grid */}
-        <div className="rounded-xl border border-border-color bg-card-bg divide-y divide-border-color">
-          <div className="px-4 py-3">
+        <div className="overflow-hidden rounded-2xl border border-border-color bg-card-bg">
+          <div className="border-b border-border-color px-4 py-3">
             <h3 className="text-sm font-semibold text-text-primary">Configuration</h3>
           </div>
-          <ConfigRow
-            icon={Puzzle}
-            label="Skills"
-            value={`${current.skills?.length ?? 0} enabled`}
-            href={`/agents/${current.id}/skills`}
-          />
-          <ConfigRow
-            icon={BookOpen}
-            label="Knowledge files"
-            value={`${knowledgeFiles.length} uploaded`}
-            href={`/agents/${current.id}/knowledge`}
-          />
-          <ConfigRow
-            icon={Radio}
-            label="Channels"
-            value={`${current.channelIds?.length ?? 0} linked`}
-            href={`/agents/${current.id}/channels`}
-          />
-          {autoOn && current.scheduleCron && (
+          <div className="divide-y divide-border-color">
             <ConfigRow
-              icon={Calendar}
-              label="Schedule"
-              value={current.scheduleCron}
+              icon={Puzzle}
+              label="Skills"
+              value={`${current.skills?.length ?? 0} enabled`}
+              href={`/agents/${current.id}/skills`}
             />
-          )}
-          {autoOn && (
             <ConfigRow
-              icon={Hash}
-              label="Max actions/run"
-              value={String(current.maxActionsPerRun ?? 10)}
+              icon={BookOpen}
+              label="Knowledge files"
+              value={`${knowledgeFiles.length} uploaded`}
+              href={`/agents/${current.id}/knowledge`}
             />
-          )}
-          {current.lastRunAt && (
             <ConfigRow
-              icon={Clock}
-              label="Last run"
-              value={new Date(current.lastRunAt).toLocaleString()}
+              icon={Radio}
+              label="Channels"
+              value={`${current.channelIds?.length ?? 0} linked`}
+              href={`/agents/${current.id}/channels`}
             />
-          )}
-          <ConfigRow
-            icon={Activity}
-            label="Total runs"
-            value={String(current.totalRuns ?? 0)}
-          />
+            {autoOn && current.scheduleCron && (
+              <ConfigRow
+                icon={Calendar}
+                label="Schedule"
+                value={current.scheduleCron}
+              />
+            )}
+            {autoOn && (
+              <ConfigRow
+                icon={Hash}
+                label="Max actions/run"
+                value={String(current.maxActionsPerRun ?? 10)}
+              />
+            )}
+          </div>
         </div>
 
         {/* Instructions preview (read-only) */}
         {current.instructions && (
-          <div className="rounded-xl border border-border-color bg-card-bg p-4 space-y-2">
+          <div className="space-y-3 rounded-2xl border border-border-color bg-card-bg p-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-text-primary">
                 {chatOn ? 'Chat instructions' : 'Instructions'} preview
               </h3>
               <Link href={`/agents/${current.id}/${chatOn ? 'chat' : 'automation'}`}
-                className="text-xs text-accent hover:underline">
+                className="text-sm font-medium text-accent hover:underline">
                 Edit
               </Link>
             </div>
-            <p className="text-xs text-text-secondary bg-bg-secondary rounded-lg p-3 whitespace-pre-wrap line-clamp-6 font-mono">
+            <p className="line-clamp-6 whitespace-pre-wrap rounded-lg bg-bg-secondary p-3 font-mono text-xs leading-relaxed text-text-secondary">
               {current.instructions}
             </p>
           </div>
@@ -240,8 +219,8 @@ export default function AgentOverviewClient() {
 
       {/* ─── RIGHT: Quick actions ────────────────────────── */}
       <div className="space-y-4">
-        <div className="rounded-xl border border-border-color bg-card-bg p-4 space-y-2">
-          <h3 className="text-sm font-semibold text-text-primary">Quick actions</h3>
+        <div className="space-y-2 rounded-2xl border border-border-color bg-card-bg p-4">
+          <h3 className="mb-1 text-sm font-semibold text-text-primary">Quick actions</h3>
 
           {chatOn && (
             <QuickAction icon={MessageSquare} label="Configure chat" onClick={() => router.push(`/agents/${current.id}/chat`)} />
@@ -264,28 +243,96 @@ export default function AgentOverviewClient() {
           <QuickAction icon={BookOpen} label="Manage knowledge" onClick={() => router.push(`/agents/${current.id}/knowledge`)} />
         </div>
 
-        <div className="text-[10px] text-text-secondary px-1">
+        <div className="px-1 text-xs text-text-secondary">
           Created {current.createdAt ? new Date(current.createdAt).toLocaleDateString() : '—'}
           {current.updatedAt && <> · Updated {new Date(current.updatedAt).toLocaleDateString()}</>}
         </div>
       </div>
+    </div>
+    </div>
+  );
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+  const diff = Date.now() - then;
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function StatCard({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border-color bg-card-bg p-4">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">
+        <Icon className="h-3.5 w-3.5" /> {label}
+      </div>
+      <div className="mt-1.5 truncate text-2xl font-semibold text-text-primary" title={value}>{value}</div>
+    </div>
+  );
+}
+
+const TONES = {
+  blue: {
+    on: 'border-blue-200 bg-blue-50/50 dark:border-blue-800/40 dark:bg-blue-900/10',
+    iconOn: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',
+    badgeOn: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  },
+  amber: {
+    on: 'border-amber-200 bg-amber-50/50 dark:border-amber-800/40 dark:bg-amber-900/10',
+    iconOn: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300',
+    badgeOn: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  },
+} as const;
+
+function ModeCard({
+  icon: Icon, title, description, enabled, tone, href, ctaLabel,
+}: {
+  icon: any; title: string; description: string; enabled: boolean;
+  tone: keyof typeof TONES; href: string; ctaLabel: string;
+}) {
+  const t = TONES[tone];
+  return (
+    <div className={`flex flex-col gap-3 rounded-2xl border p-4 ${enabled ? t.on : 'border-border-color bg-card-bg'}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className={`rounded-lg p-1.5 ${enabled ? t.iconOn : 'bg-bg-secondary text-text-secondary'}`}>
+            <Icon className="h-4 w-4" />
+          </div>
+          <span className="text-sm font-semibold text-text-primary">{title}</span>
+        </div>
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${enabled ? t.badgeOn : 'bg-bg-secondary text-text-secondary'}`}>
+          {enabled ? 'Enabled' : 'Disabled'}
+        </span>
+      </div>
+      <p className="flex-1 text-sm leading-relaxed text-text-secondary">{description}</p>
+      <Link href={href}
+        className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">
+        {ctaLabel} <ChevronRight className="h-3.5 w-3.5" />
+      </Link>
     </div>
   );
 }
 
 function ConfigRow({ icon: Icon, label, value, href }: { icon: any; label: string; value: string; href?: string }) {
   const inner = (
-    <div className="flex items-center justify-between px-4 py-2.5 text-xs">
-      <span className="flex items-center gap-2 text-text-secondary">
-        <Icon className="w-3.5 h-3.5" /> {label}
+    <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+      <span className="flex items-center gap-2.5 text-text-secondary">
+        <Icon className="h-4 w-4 shrink-0" /> {label}
       </span>
-      <span className="flex items-center gap-1 text-text-primary font-medium">
-        {value}
-        {href && <ChevronRight className="w-3 h-3 text-text-secondary" />}
+      <span className="flex items-center gap-1.5 truncate font-medium text-text-primary">
+        <span className="truncate">{value}</span>
+        {href && <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />}
       </span>
     </div>
   );
-  if (href) return <Link href={href} className="block hover:bg-bg-secondary transition-colors">{inner}</Link>;
+  if (href) return <Link href={href} className="block transition-colors hover:bg-bg-secondary">{inner}</Link>;
   return <div>{inner}</div>;
 }
 
@@ -295,9 +342,9 @@ function QuickAction({ icon: Icon, label, onClick, disabled }: { icon: any; labe
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="w-full flex items-center gap-2 rounded-lg border border-border-color px-3 py-2 text-sm text-text-primary hover:bg-bg-secondary disabled:opacity-50 transition-colors"
+      className="flex w-full items-center gap-2.5 rounded-lg border border-border-color px-3 py-2.5 text-sm font-medium text-text-primary transition-colors hover:border-accent/40 hover:bg-bg-secondary disabled:opacity-50"
     >
-      <Icon className="w-4 h-4 text-text-secondary" /> {label}
+      <Icon className="h-4 w-4 shrink-0 text-text-secondary" /> {label}
     </button>
   );
 }

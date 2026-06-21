@@ -91,6 +91,8 @@ export interface Contact {
   priority: Priority;
   assigned_to_id: number | null;
   assigned_to_name: string | null;
+  assigned_wa_employee_id: number | null;
+  assigned_wa_employee_name: string | null;
   routing_mode: RoutingMode;
   ai_agent_id: number | null;
   notes: string | null;
@@ -416,10 +418,11 @@ export const contactsV2Service = {
     apiFetch(`/contacts-v2/${id}`, { method: 'DELETE' }),
 
   // ── Assign ────────────────────────────────────────────────────────────────
-  assign: (id: number, assigned_to_id: number | null): Promise<Contact> =>
+  // Assigns the WhatsApp-native owner (WaEmployee). Pass null to unassign.
+  assign: (id: number, assigned_wa_employee_id: number | null): Promise<Contact> =>
     apiFetch<Contact>(`/contacts-v2/${id}/assign`, {
       method: 'PUT',
-      body: JSON.stringify({ assigned_to_id }),
+      body: JSON.stringify({ assigned_wa_employee_id }),
     }),
 
   // ── Routing ───────────────────────────────────────────────────────────────

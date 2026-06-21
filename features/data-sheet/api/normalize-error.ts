@@ -2,6 +2,13 @@ import type { ApiError } from '@/lib/api-client';
 import type { BackendValidationError } from './types';
 import type { DeleteImpact, DeleteImpactGroup } from '@/services/dynamic-data';
 
+export interface ReferencingField {
+  model_id: number;
+  model_name: string;
+  field_id: number;
+  field_name: string;
+}
+
 export interface NormalizedApiError {
   message: string;
   status?: number;
@@ -13,6 +20,14 @@ export interface NormalizedApiError {
    * callers can render a rich UI.
    */
   delete_impact?: DeleteImpact;
+  /**
+   * When the backend refuses to delete a *data sheet* because other sheets have
+   * relation columns pointing at it (400 with {detail: {referencing_fields,
+   * can_detach}}), these let the UI list the offending sheets/columns and offer
+   * a "detach links & delete" action.
+   */
+  referencing_fields?: ReferencingField[];
+  can_detach?: boolean;
 }
 
 function formatDeleteImpactMessage(impact: DeleteImpact): string {
@@ -51,6 +66,8 @@ export function normalizeApiError(e: unknown): NormalizedApiError {
   let details: unknown = err?.data;
   let linked_tool_names: string[] | undefined;
   let delete_impact: DeleteImpact | undefined;
+  let referencing_fields: ReferencingField[] | undefined;
+  let can_detach: boolean | undefined;
 
   if (err?.data && typeof err.data === 'object') {
     const d = err.data as BackendValidationError;
@@ -63,7 +80,16 @@ export function normalizeApiError(e: unknown): NormalizedApiError {
         errors?: Array<{ field?: string; display_name?: string; error?: string; message?: string }>;
         linked_tool_names?: string[];
         impact?: DeleteImpact;
+        referencing_fields?: ReferencingField[];
+        referencing_models?: string[];
+        can_detach?: boolean;
       };
+
+      // Special case: data-sheet delete blocked by relation columns on other sheets.
+      if (Array.isArray(detail.referencing_fields)) {
+        referencing_fields = detail.referencing_fields;
+        can_detach = detail.can_detach === true;
+      }
 
       // Special case: delete-impact 400 (record referenced by relations)
       if (detail.impact && typeof detail.impact === 'object' && detail.impact.blocked) {
@@ -106,5 +132,7 @@ export function normalizeApiError(e: unknown): NormalizedApiError {
     details,
     linked_tool_names,
     delete_impact,
+    referencing_fields,
+    can_detach,
   };
 }
