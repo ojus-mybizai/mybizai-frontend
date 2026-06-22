@@ -47,11 +47,28 @@ interface DesignerState {
   reset(): void;
   loadContext(): Promise<void>;
   sendMessage(text: string): Promise<void>;
+  retryLast(): Promise<void>;
   updateSheet(displayName: string, updater: (s: DatasheetSpec) => DatasheetSpec): void;
   removeSheet(displayName: string): void;
+  editExisting(slug: string): void;
   applyOne(displayName: string): Promise<void>;
   applyEverything(onDone?: () => void): Promise<void>;
   clearError(): void;
+}
+
+/** Human summary of a create/update apply result. */
+function summarize(res: {
+  display_name: string; is_new?: boolean; created?: number; updated?: number;
+  recreated?: string[]; deleted?: string[]; skipped_relations?: string[];
+}): string {
+  const verb = res.is_new ? 'Created' : 'Updated';
+  const parts: string[] = [];
+  if (res.created) parts.push(`${res.created} field(s) added`);
+  if (res.updated) parts.push(`${res.updated} updated`);
+  if (res.recreated?.length) parts.push(`${res.recreated.length} re-created (type change — old data dropped)`);
+  if (res.deleted?.length) parts.push(`${res.deleted.length} removed`);
+  if (res.skipped_relations?.length) parts.push(`${res.skipped_relations.length} link(s) skipped — create the target sheet first or use “Create all”`);
+  return `✅ ${verb} “${res.display_name}”${parts.length ? ': ' + parts.join(', ') : ''}.`;
 }
 
 export const useDesignerStore = create<DesignerState>((set, get) => ({
@@ -118,6 +135,31 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     }
   },
 
+  async retryLast() {
+    if (get().isThinking) return;
+    const msgs = get().messages;
+    let idx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') { idx = i; break; }
+    }
+    if (idx === -1) return;
+    const text = msgs[idx].content;
+    const history = msgs.slice(0, idx).map((m) => ({ role: m.role, content: m.content }));
+    set({ messages: msgs.slice(0, idx + 1), isThinking: true, error: null });
+    try {
+      const out = await draftDesign(text, history, get().design);
+      const content = out.message || (out.mode === 'propose' ? 'Here is the design I propose.' : '');
+      set((s) => ({
+        messages: [...s.messages, { id: uid(), role: 'assistant', content, question: out.question ?? null }],
+        isThinking: false,
+        design: out.mode === 'propose' && out.design ? out.design : s.design,
+        error: out.issues?.length ? out.issues.join(' • ') : null,
+      }));
+    } catch (e) {
+      set({ isThinking: false, error: e instanceof Error ? e.message : 'Something went wrong.' });
+    }
+  },
+
   updateSheet(displayName, updater) {
     set((s) => {
       if (!s.design) return s;
@@ -137,6 +179,26 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     });
   },
 
+  editExisting(slug) {
+    const ds = get().context?.existing_datasheets.find((d) => d.slug === slug);
+    if (!ds) return;
+    const already = get().design?.datasheets.some((d) => keyOf(d.display_name) === keyOf(ds.display_name));
+    if (already) return;
+    const sheet: DatasheetSpec = {
+      display_name: ds.display_name,
+      fields: ds.fields.map((f) => ({
+        name: f.name,
+        display_name: f.display_name,
+        field_type: f.type as FieldSpec['field_type'],
+        is_required: f.required ?? false,
+        options: f.options,
+        relation_target: f.relation_target ?? undefined,
+        relation_kind: (f.relation_kind as FieldSpec['relation_kind']) ?? undefined,
+      })),
+    };
+    set((s) => ({ design: { datasheets: [...(s.design?.datasheets ?? []), sheet] } }));
+  },
+
   async applyOne(displayName) {
     const { design } = get();
     if (!design || get().applyingSheet) return;
@@ -146,20 +208,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       set((s) => ({
         applyingSheet: null,
         applied: { ...s.applied, [keyOf(displayName)]: res.model_id },
-        messages:
-          res.skipped_relations.length > 0
-            ? [
-                ...s.messages,
-                {
-                  id: uid(),
-                  role: 'assistant',
-                  content: `✅ Created “${res.display_name}”. ${res.skipped_relations.length} link(s) were skipped because their target sheet isn't created yet — use “Create all” or create the target first.`,
-                },
-              ]
-            : s.messages,
+        messages: [...s.messages, { id: uid(), role: 'assistant', content: summarize(res) }],
       }));
     } catch (e) {
-      set({ applyingSheet: null, error: e instanceof Error ? e.message : 'Failed to create datasheet.' });
+      set({ applyingSheet: null, error: e instanceof Error ? e.message : 'Failed to save datasheet.' });
     }
   },
 
@@ -170,20 +222,24 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     try {
       const res = await apiApplyAll(design);
       const applied: Record<string, number> = {};
-      res.created.forEach((c) => {
+      res.results.forEach((c) => {
         applied[keyOf(c.display_name)] = c.model_id;
       });
+      const createdCount = res.results.filter((r) => r.is_new).length;
+      const updatedCount = res.results.length - createdCount;
+      const summary =
+        `✅ Applied ${res.results.length} datasheet(s)` +
+        (createdCount ? ` · ${createdCount} created` : '') +
+        (updatedCount ? ` · ${updatedCount} updated` : '') +
+        '.';
       set((s) => ({
         busyAll: false,
         applied: { ...s.applied, ...applied },
-        messages: [
-          ...s.messages,
-          { id: uid(), role: 'assistant', content: `✅ Created ${res.created.length} datasheet(s) with their links.` },
-        ],
+        messages: [...s.messages, { id: uid(), role: 'assistant', content: summary }],
       }));
       onDone?.();
     } catch (e) {
-      set({ busyAll: false, error: e instanceof Error ? e.message : 'Failed to create the design.' });
+      set({ busyAll: false, error: e instanceof Error ? e.message : 'Failed to apply the design.' });
     }
   },
 

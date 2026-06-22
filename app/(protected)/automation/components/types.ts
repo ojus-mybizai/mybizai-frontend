@@ -1,4 +1,11 @@
-import type { RuleCategory, EventOption, ActionOption } from '@/services/automation';
+import type {
+  RuleCategory,
+  EventOption,
+  ActionOption,
+  FieldOption as MetaFieldOption,
+  OperatorOption,
+  AutomationMetadata,
+} from '@/services/automation';
 
 export interface ConditionDraft {
   field: string;
@@ -39,17 +46,28 @@ export const EMPTY_FORM: RuleFormState = {
   is_active: true,
 };
 
-export const OP_OPTIONS = [
-  { value: 'eq', label: 'equals' },
-  { value: 'neq', label: 'not equals' },
-  { value: 'gt', label: 'greater than' },
-  { value: 'lt', label: 'less than' },
-  { value: 'contains', label: 'contains' },
-  { value: 'in', label: 'in (comma list)' },
-  { value: 'is_empty', label: 'is empty' },
-  { value: 'days_since_gt', label: 'days since >' },
-  { value: 'days_until_lt', label: 'days until <' },
-];
+/**
+ * Static operator-label map. Used only as a fallback for humanizing saved
+ * rules in list views where live metadata may not be loaded. The rule editor
+ * itself drives the operator dropdown from metadata.operators.
+ */
+export const OP_LABELS: Record<string, string> = {
+  eq: 'equals',
+  neq: 'not equals',
+  contains: 'contains',
+  in: 'is one of',
+  not_in: 'is not one of',
+  gt: 'greater than',
+  gte: 'greater than or equal',
+  lt: 'less than',
+  lte: 'less than or equal',
+  is_empty: 'is empty',
+  is_not_empty: 'is not empty',
+  days_since_gt: 'days since is more than',
+  days_since_lt: 'days since is less than',
+  days_until_gt: 'days until is more than',
+  days_until_lt: 'days until is less than',
+};
 
 /* ─── Event categories derived from backend metadata ─────────────────── */
 
@@ -68,102 +86,73 @@ export function groupEventsByCategory(events: EventOption[]): EventGroup[] {
   return Array.from(map.entries()).map(([category, events]) => ({ category, events }));
 }
 
-/* ─── Structured fields per trigger event type ────────────────────────── */
-
-export interface FieldOption {
-  value: string;
-  label: string;
-  /** Known values for this field (used for the value dropdown) */
-  knownValues?: string[];
-}
+/* ─── Structured condition fields, driven by backend metadata ──────────── */
 
 export interface FieldGroup {
   group: string;
-  fields: FieldOption[];
+  fields: MetaFieldOption[];
 }
 
-const TRIGGER_FIELDS: Record<string, FieldGroup[]> = {
-  'lead.': [
-    {
-      group: 'Lead Info',
-      fields: [
-        { value: 'lead.name', label: 'Lead Name' },
-        { value: 'lead.email', label: 'Email' },
-        { value: 'lead.phone', label: 'Phone' },
-        { value: 'lead.source', label: 'Source', knownValues: ['website', 'referral', 'whatsapp', 'instagram', 'facebook', 'google', 'manual', 'import', 'api'] },
-        { value: 'lead.tags', label: 'Tags' },
-        { value: 'lead.score', label: 'Score' },
-      ],
-    },
-    {
-      group: 'Lead Stage',
-      fields: [
-        { value: 'lead.pipeline_stage', label: 'Pipeline Stage' },
-        { value: 'lead.stage_type', label: 'Stage Type', knownValues: ['open', 'won', 'lost'] },
-        { value: 'lead.assigned_to', label: 'Assigned To' },
-      ],
-    },
-    {
-      group: 'Lead Dates',
-      fields: [
-        { value: 'lead.created_at', label: 'Created At' },
-        { value: 'lead.last_contacted_at', label: 'Last Contacted' },
-      ],
-    },
-  ],
-  'work.': [
-    {
-      group: 'Work Item',
-      fields: [
-        { value: 'work.title', label: 'Title' },
-        { value: 'work.status', label: 'Status', knownValues: ['pending', 'in_progress', 'completed', 'cancelled'] },
-        { value: 'work.priority', label: 'Priority', knownValues: ['low', 'medium', 'high', 'urgent'] },
-        { value: 'work.type', label: 'Type' },
-        { value: 'work.assigned_to', label: 'Assigned To' },
-        { value: 'work.due_date', label: 'Due Date' },
-      ],
-    },
-  ],
-  'record.': [
-    {
-      group: 'Record',
-      fields: [
-        { value: 'record.datasheet', label: 'Datasheet Name' },
-        { value: 'record.field_name', label: 'Field Name' },
-        { value: 'record.created_by', label: 'Created By' },
-      ],
-    },
-  ],
-  'call.': [
-    {
-      group: 'Call',
-      fields: [
-        { value: 'call.disposition', label: 'Disposition', knownValues: ['answered', 'no_answer', 'busy', 'voicemail', 'failed'] },
-        { value: 'call.duration', label: 'Duration (seconds)' },
-        { value: 'call.direction', label: 'Direction', knownValues: ['inbound', 'outbound'] },
-        { value: 'call.from', label: 'From Number' },
-        { value: 'call.to', label: 'To Number' },
-      ],
-    },
-  ],
-  'schedule.': [],
+/** Friendly labels for condition-field context roots. */
+const ROOT_LABELS: Record<string, string> = {
+  contact: 'Contact',
+  entry: 'Deal / Pipeline',
+  record: 'Record',
+  call: 'Call',
 };
 
-export function getFieldGroups(triggerEvent: string): FieldGroup[] {
-  for (const [prefix, groups] of Object.entries(TRIGGER_FIELDS)) {
-    if (triggerEvent.startsWith(prefix)) return groups;
+/**
+ * Condition-field groups for the selected trigger, scoped to the roots the
+ * event actually exposes (event.condition_roots). This is what guarantees the
+ * "If" dropdown only offers fields that resolve against the live event context.
+ */
+export function getFieldGroups(triggerEvent: string, metadata: AutomationMetadata): FieldGroup[] {
+  const ev = metadata.events.find((e) => e.event === triggerEvent);
+  if (!ev || !ev.condition_roots?.length) return [];
+  const groups: FieldGroup[] = [];
+  for (const root of ev.condition_roots) {
+    const fields = metadata.condition_fields?.[root] || [];
+    if (fields.length > 0) {
+      groups.push({ group: ROOT_LABELS[root] || root, fields });
+    }
   }
-  return [];
+  return groups;
 }
 
-/** Get known values for a specific field (for value dropdown) */
-export function getKnownValues(triggerEvent: string, fieldValue: string): string[] {
-  const groups = getFieldGroups(triggerEvent);
-  for (const group of groups) {
-    const field = group.fields.find((f) => f.value === fieldValue);
-    if (field?.knownValues) return field.knownValues;
+/** Look up a single condition field's metadata across the trigger's roots. */
+export function getFieldMeta(
+  triggerEvent: string,
+  fieldValue: string,
+  metadata: AutomationMetadata,
+): MetaFieldOption | undefined {
+  for (const group of getFieldGroups(triggerEvent, metadata)) {
+    const f = group.fields.find((x) => x.value === fieldValue);
+    if (f) return f;
   }
-  return [];
+  return undefined;
+}
+
+/** Enum values for a field (for the value dropdown), or [] if free-form. */
+export function getKnownValues(
+  triggerEvent: string,
+  fieldValue: string,
+  metadata: AutomationMetadata,
+): string[] {
+  const f = getFieldMeta(triggerEvent, fieldValue, metadata);
+  return f?.value_type === 'enum' ? f.options || [] : [];
+}
+
+/** Operators valid for the chosen field's value_type (empty applies_to = all). */
+export function getOperatorsForField(
+  triggerEvent: string,
+  fieldValue: string,
+  metadata: AutomationMetadata,
+): OperatorOption[] {
+  const ops = metadata.operators || [];
+  if (!fieldValue) return ops;
+  const f = getFieldMeta(triggerEvent, fieldValue, metadata);
+  if (!f) return ops;
+  return ops.filter((o) => !o.applies_to?.length || o.applies_to.includes(f.value_type));
 }
 
 /* ─── Humanize helpers ────────────────────────────────────────────────── */
@@ -196,7 +185,7 @@ export function humanizeConditions(
   if (!conditions || conditions.length === 0) return 'Always';
   return conditions
     .map((c) => {
-      const op = OP_OPTIONS.find((o) => o.value === c.op)?.label || c.op || '?';
+      const op = (c.op && OP_LABELS[c.op]) || c.op || '?';
       return `${c.field || '?'} ${op} ${c.value ?? ''}`;
     })
     .join(' AND ');

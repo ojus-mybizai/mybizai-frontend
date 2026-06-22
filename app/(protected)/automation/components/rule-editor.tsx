@@ -35,10 +35,12 @@ import {
   type ConditionDraft,
   type ActionDraft,
   EMPTY_FORM,
-  OP_OPTIONS,
+  OP_LABELS,
   groupEventsByCategory,
   getFieldGroups,
   getKnownValues,
+  getFieldMeta,
+  getOperatorsForField,
   humanizeTrigger,
   humanizeConditions,
   humanizeActions,
@@ -110,8 +112,8 @@ function SortableActionItem({
           >
             <option value="">Select action...</option>
             {actionOptions.map((ao) => (
-              <option key={ao.type} value={ao.type}>
-                {ao.label}
+              <option key={ao.type} value={ao.type} disabled={ao.available === false}>
+                {ao.label}{ao.available === false ? ' (coming soon)' : ''}
               </option>
             ))}
           </Select>
@@ -189,24 +191,35 @@ function SortableActionItem({
 
 function getParamHint(actionType: string, paramName: string): string | undefined {
   const hints: Record<string, Record<string, string>> = {
-    send_message: {
-      message: 'Use {{lead.name}}, {{lead.phone}} etc. for dynamic values',
-      channel: 'Choose the delivery channel for this message',
+    send_whatsapp: {
+      message: 'Use {contact.name}, {contact.phone} etc. for dynamic values. Free-text works inside the 24h window.',
+      channel_id: 'Optional — defaults to the first connected WhatsApp channel',
+    },
+    schedule_followup: {
+      rule_id: 'Preferred — use an existing follow-up rule (template, delay, guards)',
+      delay_minutes: 'Required only when no follow-up rule is selected',
+      template_id: 'WhatsApp template to use outside the 24h window',
+      free_form_text: 'Text used inside the 24h window. Supports {contact.name}.',
     },
     notify: {
-      body: 'Use {{lead.name}} or {{work.title}} for dynamic values',
+      body: 'Use {contact.name} or {entry.title} for dynamic values',
       title: 'Brief title shown in the notification banner',
     },
     update_field: {
-      field: 'The exact field name on the entity (e.g. status, score)',
-      value: 'Use {{trigger.old_value}} to reference the previous value',
+      field: 'Allowed contact fields: name, phone, email, company, source, priority, routing_mode, notes',
+      value: 'Use {entry.stage} or {new_value} to reference event data',
     },
-    create_work: {
-      template: 'Name of the work template to use',
-      due_days: 'Number of days from now for the due date',
+    assign_contact_to_employee: {
+      method: 'round_robin / least_loaded pick the employee with fewest contacts',
+      employee_id: 'WaEmployee ID — only needed when method is "specific"',
     },
-    assign_lead: {
-      user_id: 'Only needed when method is "specific"',
+    dispatch_wa_work: {
+      wa_template_id: 'Optional WhatsApp work template (simple_task / checklist / form)',
+      employee_ids: 'Comma-separated WaEmployee IDs (and/or use a group)',
+      group_id: 'Employee group ID to dispatch to all members',
+    },
+    move_stage: {
+      to_stage: 'Exact stage name within the entry\'s pipeline',
     },
     create_record: {
       field_values: 'JSON object mapping field names to values',
@@ -217,18 +230,21 @@ function getParamHint(actionType: string, paramName: string): string | undefined
 
 function getParamPlaceholder(actionType: string, paramName: string): string | undefined {
   const placeholders: Record<string, Record<string, string>> = {
-    send_message: {
-      message: 'Hi {{lead.name}}, welcome to our business!',
+    send_whatsapp: {
+      message: 'Hi {contact.name}, thanks for reaching out!',
     },
     notify: {
-      title: 'New lead assigned to you',
-      body: '{{lead.name}} from {{lead.source}} needs follow-up',
+      title: 'New contact assigned to you',
+      body: '{contact.name} from {contact.source} needs follow-up',
     },
     add_note: {
-      content: 'Auto-note: Status changed to {{trigger.new_value}}',
+      content: 'Auto-note: stage changed to {entry.stage}',
+    },
+    add_tag: {
+      tag: 'hot-lead',
     },
     log_activity: {
-      message: 'Rule triggered: lead status changed',
+      message: 'Rule triggered: contact stage changed',
     },
   };
   return placeholders[actionType]?.[paramName];
@@ -242,12 +258,14 @@ function FieldSelect({
   value,
   onChange,
   triggerEvent,
+  metadata,
 }: {
   value: string;
   onChange: (v: string) => void;
   triggerEvent: string;
+  metadata: AutomationMetadata;
 }) {
-  const groups = getFieldGroups(triggerEvent);
+  const groups = getFieldGroups(triggerEvent, metadata);
   const hasFields = groups.length > 0 && groups.some((g) => g.fields.length > 0);
 
   if (!hasFields) {
@@ -287,17 +305,27 @@ function ValueInput({
   triggerEvent,
   fieldValue,
   operator,
+  metadata,
 }: {
   value: string;
   onChange: (v: string) => void;
   triggerEvent: string;
   fieldValue: string;
   operator: string;
+  metadata: AutomationMetadata;
 }) {
-  const knownValues = getKnownValues(triggerEvent, fieldValue);
+  const knownValues = getKnownValues(triggerEvent, fieldValue, metadata);
+  // Render hint comes from the operator's declared input type.
+  const opMeta = (metadata.operators || []).find((o) => o.value === operator);
+  const inputKind = opMeta?.input;
 
-  // For "in" operator, always use text input (comma-separated)
-  if (operator === 'in') {
+  // Operators with no value (is_empty / is_not_empty) need no input.
+  if (inputKind === 'none') {
+    return <Input value="" onChange={() => {}} placeholder="(no value needed)" />;
+  }
+
+  // List operators (in / not_in) — comma-separated text.
+  if (inputKind === 'list') {
     return (
       <Input
         value={value}
@@ -307,8 +335,8 @@ function ValueInput({
     );
   }
 
-  // For numeric operators, use number-like input
-  if (operator === 'gt' || operator === 'lt' || operator === 'days_since_gt' || operator === 'days_until_lt') {
+  // Numeric operators (comparisons, day-deltas).
+  if (inputKind === 'number') {
     return (
       <Input
         type="number"
@@ -408,7 +436,10 @@ export default function RuleEditor({
   const eventGroups = useMemo(() => groupEventsByCategory(events), [events]);
   const selectedEvent = events.find((e) => e.event === form.trigger_event);
   const isScheduleEvent = selectedEvent?.event.startsWith('schedule.');
-  const fieldGroups = useMemo(() => getFieldGroups(form.trigger_event), [form.trigger_event]);
+  const fieldGroups = useMemo(
+    () => getFieldGroups(form.trigger_event, metadata),
+    [form.trigger_event, metadata],
+  );
 
   /* ── Step index ────────────────────────────────────────────────────── */
   const stepIdx = STEPS.findIndex((s) => s.key === step);
@@ -637,8 +668,9 @@ export default function RuleEditor({
                   {eventGroups.map((group) => (
                     <optgroup key={group.category} label={group.category}>
                       {group.events.map((ev) => (
-                        <option key={ev.event} value={ev.event}>
+                        <option key={ev.event} value={ev.event} disabled={ev.available === false}>
                           {ev.label} — {ev.description}
+                          {ev.available === false ? ' (coming soon)' : ''}
                         </option>
                       ))}
                     </optgroup>
@@ -818,6 +850,7 @@ export default function RuleEditor({
                           value={cond.field}
                           onChange={(v) => updateCondition(idx, { field: v, value: '' })}
                           triggerEvent={form.trigger_event}
+                          metadata={metadata}
                         />
                       </div>
                       <div>
@@ -826,12 +859,12 @@ export default function RuleEditor({
                           value={cond.op}
                           onChange={(v) => updateCondition(idx, { op: v })}
                         >
-                          {OP_OPTIONS.map((o) => (
+                          {getOperatorsForField(form.trigger_event, cond.field, metadata).map((o) => (
                             <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
                         </Select>
                       </div>
-                      {cond.op !== 'is_empty' && (
+                      {cond.op !== 'is_empty' && cond.op !== 'is_not_empty' && (
                         <div>
                           <FieldLabel>Value</FieldLabel>
                           <ValueInput
@@ -840,6 +873,7 @@ export default function RuleEditor({
                             triggerEvent={form.trigger_event}
                             fieldValue={cond.field}
                             operator={cond.op}
+                            metadata={metadata}
                           />
                         </div>
                       )}
@@ -1126,7 +1160,7 @@ function buildHumanSummary(
   const conditionParts = form.conditions
     .filter((c) => c.field && c.op)
     .map((c) => {
-      const opLabel = OP_OPTIONS.find((o) => o.value === c.op)?.label || c.op;
+      const opLabel = (c.op && OP_LABELS[c.op]) || c.op;
       return `${c.field} ${opLabel} ${c.value || ''}`.trim();
     });
 

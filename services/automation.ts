@@ -41,18 +41,44 @@ export interface EventOption {
   category: string;
   has_filters: boolean;
   filter_fields: Array<{ name: string; label: string; options?: string[] }>;
+  /** Condition-field groups that apply to this trigger (keys into condition_fields). */
+  condition_roots: string[];
+  /** False = listed but not yet executable; render disabled / "coming soon". */
+  available: boolean;
+}
+
+export interface FieldOption {
+  value: string;
+  label: string;
+  value_type: 'text' | 'number' | 'date' | 'enum';
+  options: string[];
+}
+
+export interface OperatorOption {
+  value: string;
+  label: string;
+  /** Field value_types this operator applies to. Empty = all. */
+  applies_to: string[];
+  /** How the value input should render. */
+  input: 'text' | 'number' | 'list' | 'none';
 }
 
 export interface ActionOption {
   type: string;
   label: string;
   description: string;
+  category: string;
   param_schema: Array<{ name: string; type: string; label: string; required: boolean; options?: string[] }>;
+  /** False = catalogued but handler not wired yet; render disabled. */
+  available: boolean;
 }
 
 export interface AutomationMetadata {
   events: EventOption[];
   actions: ActionOption[];
+  operators: OperatorOption[];
+  /** Condition fields grouped by context root ("contact", "entry", ...). */
+  condition_fields: Record<string, FieldOption[]>;
 }
 
 export async function getAutomationMetadata(): Promise<AutomationMetadata> {

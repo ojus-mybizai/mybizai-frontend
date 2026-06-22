@@ -13,7 +13,7 @@ import {
   type ActionOption,
   type RuleCategory,
 } from '@/services/automation';
-import { humanizeTrigger, humanizeConditions, humanizeActions, OP_OPTIONS } from './types';
+import { humanizeTrigger, humanizeConditions, humanizeActions, OP_LABELS } from './types';
 import { ToggleSwitch, formatDate } from './shared';
 
 /* ─── Category icon map ──────────────────────────────────────────────────── */
@@ -246,7 +246,7 @@ function RuleCard({
               ) : (
                 <div className="mt-1 space-y-1">
                   {rule.conditions.map((c, i) => {
-                    const opLabel = OP_OPTIONS.find((o) => o.value === c.op)?.label || c.op || '?';
+                    const opLabel = (c.op && OP_LABELS[c.op]) || c.op || '?';
                     return (
                       <div key={i} className="flex items-center gap-1.5 text-sm">
                         {i > 0 && <span className="text-[10px] font-bold text-yellow-400/50 uppercase">AND</span>}

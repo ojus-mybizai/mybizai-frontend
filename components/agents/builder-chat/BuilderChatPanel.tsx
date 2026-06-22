@@ -19,7 +19,7 @@ interface Props {
 export default function BuilderChatPanel({ agentId, className = '' }: Props) {
   const {
     mode, messages, isThinking, error, pending,
-    init, sendMessage, applyPending, discardPending, clearError, setOpen,
+    init, sendMessage, retryLast, applyPending, discardPending, clearError, setOpen,
   } = useBuilderChatStore(
     useShallow((s) => ({
       mode: s.mode,
@@ -29,6 +29,7 @@ export default function BuilderChatPanel({ agentId, className = '' }: Props) {
       pending: s.pending,
       init: s.init,
       sendMessage: s.sendMessage,
+      retryLast: s.retryLast,
       applyPending: s.applyPending,
       discardPending: s.discardPending,
       clearError: s.clearError,
@@ -159,14 +160,36 @@ export default function BuilderChatPanel({ agentId, className = '' }: Props) {
         )}
 
         {error && (
-          <button
-            type="button"
-            onClick={clearError}
-            className="w-full rounded-xl border border-red-400/40 bg-red-400/10 px-3 py-2 text-left text-xs text-red-600 dark:text-red-400"
-          >
-            {error} — tap to dismiss
-          </button>
+          <div className="rounded-xl border border-red-400/40 bg-red-400/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+            <p>{error}</p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void retryLast()}
+                disabled={isThinking}
+                className="rounded-lg bg-accent px-3 py-1 font-semibold text-white disabled:opacity-50"
+              >
+                Retry
+              </button>
+              <button type="button" onClick={clearError} className="rounded-lg px-2 py-1 text-text-secondary hover:text-text-primary">
+                Dismiss
+              </button>
+            </div>
+          </div>
         )}
+
+        {/* Always-available retry for an unsatisfying / truncated turn */}
+        {!error && !isThinking && !pending && messages.length > 1 &&
+          messages[messages.length - 1].role === 'assistant' &&
+          !messages[messages.length - 1].question && (
+            <button
+              type="button"
+              onClick={() => void retryLast()}
+              className="ml-9 inline-flex items-center gap-1 text-xs text-text-secondary hover:text-accent"
+            >
+              ↻ Try again
+            </button>
+          )}
       </div>
 
       {/* composer */}

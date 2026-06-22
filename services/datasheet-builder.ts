@@ -24,6 +24,9 @@ export type RelationKind = (typeof RELATION_KINDS)[number];
 export const BUILTIN_TARGETS = ['@contacts', '@work', '@users', '@leads'] as const;
 
 export interface FieldSpec {
+  // Stable slug of an existing field — set when editing a sheet so renames match
+  // the real column. New fields leave it undefined.
+  name?: string;
   display_name: string;
   field_type: DatasheetFieldType;
   is_required?: boolean;
@@ -61,20 +64,37 @@ export interface DraftResponse {
   issues?: string[];
 }
 
-export interface ApplySheetResponse {
+export interface ApplyResult {
   model_id: number;
   display_name: string;
-  skipped_relations: string[];
+  is_new?: boolean;
+  created?: number;
+  updated?: number;
+  recreated?: string[];
+  deleted?: string[];
+  skipped_relations?: string[];
 }
 
+export type ApplySheetResponse = ApplyResult;
+
 export interface ApplyAllResponse {
-  created: { model_id: number; display_name: string }[];
+  results: ApplyResult[];
+}
+
+export interface ExistingField {
+  name: string;
+  display_name: string;
+  type: string;
+  required?: boolean;
+  options?: string[];
+  relation_target?: string | null;
+  relation_kind?: string | null;
 }
 
 export interface ExistingDatasheet {
   slug: string;
   display_name: string;
-  fields: { name: string; type: string }[];
+  fields: ExistingField[];
 }
 
 export interface ContactModel {

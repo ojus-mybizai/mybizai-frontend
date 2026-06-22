@@ -12,6 +12,7 @@ import {
   MapPin,
   MousePointerClick,
   UserRound,
+  Wrench,
   X,
 } from 'lucide-react';
 import type {
@@ -48,7 +49,11 @@ function formatBytes(bytes: number | null | undefined): string | null {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-type MessageWithMeta = Message & { tool_called?: string; intent?: string };
+type MessageWithMeta = Message & {
+  tool_called?: string | null;
+  tool_status?: 'success' | 'error' | 'timeout' | 'cancelled' | null;
+  intent?: string | null;
+};
 
 const MEDIA_TYPES = new Set(['image', 'video', 'audio', 'document', 'sticker']);
 
@@ -454,11 +459,36 @@ export function MessageBubble({
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
-  const isSystem = message.role === 'tool' || message.role === 'system';
+  const isTool = message.role === 'tool';
+  const isSystem = isTool || message.role === 'system';
   const meta = message.metadata ?? null;
   const showText = shouldShowText(meta, message.content);
 
-  // ── System / tool → centered status pill ─────────────────────────────────
+  // ── AI-agent action → centered "action" pill with a wrench icon ──────────
+  // The brain engine writes a `tool`-role Message per non-message action it
+  // takes (update contact, qualify lead, create record, …) so the owner can
+  // see exactly what the agent did inline in the thread.
+  if (isTool) {
+    const failed = message.tool_status === 'error' || message.tool_status === 'timeout';
+    return (
+      <div className={cx('flex justify-center', isLastInGroup ? 'mb-3' : 'mb-1', isFirstInGroup ? 'mt-3' : '')}>
+        <div
+          className={cx(
+            'inline-flex max-w-[85%] items-center gap-1.5 break-words [overflow-wrap:anywhere] rounded-full border px-3 py-1 text-center text-[11px] font-medium',
+            failed
+              ? 'border-red-300 bg-red-50 text-red-600'
+              : 'border-border-color bg-bg-secondary/80 text-text-secondary',
+          )}
+          title={message.tool_called ? `AI action · ${message.tool_called}` : 'AI action'}
+        >
+          <Wrench className="h-3 w-3 shrink-0 opacity-70" />
+          <span>{showText ? message.content : message.tool_called || 'AI action'}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── System → centered status pill ────────────────────────────────────────
   if (isSystem) {
     return (
       <div className={cx('flex justify-center', isLastInGroup ? 'mb-3' : 'mb-1', isFirstInGroup ? 'mt-3' : '')}>

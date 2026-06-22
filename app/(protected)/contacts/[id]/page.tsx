@@ -14,7 +14,8 @@ import {
 import ModuleGuard from '@/components/module-guard';
 import { useContactV2Store, type ContactV2State } from '@/lib/contact-v2-store';
 import { useAuthStore } from '@/lib/auth-store';
-import { useAgentList, useEmployeeList } from '@/lib/hooks/use-reference-data';
+import { useAgentList, useWaEmployeeList } from '@/lib/hooks/use-reference-data';
+import type { WaEmployee } from '@/services/waEmployees';
 import {
   contactsV2Service,
   type Contact,
@@ -181,7 +182,7 @@ function ContactDetailInner() {
   const business = useAuthStore(s => (s.user as { businesses?: Array<{ agents_enabled?: boolean }> } | null)?.businesses?.[0]);
   const agentsEnabled = business?.agents_enabled !== false;
 
-  const { data: employees = [] } = useEmployeeList();
+  const { data: waEmployees = [] } = useWaEmployeeList();
   const { data: agents = [] } = useAgentList({ enabled: agentsEnabled });
 
   const [tab, setTab] = useState<TabId>('overview');
@@ -324,7 +325,7 @@ function ContactDetailInner() {
           onPriority={handlePriority}
           onRouting={handleRouting}
           onAssign={handleAssign}
-          employees={employees}
+          waEmployees={waEmployees}
           agents={agents}
           agentsEnabled={agentsEnabled}
         />
@@ -462,14 +463,15 @@ function ContactDetailInner() {
 // ────────────────────────────────────────────────────────────────
 
 function ContactHeader({
-  contact: c, canManage, onPriority, onRouting, onAssign, employees, agents, agentsEnabled,
+  contact: c, canManage, onPriority, onRouting, onAssign, waEmployees, agents, agentsEnabled,
 }: {
   contact: Contact;
   canManage: boolean;
   onPriority: (p: Priority) => void;
   onRouting: (mode: RoutingMode, agentId?: number | null) => void;
-  onAssign: (userId: number | null) => void;
-  employees: Array<{ id: number; name: string }>;
+  // Assigns the WhatsApp-native owner (Contact.assigned_wa_employee_id).
+  onAssign: (waEmployeeId: number | null) => void;
+  waEmployees: WaEmployee[];
   agents: Array<{ id: string | number; name: string }>;
   agentsEnabled: boolean;
 }) {
@@ -615,13 +617,18 @@ function ContactHeader({
             onChange={(v) => onRouting('ai', v === '' ? null : Number(v))}
           />
         )}
-        {/* Assignee */}
+        {/* Assignee — WhatsApp employee (operational owner), matches the inbox */}
         <ChipDropdown
           label="Assigned"
-          value={c.assigned_to_name ?? 'Unassigned'}
+          value={c.assigned_wa_employee_name ?? 'Unassigned'}
           styleClass="bg-bg-primary text-text-primary border-border-color"
           disabled={!canManage}
-          options={[{ value: '', label: 'Unassigned' }, ...employees.map(e => ({ value: String(e.id), label: e.name }))]}
+          options={[
+            { value: '', label: 'Unassigned' },
+            ...waEmployees
+              .filter(e => e.is_active && e.status === 'active')
+              .map(e => ({ value: String(e.id), label: e.name || e.whatsapp_number })),
+          ]}
           onChange={(v) => onAssign(v === '' ? null : Number(v))}
         />
         <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-text-secondary">

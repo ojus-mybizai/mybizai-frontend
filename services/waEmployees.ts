@@ -209,6 +209,9 @@ export interface WaEmployeeChatMessage {
   timestamp: string;
   read: boolean;
   delivered: boolean;
+  /** AI action trail — set on `tool`-role rows (skill name + outcome). */
+  tool_called?: string | null;
+  tool_status?: 'success' | 'error' | 'timeout' | 'cancelled' | null;
 }
 
 export interface WaEmployeeChat {

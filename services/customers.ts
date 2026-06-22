@@ -190,6 +190,10 @@ export interface Message {
   error_detail?: string | null;
   /** Rich payload (media/location/buttons/template) — null/undefined for plain text */
   metadata?: MessageMetadata | null;
+  /** AI-agent action trail: skill name + outcome for `tool`-role events. */
+  tool_called?: string | null;
+  tool_status?: 'success' | 'error' | 'timeout' | 'cancelled' | null;
+  intent?: string | null;
 }
 
 export interface ConversationSession {
@@ -332,6 +336,9 @@ type PaginatedMessages = {
     error_code?: string | null;
     error_detail?: string | null;
     metadata?: MessageMetadata | null;
+    tool_called?: string | null;
+    tool_status?: 'success' | 'error' | 'timeout' | 'cancelled' | null;
+    intent?: string | null;
   }>;
 };
 
@@ -603,6 +610,9 @@ export async function listMessages(conversationId: string): Promise<Message[]> {
     error_code: m.error_code ?? null,
     error_detail: m.error_detail ?? null,
     metadata: m.metadata ?? null,
+    tool_called: m.tool_called ?? null,
+    tool_status: m.tool_status ?? null,
+    intent: m.intent ?? null,
   }));
 }
 

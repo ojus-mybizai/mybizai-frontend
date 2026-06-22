@@ -17,6 +17,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { listAgents } from '@/services/agents';
 import { listEmployees } from '@/services/employees';
+import { listEmployees as listWaEmployees } from '@/services/waEmployees';
 import { getLeadStats, type LeadStats } from '@/services/customers';
 import { listModels } from '@/services/dynamic-data';
 import { listChannels } from '@/services/channels';
@@ -43,6 +44,20 @@ export function useEmployeeList() {
   return useQuery({
     queryKey: queryKeys.employees(),
     queryFn: () => listEmployees(),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp employees list — stale after 10 minutes
+// The WhatsApp-native team (WaEmployee). This is the operational owner used for
+// contact assignment (Contact.assigned_wa_employee_id), distinct from the
+// platform BusinessUser list above.
+// ---------------------------------------------------------------------------
+export function useWaEmployeeList() {
+  return useQuery({
+    queryKey: queryKeys.waEmployees(),
+    queryFn: () => listWaEmployees(),
     staleTime: 10 * 60 * 1000, // 10 minutes
   });
 }

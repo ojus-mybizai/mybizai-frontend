@@ -45,6 +45,7 @@ interface BuilderChatState {
   toggleOpen(): void
   init(agentId: number): Promise<void>
   sendMessage(text: string): Promise<void>
+  retryLast(): Promise<void>
   startRefineFromTranscript(t: RefineTranscript): void
   applyPending(onApplied?: (agentId: number) => void): Promise<void>
   discardPending(): void
@@ -155,6 +156,46 @@ export const useBuilderChatStore = create<BuilderChatState>((set, get) => ({
 
     try {
       const out = await agentBuilderV2.refine(agentId, trimmed, { transcript, history })
+      const assistantMsg = out.message || (out.mode === 'propose' ? 'Here is the change I propose.' : '')
+      set((s) => ({
+        messages: [
+          ...s.messages,
+          { id: uid(), role: 'assistant', content: assistantMsg, question: out.question ?? null },
+        ],
+        isThinking: false,
+        pending:
+          out.mode === 'propose' && out.patch
+            ? {
+                message: out.message || '',
+                patch: out.patch,
+                merged: (out.merged as Record<string, unknown>) ?? {},
+                issues: out.issues ?? [],
+              }
+            : get().pending,
+      }))
+    } catch (e) {
+      set({ isThinking: false, error: e instanceof Error ? e.message : 'Something went wrong.' })
+    }
+  },
+
+  // Re-run the last user message (e.g. after a token-limit/parse failure) without
+  // adding a duplicate bubble. History excludes that trailing user message.
+  async retryLast() {
+    const agentId = get().agentId
+    if (!agentId || get().isThinking) return
+    const msgs = get().messages
+    let idx = -1
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') { idx = i; break }
+    }
+    if (idx === -1) return
+    const feedback = msgs[idx].content
+    const history = msgs.slice(0, idx).map((m) => ({ role: m.role, content: m.content }))
+    // Drop any failed assistant turn after the user message we're retrying.
+    set({ messages: msgs.slice(0, idx + 1), isThinking: true, error: null })
+
+    try {
+      const out = await agentBuilderV2.refine(agentId, feedback, { history })
       const assistantMsg = out.message || (out.mode === 'propose' ? 'Here is the change I propose.' : '')
       set((s) => ({
         messages: [

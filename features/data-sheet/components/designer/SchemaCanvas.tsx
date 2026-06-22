@@ -22,10 +22,11 @@ interface RefNode {
   subtitle: string;
   fields: string[];
   kind: 'contacts' | 'datasheet';
+  slug?: string;     // existing datasheet slug (for the Edit action)
 }
 
 export default function SchemaCanvas() {
-  const { design, context, applied, applyingSheet, busyAll, updateSheet, removeSheet, applyOne, applyEverything } =
+  const { design, context, applied, applyingSheet, busyAll, updateSheet, removeSheet, editExisting, applyOne, applyEverything } =
     useDesignerStore(
       useShallow((s) => ({
         design: s.design,
@@ -35,10 +36,14 @@ export default function SchemaCanvas() {
         busyAll: s.busyAll,
         updateSheet: s.updateSheet,
         removeSheet: s.removeSheet,
+        editExisting: s.editExisting,
         applyOne: s.applyOne,
         applyEverything: s.applyEverything,
       }))
     );
+
+  // slugs of existing datasheets (so a design card knows it's an edit, not new)
+  const existingByKey = new Map((context?.existing_datasheets ?? []).map((d) => [keyOf(d.display_name), d.slug]));
 
   const boardRef = useRef<HTMLDivElement | null>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -50,15 +55,11 @@ export default function SchemaCanvas() {
   const sheetKeys = sheets.map((s) => keyOf(s.display_name)).join('|');
   const expandedKeys = Object.entries(expanded).filter(([, v]) => v).map(([k]) => k).join('|');
 
-  // Which targets does the design reference? (to decide which existing sheets to show)
-  const referencedKeys = new Set<string>();
-  sheets.forEach((s) =>
-    s.fields.forEach((f) => {
-      if (f.field_type === 'relation' && f.relation_target) referencedKeys.add(keyOf(f.relation_target));
-    })
-  );
+  // Sheets currently in the design (being created/edited) — don't also show as refs.
+  const inDesign = new Set(sheets.map((s) => keyOf(s.display_name)));
 
-  // Prebuilt + existing entities shown as read-only reference nodes (so links draw).
+  // Prebuilt Contacts + existing datasheets shown as reference nodes (so links draw
+  // and existing sheets can be picked for editing).
   const refNodes: RefNode[] = [];
   if (context?.contact_model) {
     refNodes.push({
@@ -73,15 +74,15 @@ export default function SchemaCanvas() {
     });
   }
   (context?.existing_datasheets ?? []).forEach((d) => {
-    if (referencedKeys.has(keyOf(d.display_name))) {
-      refNodes.push({
-        key: keyOf(d.display_name),
-        title: d.display_name,
-        subtitle: 'Existing datasheet',
-        fields: d.fields.map((f) => f.name),
-        kind: 'datasheet',
-      });
-    }
+    if (inDesign.has(keyOf(d.display_name))) return; // it's being edited below
+    refNodes.push({
+      key: keyOf(d.display_name),
+      title: d.display_name,
+      subtitle: 'Existing datasheet',
+      fields: d.fields.map((f) => f.display_name),
+      kind: 'datasheet',
+      slug: d.slug,
+    });
   });
   const refKeys = refNodes.map((n) => n.key).join('|');
 
@@ -207,6 +208,7 @@ export default function SchemaCanvas() {
                   <ReferenceCard
                     key={n.key}
                     node={n}
+                    onEdit={n.kind === 'datasheet' && n.slug ? () => editExisting(n.slug as string) : undefined}
                     registerRef={(el) => {
                       if (el) cardRefs.current.set(n.key, el);
                       else cardRefs.current.delete(n.key);
@@ -225,6 +227,7 @@ export default function SchemaCanvas() {
                   key={keyOf(sheet.display_name)}
                   sheet={sheet}
                   allSheetNames={sheets.map((s) => s.display_name)}
+                  isExisting={existingByKey.has(keyOf(sheet.display_name))}
                   isApplied={keyOf(sheet.display_name) in applied}
                   isApplying={applyingSheet === keyOf(sheet.display_name)}
                   expanded={!!expanded[keyOf(sheet.display_name)]}
@@ -254,7 +257,13 @@ export default function SchemaCanvas() {
 
 // ── read-only reference card (prebuilt Contacts / existing datasheets) ─
 
-function ReferenceCard({ node, registerRef }: { node: RefNode; registerRef: (el: HTMLDivElement | null) => void }) {
+function ReferenceCard({
+  node, onEdit, registerRef,
+}: {
+  node: RefNode;
+  onEdit?: () => void;
+  registerRef: (el: HTMLDivElement | null) => void;
+}) {
   const Icon = node.kind === 'contacts' ? Users : Table2;
   const shown = node.fields.slice(0, 6);
   return (
@@ -264,10 +273,19 @@ function ReferenceCard({ node, registerRef }: { node: RefNode; registerRef: (el:
     >
       <div className="flex items-center gap-2 border-b border-accent/20 px-3 py-2">
         <Icon className="h-4 w-4 text-accent" />
-        <div className="min-w-0 leading-tight">
+        <div className="min-w-0 flex-1 leading-tight">
           <div className="truncate text-sm font-semibold text-text-primary">{node.title}</div>
           <div className="text-[10px] text-text-secondary">{node.subtitle}</div>
         </div>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="shrink-0 rounded-md border border-accent/40 px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/10"
+          >
+            Edit
+          </button>
+        )}
       </div>
       <ul className="px-3 py-1.5">
         {shown.map((f, i) => (
@@ -286,6 +304,7 @@ function ReferenceCard({ node, registerRef }: { node: RefNode; registerRef: (el:
 interface CardProps {
   sheet: DatasheetSpec;
   allSheetNames: string[];
+  isExisting: boolean;
   isApplied: boolean;
   isApplying: boolean;
   expanded: boolean;
@@ -297,7 +316,7 @@ interface CardProps {
 }
 
 function SheetCard({
-  sheet, allSheetNames, isApplied, isApplying, expanded, onToggle, onApply, onRemove, onChange, registerRef,
+  sheet, allSheetNames, isExisting, isApplied, isApplying, expanded, onToggle, onApply, onRemove, onChange, registerRef,
 }: CardProps) {
   const setField = (i: number, u: Partial<FieldSpec>) =>
     onChange((s) => ({ ...s, fields: s.fields.map((f, idx) => (idx === i ? { ...f, ...u } : f)) }));
@@ -321,11 +340,18 @@ function SheetCard({
         <input
           value={sheet.display_name}
           onChange={(e) => onChange((s) => ({ ...s, display_name: e.target.value }))}
+          readOnly={isExisting}
+          title={isExisting ? 'Existing datasheet — name cannot be changed here' : undefined}
           className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-text-primary outline-none"
         />
+        {isExisting && !isApplied && (
+          <span className="shrink-0 rounded-full bg-bg-secondary px-2 py-0.5 text-[10px] font-medium text-text-secondary">
+            Existing
+          </span>
+        )}
         {isApplied ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
-            <Check className="h-3 w-3" /> Created
+            <Check className="h-3 w-3" /> {isExisting ? 'Saved' : 'Created'}
           </span>
         ) : (
           <button
@@ -334,7 +360,7 @@ function SheetCard({
             disabled={isApplying}
             className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
-            {isApplying && <Loader2 className="h-3 w-3 animate-spin" />} Create
+            {isApplying && <Loader2 className="h-3 w-3 animate-spin" />} {isExisting ? 'Save changes' : 'Create'}
           </button>
         )}
       </div>
