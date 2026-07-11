@@ -36,7 +36,7 @@ interface LoginResult {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/home';
+  const next = searchParams.get('next') || '/dashboard';
 
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);

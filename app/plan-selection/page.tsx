@@ -53,7 +53,7 @@ function PlanSelectionContent() {
     try {
       await startTrial();
       setPlanSlug('trial');
-      router.replace('/home');
+      router.replace('/dashboard');
     } catch (err: any) {
       setError(err?.message || 'Failed to start trial');
       setStarting(null);

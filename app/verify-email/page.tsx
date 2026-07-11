@@ -27,7 +27,7 @@ function VerifyEmailForm() {
   const emailParam = searchParams.get('email') || '';
   const userIdParam = searchParams.get('user_id');
   const flow = searchParams.get('flow') || 'signup';
-  const next = searchParams.get('next') || '/home';
+  const next = searchParams.get('next') || '/dashboard';
 
   const userId = userIdParam ? Number(userIdParam) : null;
 

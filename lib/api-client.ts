@@ -147,6 +147,25 @@ async function buildError(response: Response): Promise<ApiError> {
   const error = new Error(message) as ApiError;
   error.status = response.status;
   error.data = data;
+
+  // P5 hard gate: the backend's require_lms/require_agents/require_module raise
+  // 403 {detail: "onboarding_required"} once a route is gated. This is the one
+  // place every protected call funnels through, so it's the right seam for the
+  // frontend half of the gate (reactive — fires wherever the call happens to be
+  // made, not just on a single upfront layout check). Full reload via
+  // window.location (not the Next router) since this is a plain lib module with
+  // no component tree to call useRouter() from.
+  if (
+    response.status === 403 &&
+    typeof data === "object" &&
+    data !== null &&
+    (data as Record<string, unknown>).detail === "onboarding_required" &&
+    typeof window !== "undefined" &&
+    !window.location.pathname.startsWith("/onboarding")
+  ) {
+    window.location.assign("/onboarding");
+  }
+
   return error;
 }
 

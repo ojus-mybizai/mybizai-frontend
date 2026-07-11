@@ -105,6 +105,13 @@ export interface Agent {
   // Unified agent mode toggles
   chatEnabled: boolean;
   automationEnabled: boolean;
+  /**
+   * P3b — exposes the agent on the Internal Chat surface. NOTE: the frozen
+   * backend agent schemas (ChatAgentDetailsOut / ChatAgentUpdate) do not yet
+   * carry this field, so it currently always reads false and writes are dropped.
+   * The UI toggle is wired but won't persist until the backend adds the field.
+   */
+  internalChatEnabled: boolean;
   // Automation fields
   triggers: TriggerConfig[] | null;
   scheduleCron: string | null;
@@ -156,6 +163,8 @@ export interface UpdateAgentInput {
   // Unified agent fields
   chatEnabled?: boolean;
   automationEnabled?: boolean;
+  /** P3b — see Agent.internalChatEnabled note (not yet persisted by backend). */
+  internalChatEnabled?: boolean;
   triggers?: TriggerConfig[] | null;
   scheduleCron?: string | null;
   maxActionsPerRun?: number;
@@ -235,6 +244,7 @@ type ApiChatAgent = {
   deployed: boolean;
   chat_enabled?: boolean;
   automation_enabled?: boolean;
+  internal_chat_enabled?: boolean;
   triggers?: TriggerConfig[] | null;
   schedule_cron?: string | null;
   max_actions_per_run?: number;
@@ -285,6 +295,7 @@ function mapAgent(a: ApiChatAgent): Agent {
     // Unified agent mode toggles
     chatEnabled: a.chat_enabled ?? true,
     automationEnabled: a.automation_enabled ?? false,
+    internalChatEnabled: a.internal_chat_enabled ?? false,
     // Automation fields
     triggers: a.triggers ?? null,
     scheduleCron: a.schedule_cron ?? null,
@@ -370,6 +381,8 @@ export async function updateAgent(id: string, input: UpdateAgentInput): Promise<
   // Unified agent fields
   if (input.chatEnabled !== undefined) payload.chat_enabled = input.chatEnabled;
   if (input.automationEnabled !== undefined) payload.automation_enabled = input.automationEnabled;
+  // P3b — sent but currently ignored by the backend (field not on ChatAgentUpdate).
+  if (input.internalChatEnabled !== undefined) payload.internal_chat_enabled = input.internalChatEnabled;
   if (input.triggers !== undefined) payload.triggers = input.triggers;
   if (input.scheduleCron !== undefined) payload.schedule_cron = input.scheduleCron;
   if (input.maxActionsPerRun !== undefined) payload.max_actions_per_run = input.maxActionsPerRun;

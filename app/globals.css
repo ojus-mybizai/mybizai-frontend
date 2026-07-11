@@ -43,6 +43,19 @@
   --color-foreground:     var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* ── Compatibility aliases ─────────────────────────────────────────────────
+     Many components (especially /campaigns) reference `border-border`,
+     `bg-surface` and `bg-surface-secondary`, but those tokens were never
+     registered here. Tailwind v4 silently emits NO CSS for an unknown color
+     utility, so `border-border` fell back to the browser default (rendering
+     as a harsh near-white line in dark mode) and `bg-surface*` rendered fully
+     transparent. Register them as aliases of the real tokens so every
+     existing usage (246+ files) resolves correctly, including opacity
+     modifiers like `border-border/40` or `bg-surface-secondary/60`. */
+  --color-border:           var(--border-color);
+  --color-surface:          var(--card-bg);
+  --color-surface-secondary:var(--bg-secondary);
 }
 
 body {

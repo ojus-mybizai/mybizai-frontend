@@ -43,7 +43,7 @@ export default function ErrorBoundaryUI({ section, error, reset }: ErrorBoundary
             Try again
           </button>
           <Link
-            href="/home"
+            href="/dashboard"
             className="rounded-lg border border-border-color px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
           >
             Go to Dashboard

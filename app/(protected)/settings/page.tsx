@@ -9,7 +9,7 @@ import {
   Lock, Mail, Phone, Globe, Clock, DollarSign, Shield,
   Save, AlertCircle, CheckCircle2, Eye, EyeOff,
   Briefcase, MapPin, Target, Hash, Smartphone, Monitor,
-  AlertTriangle, Trash2, CreditCard,
+  AlertTriangle, Trash2, CreditCard, Sparkles,
 } from 'lucide-react';
 import {
   getNotificationPreferences,
@@ -996,6 +996,29 @@ export default function SettingsPage() {
                   )}
                 </>
               )}
+            </div>
+          )}
+
+          {tab === 'business' && isOwner && (
+            <div className="space-y-3 rounded-2xl border border-border-color bg-card-bg p-6">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+                  <Sparkles className="h-4 w-4 text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-text-primary">Setup Assistant</h3>
+                  <p className="text-xs text-text-secondary">
+                    Pick up contacts, datasheets, automations, or agent setup where you left off.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push('/onboarding')}
+                className="inline-flex items-center rounded-md border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent"
+              >
+                Talk to setup assistant
+              </button>
             </div>
           )}
 

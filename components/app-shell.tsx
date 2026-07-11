@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   MessageSquare,
+  MessagesSquare,
   Bot,
   Radio,
   Megaphone,
@@ -123,30 +124,25 @@ function filterNavByModules(entries: NavEntry[], activeModules: string[]): NavEn
 
 /** Full nav for business owners. `module` field hides item if not in active_modules. */
 const OWNER_NAV: NavEntry[] = [
-  { label: 'Dashboard', href: '/new_dashboard', icon: LayoutDashboard },
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
 
   { kind: 'section', label: 'CRM' },
   { label: 'Inbox',    href: '/inbox',    icon: MessageSquare },
   { label: 'Contacts', href: '/contacts', icon: UserCheck, module: 'crm' },
-  {
-    kind: 'group',
-    label: 'Campaigns',
-    href: '/outbound',
-    icon: Megaphone,
-    module: 'campaigns',
-    children: [
-      { label: 'Segments', href: '/outbound/segments', icon: Filter },
-    ],
-  },
+  { label: 'Campaigns', href: '/campaigns', icon: Megaphone, module: 'campaigns' },
+
+  { kind: 'section', label: 'Data Sheets' },
+  { kind: 'datasheet' },
 
   { kind: 'section', label: 'Messaging' },
   { label: 'Channels',      href: '/channels',          icon: Radio },
   { label: 'Msg Templates', href: '/message-templates', icon: MessageCircle },
 
   { kind: 'section', label: 'AI & Automation' },
-  { label: 'Agents',     href: '/agents',     icon: Bot,    module: 'chat_agent' },
-  { label: 'Sequences',  href: '/nurture',    icon: Repeat, module: 'nurture' },
-  { label: 'Automation', href: '/automation', icon: Zap,    module: 'follow_up' },
+  { label: 'Agents',        href: '/agents',        icon: Bot,           module: 'chat_agent' },
+  { label: 'Internal Chat', href: '/internal-chat', icon: MessagesSquare, module: 'chat_agent' },
+  { label: 'Memory',        href: '/memory',        icon: Database,      module: 'chat_agent' },
+  { label: 'Automation',    href: '/automation',    icon: Zap,           module: 'follow_up' },
 
   // ── Work management (WA team + internal) ─────────────────────────────────
   { kind: 'section', label: 'Work' },
@@ -155,9 +151,6 @@ const OWNER_NAV: NavEntry[] = [
   { label: 'Work Templates',  href: '/wa-templates', icon: FileText,   module: 'work_tasks' },
   { label: 'Work Board',      href: '/work',         icon: Briefcase,  module: 'work_tasks' },
   { label: 'Processes',       href: '/processes',    icon: Workflow,   module: 'work_tasks' },
-
-  { kind: 'section', label: 'Data Sheets' },
-  { kind: 'datasheet' },
 
   { kind: 'section', label: 'Account' },
   // /employees manages who can log into the dashboard (platform RBAC),
@@ -170,7 +163,7 @@ const OWNER_NAV: NavEntry[] = [
 
 /** Simplified nav for team members / employees */
 const EMPLOYEE_NAV: NavEntry[] = [
-  { label: 'Dashboard', href: '/new_dashboard', icon: LayoutDashboard },
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
 
   { kind: 'section', label: 'Work' },
   { label: 'Inbox',     href: '/inbox',     icon: MessageSquare },
@@ -188,20 +181,21 @@ const EMPLOYEE_NAV: NavEntry[] = [
 /* ─── Page title resolver ────────────────────────────────────────────────── */
 
 const TITLE_MAP: Record<string, string> = {
-  '/new_dashboard':       'Dashboard',
-  '/home':                'Dashboard',
+  '/dashboard':           'Dashboard',
+  '/dashboard/chat':      'Assistant',
   '/contacts':            'Contacts',
   '/contacts/import':     'Import Contacts',
   '/inbox':               'Inbox',
-  '/outbound':            'Campaigns',
-  '/outbound/segments':   'Segments',
+  '/campaigns':           'Campaigns',
+  '/campaigns/new':       'New Campaign',
   '/message-templates':   'Message Templates',
   '/wa-templates':        'Work Templates',
   '/wa-templates/new':    'New Work Template',
   '/channels':            'Channels',
   '/agents':              'Agents',
+  '/internal-chat':       'Internal Chat',
+  '/memory':              'Memory',
   '/agent-chat':          'AI Chat',
-  '/nurture':             'Sequences',
   '/automation':          'Automation',
   '/wa-work':             'Tasks',           // WhatsApp task dispatch (primary task system)
   '/wa-employees':        'Employees',       // WhatsApp team (was "Members")
@@ -325,8 +319,8 @@ export default function AppShell({ children }: AppShellProps) {
 
   const isActive = (href: string) => {
     if (!pathname) return false;
-    if (href === '/new_dashboard') return pathname === '/new_dashboard' || pathname === '/home';
-    if (href === '/outbound')      return pathname === '/outbound' || (pathname.startsWith('/outbound/') && !pathname.startsWith('/outbound/segments'));
+    if (href === '/dashboard') return pathname?.startsWith('/dashboard') ?? false;
+    if (href === '/campaigns')     return pathname === '/campaigns' || pathname.startsWith('/campaigns/');
     if (href === '/settings')      return pathname === '/settings';
     return pathname.startsWith(href);
   };
@@ -711,7 +705,7 @@ export default function AppShell({ children }: AppShellProps) {
         <main
           key={pathname}
           className={`${mounted ? 'animate-page-in' : ''} ${
-            pathname?.startsWith('/inbox') || pathname === '/home' || pathname?.startsWith('/wa-work')
+            pathname?.startsWith('/inbox') || pathname?.startsWith('/dashboard') || pathname?.startsWith('/wa-work') || pathname?.startsWith('/internal-chat')
               ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
               : pathname?.match(/^\/data-sheet\/[^/]+(\/)?$/)
                 ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-2 md:px-3 py-4 md:py-5'

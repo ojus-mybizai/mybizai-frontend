@@ -39,4 +39,11 @@ export const queryKeys = {
   agentAnalytics: (params: Record<string, unknown>) => ['agent-analytics', params] as const,
   dashboardStats: (lmsEnabled: boolean) => ['dashboard-stats', lmsEnabled] as const,
   conversations: (params?: Record<string, unknown>) => ['conversations', params] as const,
+  // Internal agent chat (P3b)
+  internalAgents: () => ['internal-chat', 'agents'] as const,
+  internalSessions: (agentId: number) => ['internal-chat', 'sessions', agentId] as const,
+  internalSaved: (agentId: number) => ['internal-chat', 'saved', agentId] as const,
+  internalModels: () => ['internal-chat', 'models'] as const,
+  internalCommands: (agentId: number) => ['internal-chat', 'commands', agentId] as const,
+  agentMemory: () => ['agent-memory'] as const,
 };

@@ -452,8 +452,8 @@ export function SettingsPage() {
       <section className="rounded-xl border border-border-color bg-card-bg p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-              <Layers className="h-4 w-4 text-primary" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+              <Layers className="h-4 w-4 text-accent" />
             </div>
             <div>
               <h2 className="text-lg font-semibold text-text-primary">Child Datasheets</h2>
@@ -465,7 +465,7 @@ export function SettingsPage() {
           <button
             type="button"
             onClick={() => setChildSheetModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors shadow-sm"
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white hover:opacity-90 transition-colors shadow-sm"
           >
             <Plus className="h-4 w-4" />
             Create Child Datasheet
@@ -482,7 +482,7 @@ export function SettingsPage() {
             <button
               type="button"
               onClick={() => setChildSheetModalOpen(true)}
-              className="mt-3 text-sm text-primary hover:underline font-medium"
+              className="mt-3 text-sm text-accent hover:underline font-medium"
             >
               + Create your first child datasheet
             </button>
@@ -509,7 +509,7 @@ export function SettingsPage() {
                 </div>
                 <a
                   href={`/data-sheet/${rel.source_model_id}`}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   Open

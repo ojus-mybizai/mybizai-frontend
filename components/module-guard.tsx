@@ -85,7 +85,7 @@ export default function ModuleGuard({ module, moduleKey, children }: Props) {
 
   const moduleLabel = MODULE_LABELS[resolved] || resolved;
   const isLegacy = resolved === 'agents' || resolved === 'lms';
-  const upgradeLink = isLegacy ? '/home' : '/settings/billing';
+  const upgradeLink = isLegacy ? '/dashboard' : '/settings/billing';
   const ctaLabel = isLegacy ? 'Back to Dashboard' : 'View plans';
 
   return (

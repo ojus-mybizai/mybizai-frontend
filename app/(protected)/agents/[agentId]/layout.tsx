@@ -22,6 +22,7 @@ const allTabs = [
   { slug: 'channels',    label: 'Channels',     mode: 'chat'   as const },
   { slug: 'skills',      label: 'Skills',       mode: 'always' as const },
   { slug: 'knowledge',   label: 'Knowledge',    mode: 'always' as const },
+  { slug: 'memory',      label: 'Memory',       mode: 'always' as const },
   { slug: 'analytics',   label: 'Analytics',    mode: 'always' as const },
   { slug: 'test',        label: 'Test',         mode: 'chat'   as const },
 ];

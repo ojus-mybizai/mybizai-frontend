@@ -5,6 +5,7 @@ import { useDebounce } from '@/lib/use-debounce';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { DataSheetCell } from '@/components/data-sheet/data-sheet-cell';
+import { DatasheetFieldInput } from '@/components/data-sheet/datasheet-field-input';
 import { RelationCell } from '@/components/data-sheet/relation-cell';
 import { ReverseRelationSubTable } from '@/components/data-sheet/reverse-relation-subtable';
 import { ChevronDown, ChevronRight, Layers, Plus } from 'lucide-react';
@@ -1595,181 +1596,7 @@ function AddRowModal({
             const value = addRowData[f.name];
             const setValue = (v: unknown) => setAddRowData((prev) => ({ ...prev, [f.name]: v }));
 
-            // Computed fields are auto-calculated by the backend — never user-editable.
-            if (f.field_type === 'computed') {
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">
-                    {f.display_name}
-                    <span className="ml-1 inline-block rounded bg-bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">fx auto</span>
-                  </label>
-                  <div className={`${inputClass} cursor-not-allowed text-text-secondary`}>Calculated automatically</div>
-                </div>
-              );
-            }
-
-            if (f.field_type === 'boolean') {
-              const str = value === true ? 'true' : value === false ? 'false' : '';
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <select
-                    value={str}
-                    onChange={(e) => setValue(e.target.value === '' ? null : e.target.value === 'true')}
-                    className={inputClass}
-                  >
-                    <option value="">—</option>
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </select>
-                </div>
-              );
-            }
-            if (f.field_type === 'date') {
-              const str = typeof value === 'string' && value ? value : '';
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <input
-                    type="date"
-                    value={str}
-                    onChange={(e) => setValue(e.target.value || null)}
-                    className={inputClass}
-                  />
-                </div>
-              );
-            }
-            if (f.field_type === 'number') {
-              const num = typeof value === 'number' && Number.isFinite(value) ? value : '';
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <input
-                    type="number"
-                    value={num}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setValue(v === '' ? null : Number(v));
-                    }}
-                    className={inputClass}
-                  />
-                </div>
-              );
-            }
-            if (f.field_type === 'currency') {
-              const num = typeof value === 'number' && Number.isFinite(value) ? value : '';
-              const currencyCode = (f.config?.currency_code as string) ?? 'USD';
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <div className="mt-1 flex items-stretch overflow-hidden rounded border border-border-color bg-bg-primary">
-                    <span className="flex items-center bg-bg-secondary px-2 text-xs font-medium text-text-secondary">{currencyCode}</span>
-                    <input
-                      type="number"
-                      value={num}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setValue(v === '' ? null : Number(v));
-                      }}
-                      className="w-full bg-transparent px-2 py-1.5 text-sm text-text-primary focus:outline-none"
-                    />
-                  </div>
-                </div>
-              );
-            }
-            if (f.field_type === 'time') {
-              const str = typeof value === 'string' && value ? value : '';
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <input
-                    type="time"
-                    value={str}
-                    onChange={(e) => setValue(e.target.value || null)}
-                    className={inputClass}
-                  />
-                </div>
-              );
-            }
-            if (f.field_type === 'phone') {
-              const str = typeof value === 'string' ? value : '';
-              const defaultCountryCode = (f.config?.default_country_code as string) ?? '+91';
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <input
-                    type="tel"
-                    value={str}
-                    onChange={(e) => setValue(e.target.value || null)}
-                    placeholder={`${defaultCountryCode} 98765 43210`}
-                    className={inputClass}
-                  />
-                </div>
-              );
-            }
-            if (f.field_type === 'multi_select') {
-              const options = (f.config?.options as string[]) ?? [];
-              const selected: string[] = Array.isArray(value)
-                ? (value as unknown[]).map(String)
-                : typeof value === 'string' && value
-                  ? value.split(',').map((s) => s.trim()).filter(Boolean)
-                  : [];
-              const remaining = options.filter((o) => !selected.includes(o));
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <div className={`${inputClass} flex min-h-[36px] flex-wrap items-center gap-1`}>
-                    {selected.map((v, i) => (
-                      <span key={`${v}-${i}`} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20">
-                        {v}
-                        <button
-                          type="button"
-                          onClick={() => setValue(selected.filter((_, idx) => idx !== i))}
-                          className="ml-0.5 text-accent/70 hover:text-accent"
-                          aria-label={`Remove ${v}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                    <select
-                      className="min-w-[80px] flex-1 border-none bg-transparent text-sm text-text-primary focus:outline-none"
-                      value=""
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v && !selected.includes(v)) setValue([...selected, v]);
-                      }}
-                    >
-                      <option value="">{remaining.length ? '+ Add…' : 'All selected'}</option>
-                      {remaining.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              );
-            }
-            if (f.field_type === 'enum') {
-              const options = (f.config?.options as string[]) ?? [];
-              const str = typeof value === 'string' ? value : '';
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <select
-                    value={str}
-                    onChange={(e) => setValue(e.target.value || null)}
-                    className={inputClass}
-                  >
-                    <option value="">—</option>
-                    {options.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              );
-            }
+            // Relation fields use a dedicated searchable async picker.
             if (f.field_type === 'relation') {
               return (
                 <AddRowRelationField
@@ -1779,19 +1606,6 @@ function AddRowModal({
                   onChange={setValue}
                   allOptions={relationOptions[f.name] ?? []}
                 />
-              );
-            }
-            if (f.field_type === 'long_text') {
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <textarea
-                    value={String(value ?? '')}
-                    onChange={(e) => setValue(e.target.value || null)}
-                    rows={3}
-                    className={inputClass}
-                  />
-                </div>
               );
             }
             if (f.field_type === 'image' || f.field_type === 'file') {
@@ -1839,15 +1653,18 @@ function AddRowModal({
                 </div>
               );
             }
+            // Every scalar type (text, number, currency, date, time, phone,
+            // enum, multi_select, boolean, long_text, computed) is rendered by
+            // the shared input so all record forms stay in lockstep.
             return (
               <div key={f.id}>
-                <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                <input
-                  type="text"
-                  value={String(value ?? '')}
-                  onChange={(e) => setValue(e.target.value || null)}
-                  className={inputClass}
-                />
+                <label className="block text-xs font-medium text-text-secondary">
+                  {f.display_name}
+                  {f.field_type === 'computed' && (
+                    <span className="ml-1 inline-block rounded bg-bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">fx auto</span>
+                  )}
+                </label>
+                <DatasheetFieldInput field={f} value={value} onChange={setValue} className={inputClass} />
               </div>
             );
           })}
@@ -2368,46 +2185,13 @@ function RowDetailModal({
                           {field.is_required && <span className="ml-0.5 text-red-400">*</span>}
                         </label>
                         <div>
-                          {field.field_type === 'long_text' ? (
-                            <textarea
-                              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none transition"
-                              rows={4}
-                              value={String(editDraft ?? '')}
-                              onChange={(e) => setEditDraft(e.target.value)}
-                              autoFocus
-                            />
-                          ) : field.field_type === 'boolean' ? (
-                            <select
-                              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent outline-none"
-                              value={String(editDraft ?? '')}
-                              onChange={(e) => setEditDraft(e.target.value === 'true')}
-                              autoFocus
-                            >
-                              <option value="">—</option>
-                              <option value="true">Yes</option>
-                              <option value="false">No</option>
-                            </select>
-                          ) : field.field_type === 'enum' ? (
-                            <select
-                              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent outline-none"
-                              value={String(editDraft ?? '')}
-                              onChange={(e) => setEditDraft(e.target.value)}
-                              autoFocus
-                            >
-                              <option value="">—</option>
-                              {(field.config?.options as string[] || []).map((opt: string) => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type={field.field_type === 'integer' || field.field_type === 'float' || field.field_type === 'currency' ? 'number' : field.field_type === 'date' ? 'date' : 'text'}
-                              className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none transition"
-                              value={String(editDraft ?? '')}
-                              onChange={(e) => setEditDraft(e.target.value)}
-                              autoFocus
-                            />
-                          )}
+                          <DatasheetFieldInput
+                            field={field}
+                            value={editDraft}
+                            onChange={(v) => setEditDraft(v)}
+                            className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2.5 text-sm text-text-primary focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none transition"
+                            autoFocus
+                          />
                         </div>
                         <div className="flex gap-2 justify-end">
                           <button
@@ -2560,48 +2344,24 @@ function RowDetailModal({
             <h3 className="text-base font-semibold text-text-primary mb-4">Create new linked record</h3>
             <div className="space-y-3">
               {createRelFields
-                .filter((f) => f.field_type !== 'relation' && f.is_editable)
+                .filter(
+                  (f) =>
+                    f.is_editable &&
+                    f.field_type !== 'relation' &&
+                    f.field_type !== 'image' &&
+                    f.field_type !== 'file',
+                )
                 .map((f) => (
                   <div key={f.id}>
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       {f.display_name}{f.is_required && <span className="text-red-400 ml-0.5">*</span>}
                     </label>
-                    {f.field_type === 'long_text' ? (
-                      <textarea
-                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
-                        rows={3}
-                        value={String(createRelData[f.name] ?? '')}
-                        onChange={(e) => setCreateRelData((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                      />
-                    ) : f.field_type === 'boolean' ? (
-                      <select
-                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
-                        value={String(createRelData[f.name] ?? '')}
-                        onChange={(e) => setCreateRelData((prev) => ({ ...prev, [f.name]: e.target.value === 'true' }))}
-                      >
-                        <option value="">—</option>
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
-                      </select>
-                    ) : f.field_type === 'enum' ? (
-                      <select
-                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
-                        value={String(createRelData[f.name] ?? '')}
-                        onChange={(e) => setCreateRelData((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                      >
-                        <option value="">—</option>
-                        {((f.config?.options as string[]) || []).map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type={f.field_type === 'integer' || f.field_type === 'float' || f.field_type === 'currency' ? 'number' : f.field_type === 'date' ? 'date' : 'text'}
-                        className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
-                        value={String(createRelData[f.name] ?? '')}
-                        onChange={(e) => setCreateRelData((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                      />
-                    )}
+                    <DatasheetFieldInput
+                      field={f}
+                      value={createRelData[f.name]}
+                      onChange={(v) => setCreateRelData((prev) => ({ ...prev, [f.name]: v }))}
+                      className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30 transition-colors"
+                    />
                   </div>
                 ))}
             </div>

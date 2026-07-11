@@ -7,7 +7,7 @@ import { useAgentStore } from '@/lib/agent-store';
 import { useKnowledgeFileStore } from '@/lib/knowledge-file-store';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  MessageSquare, Zap, Puzzle, BookOpen, Radio,
+  MessageSquare, MessagesSquare, Zap, Puzzle, BookOpen, Radio,
   ChevronRight, AlertCircle, CheckCircle2, Play,
   Activity, Calendar, Hash, Clock,
 } from 'lucide-react';
@@ -16,7 +16,8 @@ import { useState, useCallback } from 'react';
 
 export default function AgentOverviewClient() {
   const router = useRouter();
-  const { current } = useAgentStore(useShallow((s) => ({ current: s.current })));
+  const { current, update } = useAgentStore(useShallow((s) => ({ current: s.current, update: s.update })));
+  const [internalChatSaving, setInternalChatSaving] = useState(false);
   const { knowledgeFiles } = useKnowledgeFileStore(useShallow((s) => ({ knowledgeFiles: s.files })));
 
   const [runningManual, setRunningManual] = useState(false);
@@ -47,6 +48,18 @@ export default function AgentOverviewClient() {
       setRunningManual(false);
     }
   }, [current]);
+
+  const toggleInternalChat = useCallback(async () => {
+    if (!current) return;
+    setInternalChatSaving(true);
+    try {
+      await update(String(current.id), { internalChatEnabled: !current.internalChatEnabled });
+    } catch {
+      /* surfaced via store error */
+    } finally {
+      setInternalChatSaving(false);
+    }
+  }, [current, update]);
 
   if (!current) return null;
 
@@ -152,6 +165,44 @@ export default function AgentOverviewClient() {
             href={`/agents/${current.id}/automation`}
             ctaLabel={autoOn ? 'Configure automation' : 'Set up automation'}
           />
+        </div>
+
+        {/* Internal chat toggle (P3b) */}
+        <div className="flex items-start justify-between gap-3 rounded-2xl border border-border-color bg-card-bg p-4">
+          <div className="flex items-start gap-2.5">
+            <div className="rounded-lg bg-bg-secondary p-1.5 text-text-secondary">
+              <MessagesSquare className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-text-primary">Internal chat</span>
+              </div>
+              <p className="mt-0.5 text-sm text-text-secondary">
+                Let your staff chat with this agent on the internal <code className="text-xs">Internal Chat</code> panel,
+                with rich replies (charts, tables, forms).
+              </p>
+              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                Note: backend persistence for this flag is not yet available — the toggle will reset on reload until the
+                agent API exposes <code className="text-[10px]">internal_chat_enabled</code>.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={current.internalChatEnabled}
+            disabled={internalChatSaving}
+            onClick={() => void toggleInternalChat()}
+            className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50 ${
+              current.internalChatEnabled ? 'bg-accent' : 'bg-border-color'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                current.internalChatEnabled ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
         </div>
 
         {/* Config summary grid */}
