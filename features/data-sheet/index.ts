@@ -5,6 +5,7 @@ export { ModelDirectoryPage } from './routes/model-directory-page';
 export { NewModelPage } from './routes/new-model-page';
 export { ModelLayout } from './routes/model-layout';
 export { TablePage } from './components/table-grid/table-page';
+export { RecordDetailPage } from './routes/record-detail-page';
 export { ImportPage } from './routes/import-page';
 export { SettingsPage } from './routes/settings-page';
 export { DataSheetProvider, useDataSheetContext } from './context/data-sheet-context';

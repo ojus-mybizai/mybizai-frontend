@@ -260,6 +260,16 @@ export async function deleteField(fieldId: number | string): Promise<void> {
 }
 
 // Records
+export async function getRecord(
+  modelId: number | string,
+  recordId: number | string
+): Promise<DynamicRecord> {
+  return apiFetch<DynamicRecord>(
+    `/dynamic-data/models/${modelId}/records/${recordId}`,
+    { method: 'GET', auth: true }
+  );
+}
+
 export async function createRecord(
   modelId: number | string,
   data: Record<string, unknown>
@@ -321,9 +331,12 @@ export async function queryRecords(
   modelId: number | string,
   request: QueryRequest
 ): Promise<QueryResponse> {
-  return apiFetch<QueryResponse>(`/dynamic-data/models/${modelId}/query`, {
-    method: 'POST',
-    body: JSON.stringify(request),
+  // GET so a filtered view is a shareable URL and benefits from in-flight
+  // dedup/caching. The query is passed as a single URL-encoded JSON param `q`
+  // (mirrors the POST body, validated by the same schema server-side).
+  const q = encodeURIComponent(JSON.stringify(request ?? {}));
+  return apiFetch<QueryResponse>(`/dynamic-data/models/${modelId}/query?q=${q}`, {
+    method: 'GET',
   });
 }
 

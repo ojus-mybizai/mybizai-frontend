@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ChevronDown,
   ChevronRight,
@@ -9,6 +10,7 @@ import {
   X,
   Table2,
   AlertTriangle,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   queryReverseRecords,
@@ -59,6 +61,8 @@ export function ReverseRelationSubTable({
   compact = false,
   parentLabel,
 }: ReverseRelationSubTableProps) {
+  const router = useRouter();
+
   // ── State ───────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<ChildRecord[]>([]);
@@ -345,7 +349,7 @@ export function ReverseRelationSubTable({
                           {col.display_name}
                         </th>
                       ))}
-                      <th className="w-9 px-1 py-1.5" />
+                      <th className="w-[72px] px-1 py-1.5" />
                     </tr>
                   </thead>
                   <tbody>
@@ -395,10 +399,10 @@ export function ReverseRelationSubTable({
                             </td>
                           );
                         })}
-                        <td className="px-1 py-2 text-center">
+                        <td className="px-1 py-2">
                           {/* FIX #3: Delete with confirmation inline */}
                           {confirmDeleteId === item.id ? (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center justify-center gap-1">
                               <button
                                 className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
                                 onClick={() => handleDeleteConfirmed(item.id)}
@@ -413,13 +417,24 @@ export function ReverseRelationSubTable({
                               </button>
                             </div>
                           ) : (
-                            <button
-                              className="rounded p-1 text-text-muted/50 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 transition-colors"
-                              title={`Delete ${singularName}`}
-                              onClick={() => setConfirmDeleteId(item.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            <div className="flex items-center justify-center gap-0.5">
+                              <button
+                                className="rounded p-1 text-text-muted/60 hover:bg-accent/10 hover:text-accent transition-colors"
+                                title={`Open ${singularName}`}
+                                onClick={() =>
+                                  router.push(`/data-sheet/${sourceModelId}/${item.id}`)
+                                }
+                              >
+                                <ArrowUpRight className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                className="rounded p-1 text-text-muted/50 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 transition-colors"
+                                title={`Delete ${singularName}`}
+                                onClick={() => setConfirmDeleteId(item.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>

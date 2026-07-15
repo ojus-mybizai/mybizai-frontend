@@ -6,7 +6,7 @@ import {
   Search, Plus, SlidersHorizontal, BarChart2, Download,
   FileSpreadsheet, Loader2, Users, Phone, Mail, Building2,
   Tag, Bot, UserCheck, UserX, Trash2, X, Check, ChevronDown,
-  Bookmark, BookmarkPlus, FolderKanban, Lock, RefreshCw, LayoutList, MessageSquare,
+  Bookmark, BookmarkPlus, FolderKanban, Lock, RefreshCw, LayoutList, MessageSquare, Tags,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
@@ -24,6 +24,7 @@ import { listChannels, type Channel as BusinessChannel } from '@/services/channe
 import { listSourceDefs, type ContactSourceDef } from '@/services/contact-source-defs';
 import { listFieldDefs, type ContactFieldDef } from '@/services/contact-field-defs';
 import { ManageFieldsModal } from '@/components/contacts-v2/manage-fields-modal';
+import { ManageSourcesModal } from '@/components/contacts-v2/manage-sources-modal';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   hot:    'text-red-500 bg-red-50 border-red-200',
@@ -39,6 +40,67 @@ const ROUTING_COLORS: Record<RoutingMode, string> = {
   manual:  'text-amber-700 bg-amber-50 border-amber-200',
   blocked: 'text-red-600  bg-red-50   border-red-200',
 };
+
+// ── URL ⇄ filter-state sync ────────────────────────────────────────────────
+// Contact filters are reflected in the URL query so views are shareable/bookmarkable
+// and dashboard widgets can deep-link to a pre-filtered list (e.g. /contacts?source=whatsapp).
+const FILTER_STR_KEYS = ['priority', 'routing_mode', 'source', 'engagement', 'created_within', 'attention'] as const;
+const FILTER_NUM_KEYS = ['assigned_to_id', 'tag_id', 'channel_id'] as const;
+const DEFAULT_SORT_BY = 'created_at';
+const DEFAULT_SORT_DIR: 'asc' | 'desc' = 'desc';
+
+function paramsToFilterState(params: URLSearchParams): {
+  filters: ContactFilters; groupId: number | null; search: string;
+} {
+  const filters: ContactFilters = { sort_by: DEFAULT_SORT_BY, sort_dir: DEFAULT_SORT_DIR };
+  for (const k of FILTER_STR_KEYS) {
+    const v = params.get(k);
+    if (v) (filters as Record<string, unknown>)[k] = v;
+  }
+  for (const k of FILTER_NUM_KEYS) {
+    const v = params.get(k);
+    if (v != null && v !== '' && !Number.isNaN(Number(v))) {
+      (filters as Record<string, unknown>)[k] = Number(v);
+    }
+  }
+  const sortBy = params.get('sort_by');
+  if (sortBy) filters.sort_by = sortBy;
+  const sortDir = params.get('sort_dir');
+  if (sortDir === 'asc' || sortDir === 'desc') filters.sort_dir = sortDir;
+  const cf = params.get('custom_filters');
+  if (cf) { try { filters.custom_filters = JSON.parse(cf); } catch { /* ignore malformed */ } }
+
+  const g = params.get('group_id');
+  const groupId = g != null && g !== '' && !Number.isNaN(Number(g)) ? Number(g) : null;
+  const search = params.get('search') ?? '';
+  return { filters, groupId, search };
+}
+
+function filterStateToParams(
+  filters: ContactFilters, groupId: number | null, search: string,
+): URLSearchParams {
+  const p = new URLSearchParams();
+  for (const k of FILTER_STR_KEYS) {
+    const v = (filters as Record<string, unknown>)[k];
+    if (v != null && v !== '') p.set(k, String(v));
+  }
+  for (const k of FILTER_NUM_KEYS) {
+    const v = (filters as Record<string, unknown>)[k];
+    if (v != null) p.set(k, String(v));
+  }
+  if (filters.custom_filters?.length) p.set('custom_filters', JSON.stringify(filters.custom_filters));
+  if (filters.sort_by && filters.sort_by !== DEFAULT_SORT_BY) p.set('sort_by', filters.sort_by);
+  if (filters.sort_dir && filters.sort_dir !== DEFAULT_SORT_DIR) p.set('sort_dir', filters.sort_dir);
+  if (groupId != null) p.set('group_id', String(groupId));
+  if (search) p.set('search', search);
+  return p;
+}
+
+// Initial filter state derived from the current URL (client-only; SSR falls back to defaults).
+function initialFilterState() {
+  const search = typeof window !== 'undefined' ? window.location.search : '';
+  return paramsToFilterState(new URLSearchParams(search));
+}
 
 export default function ContactsClient() {
   const {
@@ -60,8 +122,9 @@ export default function ContactsClient() {
   const savedViews = _savedViews ?? [];
   const groups = _groups ?? [];
 
-  const [filters, setFilters] = useState<ContactFilters>({ sort_by: 'created_at', sort_dir: 'desc' });
-  const [search, setSearch] = useState('');
+  const [initial] = useState(initialFilterState);
+  const [filters, setFilters] = useState<ContactFilters>(initial.filters);
+  const [search, setSearch] = useState(initial.search);
   const [showCreate, setShowCreate] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
   const [showFilterRail, setShowFilterRail] = useState(true);
@@ -69,7 +132,7 @@ export default function ContactsClient() {
   const [showSaveView, setShowSaveView] = useState(false);
   const [saveViewName, setSaveViewName] = useState('');
   const [savingView, setSavingView] = useState(false);
-  const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
+  const [activeGroupId, setActiveGroupId] = useState<number | null>(initial.groupId);
   const [showGroups, setShowGroups] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
   const [importMsg, setImportMsg] = useState('');
@@ -80,6 +143,7 @@ export default function ContactsClient() {
   const [sourceDefs, setSourceDefs] = useState<ContactSourceDef[]>([]);
   const [fieldDefs, setFieldDefs] = useState<ContactFieldDef[]>([]);
   const [showFields, setShowFields] = useState(false);
+  const [showSources, setShowSources] = useState(false);
   const searchParams = useSearchParams();
   const router = useRouter();
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
@@ -164,6 +228,18 @@ export default function ContactsClient() {
     if (search) merged.search = search;
     void list(merged);
   }, [filters, activeGroupId]);
+
+  // Reflect the active filters/group/search in the URL query so the view is
+  // shareable and dashboard widgets can deep-link to a pre-filtered list.
+  // Uses replaceState (not the router) to avoid a navigation / re-render loop.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const qs = filterStateToParams(filters, activeGroupId, search).toString();
+    const next = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    if (next !== window.location.pathname + window.location.search) {
+      window.history.replaceState({}, '', next);
+    }
+  }, [filters, activeGroupId, search]);
 
   // Reload segment counts when the context (group) changes
   useEffect(() => {
@@ -521,6 +597,15 @@ export default function ContactsClient() {
               Fields
             </button>
 
+            {/* Sources */}
+            <button
+              onClick={() => setShowSources(true)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${showSources ? 'bg-accent/10 border-accent/30 text-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}
+            >
+              <Tags className="w-4 h-4" />
+              Sources
+            </button>
+
             {/* Save view */}
             <div className="relative">
               <button
@@ -838,6 +923,12 @@ export default function ContactsClient() {
       <ManageFieldsModal
         open={showFields}
         onClose={() => { setShowFields(false); loadFieldDefs(); }}
+      />
+
+      <ManageSourcesModal
+        open={showSources}
+        onClose={() => setShowSources(false)}
+        onChanged={setSourceDefs}
       />
 
     </div>

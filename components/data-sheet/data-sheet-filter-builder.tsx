@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { DynamicField, ReverseRelationMeta } from '@/services/dynamic-data';
+import { RelationRecordPicker } from './relation-record-picker';
 
 export interface QueryFilter {
   field: string;
@@ -98,9 +99,12 @@ function FieldIcon({ type }: { type: string }) {
 
 /* ── Value input component ───────────────────────────────────────────────── */
 
-function FilterValueInput({ field, value, onChange }: { field: DynamicField; value: unknown; onChange: (v: unknown) => void }) {
+function FilterValueInput({ field, op, value, onChange }: { field: DynamicField; op: string; value: unknown; onChange: (v: unknown) => void }) {
   const base = 'w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30';
 
+  if (field.field_type === 'relation') {
+    return <RelationRecordPicker field={field} value={value} onChange={(v) => onChange(v)} />;
+  }
   if (field.field_type === 'integer' || field.field_type === 'float' || field.field_type === 'currency' || field.field_type === 'number') {
     return <input type="number" value={value === undefined || value === '' ? '' : Number(value)} onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Enter number..." className={base} />;
   }
@@ -121,12 +125,18 @@ function FilterValueInput({ field, value, onChange }: { field: DynamicField; val
   }
   if (field.field_type === 'enum') {
     const options = (field.config?.options as string[]) ?? [];
+    const isMulti = op === 'in';
+    const selectedVals: string[] = isMulti ? (Array.isArray(value) ? (value as string[]) : []) : [];
+    const toggleMulti = (opt: string) => {
+      const next = selectedVals.includes(opt) ? selectedVals.filter((v) => v !== opt) : [...selectedVals, opt];
+      onChange(next);
+    };
     return (
       <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
         {options.map((opt) => {
-          const selected = value === opt || (Array.isArray(value) && value.includes(opt));
+          const selected = isMulti ? selectedVals.includes(opt) : value === opt;
           return (
-            <button key={opt} type="button" onClick={() => onChange(opt)}
+            <button key={opt} type="button" onClick={() => (isMulti ? toggleMulti(opt) : onChange(opt))}
               className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${selected ? 'border-accent bg-accent/10 text-accent' : 'border-border-color bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}>
               {opt}
             </button>
@@ -229,7 +239,12 @@ function FilterRow({
       <div className="flex flex-wrap gap-1.5">
         {ops.map((o) => (
           <button key={o.value} type="button"
-            onClick={() => onUpdate({ op: o.value, value: o.needsValue ? rule.value : undefined })}
+            onClick={() => {
+              // 'in' carries an array value; scalar ops carry a single value — reset on transition
+              const crossesArrayBoundary = (o.value === 'in') !== (rule.op === 'in');
+              const nextValue = !o.needsValue || crossesArrayBoundary ? undefined : rule.value;
+              onUpdate({ op: o.value, value: nextValue });
+            }}
             className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
               rule.op === o.value
                 ? 'border-accent bg-accent/10 text-accent'
@@ -242,7 +257,7 @@ function FilterRow({
 
       {/* Value input */}
       {needsValue && field && (
-        <FilterValueInput field={field} value={rule.value} onChange={(v) => onUpdate({ value: v })} />
+        <FilterValueInput field={field} op={rule.op} value={rule.value} onChange={(v) => onUpdate({ value: v })} />
       )}
     </div>
   );

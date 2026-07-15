@@ -18,12 +18,6 @@ export interface Layout {
   widget_count: number;
 }
 
-const ROLE_OPTIONS = [
-  { value: 'owner',     label: 'Owner view (broad overview)' },
-  { value: 'manager',   label: 'Manager view (tasks & ops)' },
-  { value: 'executive', label: 'Executive view (key signals)' },
-];
-
 export function LayoutSwitcher({
   layouts,
   activeId,
@@ -36,7 +30,6 @@ export function LayoutSwitcher({
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newRole, setNewRole] = useState<'owner' | 'manager' | 'executive'>('owner');
   const [busy, setBusy] = useState(false);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const ref = useRef<HTMLDivElement>(null);
@@ -93,7 +86,7 @@ export function LayoutSwitcher({
     try {
       await apiFetch('/widgets/layouts', {
         method: 'POST',
-        body: JSON.stringify({ name: newName.trim(), role_template: newRole, seed_defaults: true }),
+        body: JSON.stringify({ name: newName.trim(), seed_defaults: false }),
       });
       setNewName('');
       setCreating(false);
@@ -187,15 +180,9 @@ export function LayoutSwitcher({
                   className="w-full px-2 py-1.5 rounded-lg border border-border-color bg-bg-secondary text-sm text-text-primary"
                   autoFocus
                 />
-                <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value as 'owner' | 'manager' | 'executive')}
-                  className="w-full px-2 py-1.5 rounded-lg border border-border-color bg-bg-secondary text-xs text-text-primary"
-                >
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
+                <p className="px-1 text-[11px] text-text-secondary">
+                  Starts empty — add widgets from the dashboard once created.
+                </p>
                 <div className="flex gap-1">
                   <button
                     onClick={createLayout}

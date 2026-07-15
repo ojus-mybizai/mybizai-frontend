@@ -115,7 +115,18 @@ export default function SmartInput({
   const [sources, setSources] = useState<SourceMap>({ datasheet: [], pipeline: [] });
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const busy = phase === 'working' || phase === 'streaming';
+
+  // Auto-grow the textarea with its content, up to a max height (then it scrolls).
+  const MAX_INPUT_HEIGHT = 160;
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
+    el.style.overflowY = el.scrollHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden';
+  }, [text]);
 
   const showSourceChips = agentKind === 'dashboard_designer';
   const activeAgentName =
@@ -151,7 +162,7 @@ export default function SmartInput({
     return () => el.removeEventListener('scroll', onScroll);
   }, [variant, scrollRef]);
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = (e: FormEvent | React.KeyboardEvent) => {
     e.preventDefault();
     const trimmed = text.trim();
     if (!trimmed || busy) return;
@@ -242,11 +253,20 @@ export default function SmartInput({
         )}
 
         <div className="flex items-end gap-2">
-          <input
+          <textarea
+            ref={textareaRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends; Shift+Enter inserts a newline.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                onSubmit(e);
+              }
+            }}
+            rows={1}
             placeholder="Ask the dashboard assistant…"
-            className="min-w-0 flex-1 bg-transparent px-2 py-2 text-[14px] text-text-primary outline-none placeholder:text-text-secondary/70"
+            className="min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-[14px] leading-6 text-text-primary outline-none placeholder:text-text-secondary/70"
           />
           <button
             type="submit"

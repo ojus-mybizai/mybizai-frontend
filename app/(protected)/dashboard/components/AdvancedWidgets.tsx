@@ -50,10 +50,10 @@ function DeleteBtn({ onClick }: { onClick: () => void }) {
 function Header({ title, href, editing, accentClass }: { title: string; href?: string; editing: boolean; accentClass: string }) {
   return (
     <div className="flex items-center gap-2.5 mb-4">
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${accentClass}`}>
-        <BarChart3 size={15} />
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${accentClass}`}>
+        <BarChart3 size={17} />
       </div>
-      <p className="text-sm font-semibold text-text-primary flex-1 min-w-0 truncate">{title}</p>
+      <p className="text-[15px] font-semibold text-text-primary flex-1 min-w-0 truncate">{title}</p>
       {href && !editing && (
         <Link href={href} className="ml-auto shrink-0 flex items-center gap-0.5 text-xs text-text-secondary hover:text-accent">
           All <ArrowUpRight size={11} />
@@ -76,9 +76,9 @@ export function TrendCard({ data, editing, onDelete }: { data: AdvancedWidgetDat
   const inner = (
     <div className={`relative p-5 h-full ${cardCls(editing)}`}>
       {editing && <DeleteBtn onClick={onDelete} />}
-      <p className="text-xs font-medium text-text-secondary mb-1.5 truncate">{data.title}</p>
+      <p className="text-[13px] font-medium text-text-secondary mb-1.5 truncate">{data.title}</p>
       <div className="flex items-end justify-between gap-3 mb-2">
-        <p className="text-[28px] font-bold tracking-tight text-text-primary leading-none">
+        <p className="text-[32px] font-bold tracking-tight text-text-primary leading-none">
           {(data.value ?? 0).toLocaleString()}
         </p>
         {delta !== null && delta !== undefined && (
@@ -174,27 +174,29 @@ export function FunnelCard({ data, editing, onDelete }: { data: AdvancedWidgetDa
       {items.length === 0 ? (
         <div className="flex items-center justify-center h-28 text-text-secondary text-sm">No active stages</div>
       ) : (
-        <div className="space-y-1.5">
+        <div className="space-y-2.5">
           {items.map((it, idx) => {
             const pct = (it.count / max) * 100;
+            const clickable = !!it.href && !editing;
             const row = (
-              <div className="group">
-                <div className="flex items-baseline justify-between mb-1">
-                  <span className="text-xs font-medium text-text-primary truncate">{it.label}</span>
-                  <span className="text-xs font-bold text-text-primary tabular-nums">{it.count}</span>
+              <div className={`rounded-lg transition-colors ${clickable ? 'hover:bg-bg-secondary cursor-pointer group -mx-1.5 px-1.5 py-1' : ''}`}>
+                <div className="flex items-center justify-between mb-1.5 gap-2">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-sm font-medium text-text-primary truncate">{it.label}</span>
+                    {clickable && <ArrowUpRight size={13} className="text-text-secondary opacity-0 group-hover:opacity-70 transition-opacity shrink-0" />}
+                  </span>
+                  <span className="text-sm font-bold text-text-primary tabular-nums shrink-0">{it.count.toLocaleString()}</span>
                 </div>
-                <div
-                  className="h-6 rounded-md transition-all"
-                  style={{
-                    width: `${Math.max(8, pct)}%`,
-                    background: it.color ?? '#9CA3AF',
-                    opacity: 0.85,
-                  }}
-                />
+                <div className="w-full bg-bg-secondary/60 rounded-md h-7 overflow-hidden">
+                  <div
+                    className="h-full rounded-md transition-all duration-700 flex items-center"
+                    style={{ width: `${Math.max(6, pct)}%`, background: it.color ?? '#9CA3AF' }}
+                  />
+                </div>
               </div>
             );
-            return it.href && !editing
-              ? <Link key={idx} href={it.href} className="block">{row}</Link>
+            return clickable
+              ? <Link key={idx} href={it.href!} className="block">{row}</Link>
               : <div key={idx}>{row}</div>;
           })}
         </div>
@@ -215,19 +217,21 @@ export function TableCard({ data, editing, onDelete }: { data: AdvancedWidgetDat
       ) : (
         <div className="divide-y divide-border-color">
           {items.map((it, idx) => {
+            const clickable = !!it.href && !editing;
             const row = (
               <div className="flex items-center gap-3 py-2.5 group">
-                <span className="w-5 text-xs font-bold text-text-secondary tabular-nums">{idx + 1}</span>
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: it.color ?? '#9CA3AF' }} />
+                <span className="w-5 text-sm font-bold text-text-secondary tabular-nums">{idx + 1}</span>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: it.color ?? '#9CA3AF' }} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-text-primary truncate">{it.label}</p>
-                  {it.subtitle && <p className="text-[10px] text-text-secondary truncate">{it.subtitle}</p>}
+                  <p className="text-sm font-semibold text-text-primary truncate">{it.label}</p>
+                  {it.subtitle && <p className="text-[11px] text-text-secondary truncate">{it.subtitle}</p>}
                 </div>
-                <span className="text-sm font-bold text-text-primary tabular-nums shrink-0">{it.count.toLocaleString()}</span>
+                <span className="text-[15px] font-bold text-text-primary tabular-nums shrink-0">{it.count.toLocaleString()}</span>
+                {clickable && <ArrowUpRight size={13} className="text-text-secondary opacity-0 group-hover:opacity-70 transition-opacity shrink-0" />}
               </div>
             );
-            return it.href && !editing
-              ? <Link key={idx} href={it.href} className="block hover:bg-bg-secondary -mx-2 px-2 rounded-lg">{row}</Link>
+            return clickable
+              ? <Link key={idx} href={it.href!} className="block hover:bg-bg-secondary -mx-2 px-2 rounded-lg">{row}</Link>
               : <div key={idx}>{row}</div>;
           })}
         </div>

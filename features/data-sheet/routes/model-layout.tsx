@@ -8,9 +8,12 @@ import { getModel, listFields, type DynamicModel, type DynamicField } from '@/fe
 import { DataSheetProvider, type DataSheetContextValue } from '@/features/data-sheet/context/data-sheet-context';
 
 export function ModelLayout({ children }: { children: ReactNode }) {
-  const params = useParams<{ modelId: string }>();
+  const params = useParams<{ modelId: string; recordId?: string }>();
   const router = useRouter();
   const modelId = params?.modelId as string | undefined;
+  // The record detail page (/data-sheet/[modelId]/[recordId]) renders its own
+  // back button + breadcrumb, so the shared compact header here is redundant.
+  const isRecordDetail = !!params?.recordId;
 
   const [model, setModel] = useState<DynamicModel | null>(null);
   const [fields, setFields] = useState<DynamicField[]>([]);
@@ -92,27 +95,30 @@ export function ModelLayout({ children }: { children: ReactNode }) {
     <ModuleGuard module="lms">
       <DataSheetProvider value={contextValue}>
         <div className="flex w-full max-w-full flex-1 flex-col gap-3 min-h-0">
-          {/* Compact header: back arrow + title */}
-          <div className="flex shrink-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-color bg-card-bg text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-              title="Go back"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-            </button>
-            <h1 className="text-lg font-semibold text-text-primary truncate">
-              {model.display_name}
-            </h1>
-            {model.description && (
-              <span className="hidden text-xs text-text-secondary truncate sm:block">
-                {model.description}
-              </span>
-            )}
-          </div>
+          {/* Compact header: back arrow + title — hidden on the record detail
+              page, which renders its own back button + breadcrumb. */}
+          {!isRecordDetail && (
+            <div className="flex shrink-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-color bg-card-bg text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+                title="Go back"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                </svg>
+              </button>
+              <h1 className="text-lg font-semibold text-text-primary truncate">
+                {model.display_name}
+              </h1>
+              {model.description && (
+                <span className="hidden text-xs text-text-secondary truncate sm:block">
+                  {model.description}
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="min-h-0 flex-1 flex flex-col overflow-hidden">{children}</div>
         </div>

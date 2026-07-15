@@ -12,7 +12,7 @@ import {
   X, ArrowUpRight, Zap, Database, LayoutGrid,
   UsersRound, Send,
   Wallet, Bot, Activity, Megaphone, Mail, ListChecks, Radio, Tag,
-  Settings2, Calendar, Maximize2, ChevronDown,
+  Settings2, Calendar, Maximize2, ChevronDown, Search, Sparkles,
 } from 'lucide-react';
 import {
   DndContext,
@@ -82,6 +82,9 @@ const WINDOW_IGNORED = new Set<string>([
   'pipeline_open_value', 'pipeline_weighted_value',
   'pipeline_total_open_value', 'pipeline_closing_week', 'pipeline_win_rate_all',
   'pipeline_stuck_all', 'pipeline_added_today_all',
+  // Structural "X by field" breakdown — resolved all-time on the backend, so it
+  // must not offer a (dead) per-widget date window.
+  'datasheet_breakdown',
 ]);
 const usesDateWindow = (sourceType: string) => !WINDOW_IGNORED.has(sourceType);
 const rangeLabel = (v: string) =>
@@ -351,15 +354,15 @@ function StatCard({ data, editing, onDelete }: { data: WidgetData; editing: bool
 
       {/* Number + delta */}
       <div className="flex items-end justify-between gap-2 mb-1.5">
-        <p className={`text-[28px] font-bold tracking-tight leading-none ${numberCls}`}>
-          {unit && <span className="text-[18px] font-semibold align-top mr-0.5">{unit}</span>}
+        <p className={`text-[32px] font-bold tracking-tight leading-none ${numberCls}`}>
+          {unit && <span className="text-[20px] font-semibold align-top mr-0.5">{unit}</span>}
           {value.toLocaleString()}
         </p>
         {hasDelta && <DeltaBadge delta={data.delta_pct as number} />}
       </div>
 
       {/* Label */}
-      <p className="text-xs font-medium text-text-secondary leading-snug truncate">
+      <p className="text-[13px] font-medium text-text-secondary leading-snug truncate">
         {data.title}
       </p>
 
@@ -387,15 +390,10 @@ function BreakdownWidget({ data, editing, onDelete }: { data: WidgetData; editin
 
       {/* Header */}
       <div className="flex items-center gap-2.5 mb-5">
-        <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
-          <Icon size={15} className={cfg.icon_color} />
+        <div className={`w-9 h-9 rounded-xl ${cfg.bg} flex items-center justify-center shrink-0`}>
+          <Icon size={17} className={cfg.icon_color} />
         </div>
-        <p className="text-sm font-semibold text-text-primary truncate flex-1">{data.title}</p>
-        {total > 0 && (
-          <span className="text-xs font-medium text-text-secondary shrink-0 tabular-nums">
-            {total.toLocaleString()} total
-          </span>
-        )}
+        <p className="text-[15px] font-semibold text-text-primary truncate flex-1">{data.title}</p>
       </div>
 
       {items.length === 0 ? (
@@ -403,35 +401,46 @@ function BreakdownWidget({ data, editing, onDelete }: { data: WidgetData; editin
           No data yet
         </div>
       ) : (
-        <div className="flex gap-5 items-start">
-          {/* Donut — single lazy bundle preserves Recharts component identity */}
-          <div className="w-[88px] h-[88px] shrink-0">
-            <DonutChart items={items} />
+        <div className="flex gap-5 items-center">
+          {/* Donut — single lazy bundle preserves Recharts component identity.
+              Segments are clickable (route to filtered rows); disabled while editing. */}
+          <div className="w-[112px] h-[112px] shrink-0">
+            <DonutChart
+              items={editing ? items.map((i) => ({ ...i, href: undefined })) : items}
+              total={total}
+            />
           </div>
 
-          {/* Progress bar legend */}
-          <div className="flex-1 space-y-2.5 overflow-hidden min-w-0">
+          {/* Clickable tabs — one per segment; each deep-links to the filtered rows */}
+          <div className="flex-1 flex flex-col gap-1.5 min-w-0">
             {items.slice(0, 5).map((item, idx) => {
               const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
-              return (
-                <div key={idx}>
-                  <div className="flex justify-between items-baseline mb-1">
-                    <span className="text-xs text-text-primary truncate max-w-[65%] font-medium">
-                      {item.label}
-                    </span>
-                    <span className="text-xs font-bold text-text-primary shrink-0 tabular-nums ml-2">
-                      {item.count}
-                    </span>
-                  </div>
-                  <div className="w-full bg-bg-secondary rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${pct}%`, background: item.color ?? '#9CA3AF' }}
-                    />
-                  </div>
+              const clickable = !!item.href && !editing;
+              const color = item.color ?? '#9CA3AF';
+              const tab = (
+                <div className={`flex items-center gap-2.5 pl-2.5 pr-2 py-2 rounded-xl border border-border-color bg-bg-secondary/40 transition-all ${clickable ? 'hover:bg-bg-secondary hover:border-accent/60 cursor-pointer group' : ''}`}>
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+                  <span className="flex-1 min-w-0 text-[15px] text-text-primary truncate font-medium">{item.label}</span>
+                  <span className="text-[11px] font-semibold text-text-secondary tabular-nums">{pct}%</span>
+                  <span className="text-base font-bold text-text-primary tabular-nums">{item.count.toLocaleString()}</span>
+                  {clickable && (
+                    <ArrowUpRight size={14} className="text-text-secondary opacity-40 group-hover:opacity-90 group-hover:text-accent transition-all shrink-0" />
+                  )}
                 </div>
               );
+              return clickable
+                ? <Link key={idx} href={item.href!}>{tab}</Link>
+                : <div key={idx}>{tab}</div>;
             })}
+
+            {/* Overflow indicator → full sheet */}
+            {items.length > 5 && (
+              data.href
+                ? <Link href={data.href} className="block px-1 pt-0.5 text-xs font-semibold text-accent hover:underline">
+                    +{items.length - 5} more
+                  </Link>
+                : <p className="px-1 pt-0.5 text-xs font-medium text-text-secondary">+{items.length - 5} more</p>
+            )}
           </div>
         </div>
       )}
@@ -452,10 +461,10 @@ function ListWidget({ data, editing, onDelete }: { data: WidgetData; editing: bo
 
       {/* Header */}
       <div className="flex items-center gap-2.5 mb-4">
-        <div className={`w-8 h-8 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
-          <Icon size={15} className={cfg.icon_color} />
+        <div className={`w-9 h-9 rounded-xl ${cfg.bg} flex items-center justify-center shrink-0`}>
+          <Icon size={17} className={cfg.icon_color} />
         </div>
-        <p className="text-sm font-semibold text-text-primary flex-1 min-w-0 truncate">
+        <p className="text-[15px] font-semibold text-text-primary flex-1 min-w-0 truncate">
           {data.title}
         </p>
         {data.href && !editing && (
@@ -868,15 +877,187 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; label: string }> =
   table:      { bg: 'bg-amber-50 dark:bg-amber-900/30',     text: 'text-amber-600 dark:text-amber-400',     label: 'Table'  },
 };
 
+// ── Widget schematic preview (data-free, no Recharts — cheap "see before you add") ─
+// Renders a small, theme-aware mock of each display_type using the source's colour
+// config, so the Add flow shows what a widget looks like without fetching data or
+// mounting dozens of chart instances.
+
+function MiniSpark({ area = false }: { area?: boolean }) {
+  // Fixed, pleasant upward-drifting shape — currentColor inherits the source tint.
+  const line = '0,17 12,11 24,14 36,6 48,10 60,3 72,7';
+  return (
+    <svg viewBox="0 0 72 20" className="w-full h-4" preserveAspectRatio="none">
+      {area && <polygon points={`0,20 ${line} 72,20`} fill="currentColor" fillOpacity={0.12} />}
+      <polyline points={line} fill="none" stroke="currentColor" strokeWidth={1.5}
+        strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const MINI_BARS = [0.9, 0.62, 0.4];   // shared descending widths for bar-ish previews
+
+function WidgetPreview({
+  displayType, cfg,
+}: {
+  displayType: string;
+  cfg: { icon: React.ElementType; bg: string; icon_color: string };
+}) {
+  const Icon = cfg.icon;
+  const chip = (
+    <span className={`inline-flex items-center justify-center w-6 h-6 rounded-lg ${cfg.bg} shrink-0`}>
+      <Icon size={12} className={cfg.icon_color} />
+    </span>
+  );
+
+  let body: React.ReactNode;
+  switch (displayType) {
+    case 'stat':
+      body = (
+        <div className="h-full px-3 py-2.5 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            {chip}
+            <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 tabular-nums">
+              +12%
+            </span>
+          </div>
+          <div className="text-base font-bold text-text-primary tracking-tight leading-none tabular-nums">1,284</div>
+          <MiniSpark />
+        </div>
+      );
+      break;
+    case 'trend':
+      body = (
+        <div className="h-full px-3 py-2.5 flex flex-col justify-center gap-1.5">
+          <div className="text-base font-bold text-text-primary tracking-tight tabular-nums">842</div>
+          <MiniSpark />
+        </div>
+      );
+      break;
+    case 'timeseries':
+      body = (
+        <div className="h-full px-3 py-2.5 flex flex-col justify-center">
+          <div className="flex-1 min-h-0"><MiniSpark area /></div>
+        </div>
+      );
+      break;
+    case 'breakdown':
+      body = (
+        <div className="h-full px-3 py-2.5 flex items-center gap-3">
+          <svg viewBox="0 0 36 36" className="w-9 h-9 shrink-0 -rotate-90">
+            <circle cx={18} cy={18} r={14} fill="none" stroke="currentColor" strokeOpacity={0.15} strokeWidth={5} />
+            <circle cx={18} cy={18} r={14} fill="none" stroke="currentColor" strokeWidth={5}
+              strokeLinecap="round" strokeDasharray={`${0.6 * 2 * Math.PI * 14} ${2 * Math.PI * 14}`} />
+          </svg>
+          <div className="flex-1 space-y-1.5">
+            {MINI_BARS.map((w, i) => (
+              <div key={i} className="h-1.5 rounded-full bg-current" style={{ width: `${w * 100}%`, opacity: 0.7 - i * 0.18 }} />
+            ))}
+          </div>
+        </div>
+      );
+      break;
+    case 'gauge':
+      body = (
+        <div className="h-full flex flex-col items-center justify-center gap-0.5">
+          <svg viewBox="0 0 100 54" className="w-[86px]">
+            <path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke="currentColor" strokeOpacity={0.15} strokeWidth={7} />
+            <path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke="currentColor" strokeWidth={7}
+              strokeLinecap="round" strokeDasharray={`${0.68 * Math.PI * 42} ${Math.PI * 42}`} />
+          </svg>
+          <span className="text-sm font-bold text-text-primary -mt-1 tabular-nums">68%</span>
+        </div>
+      );
+      break;
+    case 'funnel':
+      body = (
+        <div className="h-full px-3 py-2.5 flex flex-col justify-center gap-1.5">
+          {[0.95, 0.7, 0.45, 0.25].map((w, i) => (
+            <div key={i} className="h-2.5 rounded bg-current" style={{ width: `${w * 100}%`, opacity: 0.75 - i * 0.14 }} />
+          ))}
+        </div>
+      );
+      break;
+    case 'list':
+      body = (
+        <div className="h-full px-3 py-2.5 flex flex-col justify-center gap-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded-full bg-current shrink-0" style={{ opacity: 0.6 - i * 0.12 }} />
+              <span className="h-1.5 rounded-full bg-text-secondary/25" style={{ width: `${70 - i * 14}%` }} />
+            </div>
+          ))}
+        </div>
+      );
+      break;
+    case 'table':
+      body = (
+        <div className="h-full px-3 py-2.5 flex flex-col justify-center gap-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-[8px] font-bold text-text-secondary tabular-nums w-2">{i + 1}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" style={{ opacity: 0.7 - i * 0.15 }} />
+              <span className="h-1.5 rounded-full bg-text-secondary/25 flex-1" style={{ maxWidth: `${64 - i * 12}%` }} />
+              <span className="h-1.5 w-4 rounded-full bg-text-secondary/30 ml-auto" />
+            </div>
+          ))}
+        </div>
+      );
+      break;
+    default:
+      body = (
+        <div className="h-full flex items-center justify-center">{chip}</div>
+      );
+  }
+
+  return (
+    <div className={`h-[84px] rounded-xl bg-bg-secondary/50 border border-border-color/60 overflow-hidden ${cfg.icon_color}`}>
+      {body}
+    </div>
+  );
+}
+
+// Curated high-value sources surfaced first for busy SMB owners (order matters).
+const RECOMMENDED_SOURCES = [
+  'contacts_new', 'conversations_unread', 'pipeline_total_open_value',
+  'pipeline_open_value', 'followups_due', 'work_overdue',
+  'wallet_balance', 'contacts_by_source',
+];
+
+/* Stable identity for a widget option (used for selection keys). */
+function optKey(opt: WidgetOption) {
+  return `${opt.source_type}|${opt.source_id ?? ''}|${opt.display_type}`;
+}
+
 function AddWidgetModal({
   options, onClose, onAdd,
 }: {
   options: WidgetOption[];
   onClose: () => void;
-  onAdd: (opt: WidgetOption) => Promise<void>;
+  onAdd: (opts: WidgetOption[]) => Promise<void>;
 }) {
-  const [adding,          setAdding]          = useState<string | null>(null);
+  const [selected,        setSelected]        = useState<Map<string, WidgetOption>>(new Map());
+  const [saving,          setSaving]          = useState(false);
   const [activeCategory,  setActiveCategory]  = useState<string>('All');
+  const [search,          setSearch]          = useState('');
+  const searchRef = useRef<HTMLInputElement | null>(null);
+
+  const toggle = (opt: WidgetOption) => {
+    if (saving) return;
+    setSelected(prev => {
+      const next = new Map(prev);
+      const k = optKey(opt);
+      if (next.has(k)) next.delete(k); else next.set(k, opt);
+      return next;
+    });
+  };
+
+  // Autofocus search on desktop; Escape closes.
+  useEffect(() => {
+    if (window.matchMedia?.('(pointer: fine)').matches) searchRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   /* Derive ordered source tabs from available options */
   const categories = useMemo(() => {
@@ -897,165 +1078,253 @@ function AddWidgetModal({
     return result; // no "All" in the list itself — handled below
   }, [options]);
 
-  /* Options visible in the active tab */
-  const filtered = useMemo(() =>
-    activeCategory === 'All'
-      ? options
-      : options.filter(o => getSourceCategory(o) === activeCategory),
-    [options, activeCategory],
-  );
+  const q = search.trim().toLowerCase();
 
-  /* Sub-group filtered options by display type */
-  const groups = useMemo(() => [
-    { key: 'stat',       label: 'Stats',   items: filtered.filter(o => o.display_type === 'stat')       },
-    { key: 'trend',      label: 'Trends',  items: filtered.filter(o => o.display_type === 'trend')      },
-    { key: 'gauge',      label: 'Gauges',  items: filtered.filter(o => o.display_type === 'gauge')      },
-    { key: 'breakdown',  label: 'Charts',  items: filtered.filter(o => o.display_type === 'breakdown')  },
-    { key: 'timeseries', label: 'Series',  items: filtered.filter(o => o.display_type === 'timeseries') },
-    { key: 'funnel',     label: 'Funnels', items: filtered.filter(o => o.display_type === 'funnel')     },
-    { key: 'table',      label: 'Tables',  items: filtered.filter(o => o.display_type === 'table')      },
-    { key: 'list',       label: 'Lists',   items: filtered.filter(o => o.display_type === 'list')       },
-  ].filter(g => g.items.length > 0), [filtered]);
+  /* Search overrides category — flat, ranked match on title + description. */
+  const searchResults = useMemo(() => {
+    if (!q) return [];
+    return options.filter(o =>
+      `${o.default_title} ${o.description} ${o.source_name ?? ''}`.toLowerCase().includes(q));
+  }, [options, q]);
 
-  async function handleAdd(opt: WidgetOption) {
-    const key = opt.source_type + (opt.source_id ?? '');
-    setAdding(key);
-    await onAdd(opt);
-    setAdding(null);
+  /* Recommended picks (only on the All tab, not while searching). */
+  const recommended = useMemo(() => {
+    const picks: WidgetOption[] = [];
+    const used = new Set<string>();
+    for (const st of RECOMMENDED_SOURCES) {
+      if (used.has(st)) continue;
+      const opt = options.find(o => o.source_type === st);
+      if (opt) { picks.push(opt); used.add(st); }
+    }
+    return picks;
+  }, [options]);
+
+  /* Sections to render below Recommended.
+     - All tab:  one section per category.
+     - A category: sub-grouped by display type (Stats/Trends/…). */
+  const sections = useMemo(() => {
+    if (activeCategory === 'All') {
+      return categories
+        .map(cat => ({ key: cat, label: cat, items: options.filter(o => getSourceCategory(o) === cat) }))
+        .filter(s => s.items.length > 0);
+    }
+    const inCat = options.filter(o => getSourceCategory(o) === activeCategory);
+    const byType: { key: string; label: string; items: WidgetOption[] }[] = [
+      { key: 'stat',       label: 'Stats',   items: inCat.filter(o => o.display_type === 'stat')       },
+      { key: 'trend',      label: 'Trends',  items: inCat.filter(o => o.display_type === 'trend')      },
+      { key: 'gauge',      label: 'Gauges',  items: inCat.filter(o => o.display_type === 'gauge')      },
+      { key: 'breakdown',  label: 'Charts',  items: inCat.filter(o => o.display_type === 'breakdown')  },
+      { key: 'timeseries', label: 'Series',  items: inCat.filter(o => o.display_type === 'timeseries') },
+      { key: 'funnel',     label: 'Funnels', items: inCat.filter(o => o.display_type === 'funnel')     },
+      { key: 'table',      label: 'Tables',  items: inCat.filter(o => o.display_type === 'table')      },
+      { key: 'list',       label: 'Lists',   items: inCat.filter(o => o.display_type === 'list')       },
+    ];
+    return byType.filter(s => s.items.length > 0);
+  }, [activeCategory, categories, options]);
+
+  async function handleSave() {
+    if (selected.size === 0 || saving) return;
+    setSaving(true);
+    await onAdd([...selected.values()]);
+    setSaving(false);
     onClose();
   }
 
-  const showSubHeaders = activeCategory === 'All' || groups.length > 1;
+  /* Single widget tile with schematic preview. Tap toggles selection. */
+  function Tile({ opt }: { opt: WidgetOption }) {
+    const cfg        = getSourceConfig(opt.source_type);
+    const tc         = TYPE_COLORS[opt.display_type] ?? TYPE_COLORS.stat;
+    const isSelected = selected.has(optKey(opt));
+    return (
+      <button
+        onClick={() => toggle(opt)}
+        disabled={saving}
+        aria-pressed={isSelected}
+        aria-label={`${isSelected ? 'Remove' : 'Add'} ${opt.default_title}`}
+        className={`group relative flex flex-col text-left p-2.5 rounded-2xl border bg-card-bg hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 transition-all disabled:opacity-50 ${
+          isSelected ? 'border-accent ring-1 ring-accent shadow-md' : 'border-border-color hover:border-accent/60'
+        }`}
+      >
+        <WidgetPreview displayType={opt.display_type} cfg={cfg} />
+        <div className="flex items-start gap-2 px-0.5 pt-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-text-primary truncate">{opt.default_title}</p>
+            <p className="text-[10px] text-text-secondary truncate mt-0.5">{opt.description}</p>
+          </div>
+          <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${tc.bg} ${tc.text}`}>
+            {tc.label}
+          </span>
+        </div>
+        {/* Selection affordance — filled when selected, faint on hover otherwise. */}
+        <span className={`absolute top-2 right-2 z-10 flex items-center justify-center w-6 h-6 rounded-full shadow-md transition-all ${
+          isSelected
+            ? 'bg-accent text-white opacity-100'
+            : 'bg-accent text-white opacity-0 group-hover:opacity-100'
+        }`}>
+          {isSelected ? <Check size={13} /> : <Plus size={13} />}
+        </span>
+      </button>
+    );
+  }
+
+  const grid = (items: WidgetOption[]) => (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+      {items.map((opt, idx) => (
+        <Tile key={`${opt.source_type}|${opt.source_id ?? ''}|${opt.display_type ?? ''}|${idx}`} opt={opt} />
+      ))}
+    </div>
+  );
+
+  const sectionHeader = (label: string, icon?: React.ReactNode) => (
+    <div className="flex items-center gap-2 px-1 mb-2">
+      {icon}
+      <span className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">{label}</span>
+      <div className="flex-1 h-px bg-border-color" />
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-card-bg rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[88vh] flex flex-col border border-border-color">
+      <div className="bg-card-bg rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col border border-border-color">
 
-        {/* ── Header ── */}
-        <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-border-color">
-          <div>
-            <h2 className="text-base font-semibold text-text-primary">Add Widget</h2>
-            <p className="text-xs text-text-secondary mt-0.5">
-              Choose a data source, then pick what to display
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-xl border border-border-color flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors ml-3 mt-0.5 shrink-0"
-          >
-            <X size={14} />
-          </button>
-        </div>
-
-        {/* ── Source tabs (scrollable strip) ── */}
-        <div className="flex items-center gap-1.5 px-4 py-2.5 overflow-x-auto border-b border-border-color [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* All pill */}
-          <button
-            onClick={() => setActiveCategory('All')}
-            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors shrink-0 ${
-              activeCategory === 'All'
-                ? 'bg-accent text-white shadow-sm'
-                : 'text-text-secondary hover:bg-bg-secondary'
-            }`}
-          >
-            All
-          </button>
-
-          {/* Source-specific pills */}
-          {categories.map(cat => {
-            const meta   = getCategoryMeta(cat);
-            const Icon   = meta.icon;
-            const active = activeCategory === cat;
-            return (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors shrink-0 ${
-                  active
-                    ? 'bg-accent text-white shadow-sm'
-                    : 'text-text-secondary hover:bg-bg-secondary'
-                }`}
-              >
-                <Icon size={12} className={active ? 'opacity-100' : ''} />
-                {cat}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ── Widget list with sub-group headers ── */}
-        <div className="overflow-y-auto flex-1 p-3 space-y-4">
-          {groups.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-text-secondary text-sm gap-2">
-              <Database size={24} className="opacity-30" />
-              No widgets available for this source
+        {/* ── Header + search ── */}
+        <div className="px-5 pt-5 pb-3 border-b border-border-color">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-text-primary">Add widgets</h2>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Tap to select as many as you like, then add them all at once
+              </p>
             </div>
-          )}
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="w-8 h-8 rounded-xl border border-border-color flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors ml-3 mt-0.5 shrink-0"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          {/* Search */}
+          <div className="relative mt-3">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search widgets…"
+              className="w-full pl-9 pr-8 py-2 text-sm rounded-xl bg-bg-secondary border border-border-color text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent/40"
+            />
+            {search && (
+              <button
+                onClick={() => { setSearch(''); searchRef.current?.focus(); }}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-primary transition-colors"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
 
-          {groups.map(group => (
-            <div key={group.key}>
-              {/* Sub-group header */}
-              {showSubHeaders && (
-                <div className="flex items-center gap-2 px-1 mb-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
-                    {group.label}
-                  </span>
-                  <div className="flex-1 h-px bg-border-color" />
+        {/* ── Category tabs (hidden while searching) ── */}
+        {!q && (
+          <div className="flex items-center gap-1.5 px-4 py-2.5 overflow-x-auto border-b border-border-color [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <button
+              onClick={() => setActiveCategory('All')}
+              className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors shrink-0 ${
+                activeCategory === 'All' ? 'bg-accent text-white shadow-sm' : 'text-text-secondary hover:bg-bg-secondary'
+              }`}
+            >
+              All
+            </button>
+            {categories.map(cat => {
+              const meta   = getCategoryMeta(cat);
+              const Icon   = meta.icon;
+              const active = activeCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors shrink-0 ${
+                    active ? 'bg-accent text-white shadow-sm' : 'text-text-secondary hover:bg-bg-secondary'
+                  }`}
+                >
+                  <Icon size={12} />
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Body ── */}
+        <div className="overflow-y-auto flex-1 p-4 space-y-5">
+          {q ? (
+            /* Search results — flat grid */
+            searchResults.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-text-secondary text-sm gap-2">
+                <Search size={24} className="opacity-30" />
+                No widgets match “{search}”
+              </div>
+            ) : (
+              <div>
+                {sectionHeader(`${searchResults.length} result${searchResults.length === 1 ? '' : 's'}`)}
+                {grid(searchResults)}
+              </div>
+            )
+          ) : (
+            <>
+              {/* Recommended (All tab only) */}
+              {activeCategory === 'All' && recommended.length > 0 && (
+                <div>
+                  {sectionHeader('Recommended', <Sparkles size={13} className="text-accent" />)}
+                  {grid(recommended)}
                 </div>
               )}
 
-              <div className="space-y-1">
-                {group.items.map((opt, idx) => {
-                  // Compose a key that's unique across the source + its display variant.
-                  // Same source (e.g. datasheet column "number14") can appear multiple
-                  // times under different display types (stat, list, chart) — they were
-                  // colliding on the source-only key.
-                  const key = `${opt.source_type}|${opt.source_id ?? ''}|${opt.display_type ?? ''}|${idx}`;
-                  const addingKey = opt.source_type + (opt.source_id ?? '');
-                  const isLoading = adding === addingKey;
-                  const cfg       = getSourceConfig(opt.source_type);
-                  const Icon      = cfg.icon;
-                  const tc        = TYPE_COLORS[opt.display_type] ?? TYPE_COLORS.stat;
-                  const catMeta   = getCategoryMeta(getSourceCategory(opt));
+              {sections.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-text-secondary text-sm gap-2">
+                  <Database size={24} className="opacity-30" />
+                  No widgets available for this source
+                </div>
+              )}
 
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => handleAdd(opt)}
-                      disabled={!!adding}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-transparent hover:border-border-color hover:bg-bg-secondary transition-all text-left disabled:opacity-50 group"
-                    >
-                      {/* Source icon */}
-                      <div className={`w-10 h-10 rounded-xl ${cfg.bg} flex items-center justify-center shrink-0`}>
-                        {isLoading
-                          ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin opacity-60" />
-                          : <Icon size={17} className={cfg.icon_color} />
-                        }
-                      </div>
+              {sections.map(sec => (
+                <div key={sec.key}>
+                  {sectionHeader(sec.label)}
+                  {grid(sec.items)}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
 
-                      {/* Title + description */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-text-primary truncate">{opt.default_title}</p>
-                        <p className="text-xs text-text-secondary truncate mt-0.5">{opt.description}</p>
-                      </div>
-
-                      {/* Source category badge — visible only on "All" tab */}
-                      {activeCategory === 'All' && (
-                        <span className={`hidden sm:inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full ${catMeta.bg} ${catMeta.color} shrink-0`}>
-                          {getSourceCategory(opt)}
-                        </span>
-                      )}
-
-                      {/* Display type badge */}
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${tc.bg} ${tc.text} shrink-0`}>
-                        {tc.label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        {/* ── Footer — batch add ── */}
+        <div className="flex items-center gap-3 px-5 py-3 border-t border-border-color bg-card-bg rounded-b-2xl">
+          <span className="text-xs text-text-secondary">
+            {selected.size === 0
+              ? 'No widgets selected'
+              : `${selected.size} widget${selected.size === 1 ? '' : 's'} selected`}
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            {selected.size > 0 && !saving && (
+              <button
+                onClick={() => setSelected(new Map())}
+                className="px-3 py-2 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                Clear
+              </button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={selected.size === 0 || saving}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-accent text-white shadow-sm hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {saving
+                ? <><div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> Adding…</>
+                : <><Plus size={14} /> {selected.size > 0 ? `Add ${selected.size} widget${selected.size === 1 ? '' : 's'}` : 'Add widgets'}</>}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1272,13 +1541,18 @@ export default function NewDashboardPage() {
     }
   }
 
-  async function handleAdd(opt: WidgetOption) {
-    const w = await createWidget({
-      title: opt.default_title, source_type: opt.source_type,
-      display_type: opt.display_type, size: opt.size,
-      source_id: opt.source_id, field_id: opt.field_id, aggregation: opt.aggregation,
-    });
-    setWidgets(prev => [...prev, w]);
+  async function handleAdd(opts: WidgetOption[]) {
+    // Create all selected widgets, then refresh data once.
+    const created: WidgetMeta[] = [];
+    for (const opt of opts) {
+      const w = await createWidget({
+        title: opt.default_title, source_type: opt.source_type,
+        display_type: opt.display_type, size: opt.size,
+        source_id: opt.source_id, field_id: opt.field_id, aggregation: opt.aggregation,
+      });
+      created.push(w);
+    }
+    setWidgets(prev => [...prev, ...created]);
     const allData = await fetchAllData(startDate, endDate, activeLayoutId);
     const map = new Map<number, WidgetData>();
     allData.forEach(d => map.set(d.widget_id, d));
