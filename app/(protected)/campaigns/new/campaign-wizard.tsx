@@ -10,9 +10,11 @@ import {
 import {
   createCampaign, createSequence, addStep, updateSequence,
   previewAudience, getCreditsInfo, getBackfillCount, backfillExistingMembers,
-  listSegments,
+  listSegments, createSegment,
   type AudienceFilter, type CreateCampaignPayload, type CreditsInfo, type Segment,
 } from '@/services/campaigns';
+import { FilterBuilder } from '@/components/outbound/FilterBuilder';
+import { RecipientPreview } from '@/components/outbound/RecipientPreview';
 import { apiFetch } from '@/lib/api-client';
 
 // ── Types for contact/group search ──────────────────────────────────────────
@@ -48,7 +50,7 @@ interface WizardStep {
   skipWeekends: boolean;
 }
 
-type AudienceMode = 'contacts' | 'groups' | 'file' | 'ai' | 'segment' | 'phones';
+type AudienceMode = 'contacts' | 'groups' | 'file' | 'ai' | 'filter' | 'segment' | 'phones';
 
 interface TemplateOption {
   id: number;
@@ -65,6 +67,15 @@ interface ChannelOption {
   name: string;
   type: string;
   is_connected: boolean;
+}
+
+/** True when the filter has at least one active (non-empty) key. An empty
+ *  filter would resolve to *every* contact — we treat that as "not set". */
+function filterHasKeys(f: AudienceFilter | null): boolean {
+  if (!f) return false;
+  return Object.values(f).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v != null && v !== ''
+  );
 }
 
 export default function CampaignWizard() {
@@ -248,10 +259,32 @@ export default function CampaignWizard() {
     } else if (audienceMode === 'segment') {
       const seg = allSegments.find((s) => s.id === segmentId);
       setAudienceCount(seg?.cached_count ?? null);
+    } else if (audienceMode === 'filter') {
+      // handled by the debounced filter-preview effect below
     } else {
       setAudienceCount(null);
     }
   }, [audienceMode, selectedContactIds, selectedGroups, phones, segmentId, allSegments]);
+
+  // ── Filter mode: debounced live recipient count ──────────────────────────
+  const filterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (audienceMode !== 'filter') return;
+    if (!filterHasKeys(audienceFilter)) {
+      setAudienceCount(null);
+      return;
+    }
+    if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
+    filterTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await previewAudience({ audience_type: 'ai_filter', filter: audienceFilter! });
+        setAudienceCount(res.count);
+      } catch {
+        setAudienceCount(null);
+      }
+    }, 400);
+    return () => { if (filterTimerRef.current) clearTimeout(filterTimerRef.current); };
+  }, [audienceMode, audienceFilter]);
 
   function updateStep(index: number, partial: Partial<WizardStep>) {
     setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, ...partial } : s)));
@@ -285,14 +318,31 @@ export default function CampaignWizard() {
     if (audienceMode === 'groups') return { contact_ids: selectedContactIds, group_ids: selectedGroupIds };
     if (audienceMode === 'phones') return { phones: phones.split(/[\n,]+/).map((p) => p.trim()).filter(Boolean) };
     if (audienceMode === 'segment' && segmentId) return { segment_id: segmentId };
-    if (audienceMode === 'ai' && audienceFilter) return audienceFilter as unknown as Record<string, unknown>;
+    if ((audienceMode === 'filter' || audienceMode === 'ai') && audienceFilter)
+      return audienceFilter as unknown as Record<string, unknown>;
     return {};
   }
 
   function getAudienceType(): string {
     if (audienceMode === 'segment') return 'segment';
-    if (audienceMode === 'ai') return 'ai_filter';
+    if (audienceMode === 'filter' || audienceMode === 'ai') return 'ai_filter';
     return 'manual';
+  }
+
+  // ── Save the current filter as a reusable segment ────────────────────────
+  async function handleSaveSegment() {
+    if (!filterHasKeys(audienceFilter)) return;
+    const nm = window.prompt('Name this segment');
+    if (!nm || !nm.trim()) return;
+    try {
+      const seg = await createSegment({ name: nm.trim(), filter_config: audienceFilter! });
+      const list = await listSegments();
+      setAllSegments(list);
+      setSegmentId(seg.id);
+      setAudienceMode('segment');
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save segment');
+    }
   }
 
   const totalCredits = (audienceCount || 0) * steps.length;
@@ -400,7 +450,7 @@ export default function CampaignWizard() {
           <div key={n} className="flex items-center gap-2">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
               wizardStep > n
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                 : wizardStep === n
                 ? 'bg-accent text-white'
                 : 'bg-surface-secondary text-text-secondary'
@@ -416,7 +466,7 @@ export default function CampaignWizard() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">
+        <div className="flex items-center gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-lg text-sm text-red-800 dark:text-red-300">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {error}
         </div>
@@ -429,14 +479,19 @@ export default function CampaignWizard() {
 
           {/* Audience mode tabs — color-coded pills, one identity per method */}
           <div className="flex flex-wrap gap-2">
-            {(['contacts', 'groups', 'phones', 'segment'] as AudienceMode[]).map((mode) => {
+            {(['contacts', 'groups', 'phones', 'filter', 'segment'] as AudienceMode[]).map((mode) => {
               const palette: Record<AudienceMode | 'file' | 'ai', { active: string; inactive: string }> = {
                 contacts: { active: 'bg-blue-500 text-white shadow-sm shadow-blue-500/30', inactive: 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/15' },
                 groups:   { active: 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30', inactive: 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/15' },
                 phones:   { active: 'bg-slate-500 text-white shadow-sm shadow-slate-500/30', inactive: 'bg-slate-500/10 text-slate-400 hover:bg-slate-500/15' },
+                filter:   { active: 'bg-indigo-500 text-white shadow-sm shadow-indigo-500/30', inactive: 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/15' },
                 segment:  { active: 'bg-violet-500 text-white shadow-sm shadow-violet-500/30', inactive: 'bg-violet-500/10 text-violet-400 hover:bg-violet-500/15' },
                 file:     { active: '', inactive: '' },
                 ai:       { active: '', inactive: '' },
+              };
+              const labels: Record<string, string> = {
+                contacts: 'Contacts', groups: 'Groups', phones: 'Phone numbers',
+                filter: 'Filter', segment: 'Saved segment',
               };
               const colors = palette[mode];
               return (
@@ -447,7 +502,7 @@ export default function CampaignWizard() {
                     audienceMode === mode ? colors.active : colors.inactive
                   }`}
                 >
-                  {mode === 'contacts' ? 'Contacts' : mode === 'groups' ? 'Groups' : mode === 'phones' ? 'Phone numbers' : 'Saved segment'}
+                  {labels[mode]}
                 </button>
               );
             })}
@@ -618,7 +673,14 @@ export default function CampaignWizard() {
                   <div className="flex flex-col items-center py-10 text-text-secondary">
                     <Users className="w-8 h-8 mb-2 opacity-40" />
                     <p className="text-sm">No saved segments yet</p>
-                    <p className="text-xs mt-1 opacity-70">Create a segment from the campaigns page first</p>
+                    <p className="text-xs mt-1 mb-3 opacity-70">Build a filtered list, then save it as a reusable segment.</p>
+                    <button
+                      type="button"
+                      onClick={() => setAudienceMode('filter')}
+                      className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-500 text-white hover:brightness-110 transition"
+                    >
+                      Build a filter
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-1.5 max-h-72 overflow-y-auto">
@@ -657,6 +719,29 @@ export default function CampaignWizard() {
                 )}
               </div>
             )}
+
+            {/* ── Filter: inline no-code audience builder ───────────── */}
+            {audienceMode === 'filter' && (
+              <div className="space-y-3">
+                <FilterBuilder value={audienceFilter ?? {}} onChange={setAudienceFilter} />
+                {filterHasKeys(audienceFilter) && (
+                  <RecipientPreview filter={audienceFilter ?? {}} onChange={setAudienceFilter} />
+                )}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <p className="text-[11px] text-text-secondary/70">
+                    Build a live list from your CRM — no saved segment needed.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSaveSegment}
+                    disabled={!filterHasKeys(audienceFilter)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/15 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Save as segment
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Audience count summary — tinted to match the active method's color */}
@@ -665,6 +750,7 @@ export default function CampaignWizard() {
               contacts: 'bg-blue-500/10 text-blue-400',
               groups: 'bg-emerald-500/10 text-emerald-400',
               phones: 'bg-slate-500/10 text-slate-400',
+              filter: 'bg-indigo-500/10 text-indigo-400',
               segment: 'bg-violet-500/10 text-violet-400',
               file: '', ai: '',
             }[audienceMode];
@@ -735,7 +821,8 @@ export default function CampaignWizard() {
           <div className="flex justify-end pt-2">
             <button
               onClick={() => setWizardStep(2)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-xl text-sm font-medium hover:brightness-110 transition"
+              disabled={audienceMode === 'filter' && !filterHasKeys(audienceFilter)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-xl text-sm font-medium hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Next: Message <ArrowRight className="w-4 h-4" />
             </button>

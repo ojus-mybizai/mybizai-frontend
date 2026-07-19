@@ -21,11 +21,11 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   completed: { label: 'Completed', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' },
   cancelled: { label: 'Cancelled', className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
   failed:    { label: 'Failed',    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' },
-  archived:  { label: 'Archived',  className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-500' },
+  archived:  { label: 'Archived',  className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-500' },
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_BADGE[status] || { label: status, className: 'bg-gray-100 text-gray-600' };
+  const cfg = STATUS_BADGE[status] || { label: status, className: 'bg-gray-100 text-gray-700' };
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.className}`}>{cfg.label}</span>;
 }
 

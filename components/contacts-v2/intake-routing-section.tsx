@@ -128,7 +128,7 @@ export default function IntakeRoutingSection({ allGroups, onChange }: Props) {
               <Loader2 className="w-4 h-4 animate-spin" />
             </div>
           ) : error ? (
-            <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-800/50 dark:bg-rose-900/20 dark:text-rose-300">
+            <div className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800/50 dark:bg-rose-900/20 dark:text-rose-300">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
@@ -151,7 +151,7 @@ export default function IntakeRoutingSection({ allGroups, onChange }: Props) {
                         </span>
                         {hasOverride && (
                           <span
-                            className="rounded-full bg-indigo-100 px-1.5 py-px text-[9px] font-semibold uppercase text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200"
+                            className="rounded-full bg-indigo-100 px-1.5 py-px text-[9px] font-semibold uppercase text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200"
                             title={`Default: ${it.default_group_name ?? '—'}`}
                           >
                             Custom

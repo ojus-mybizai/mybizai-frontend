@@ -295,7 +295,7 @@ export function WorkChatPanel({
     <div className="flex h-full flex-col">
       {/* error banner */}
       {error && (
-        <div className="mx-3 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+        <div className="mx-3 mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
           {error}
           <button
             type="button"

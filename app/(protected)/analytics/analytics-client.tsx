@@ -86,7 +86,7 @@ export default function AnalyticsClient() {
         )}
 
         {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+          <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
             {error}
           </div>
         )}
@@ -202,8 +202,8 @@ export default function AnalyticsClient() {
                         const entityType = c.contact_id != null ? 'Contact' : 'Lead';
                         const entityId   = c.contact_id ?? c.lead_id;
                         const entityColor = c.contact_id != null
-                          ? 'text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-400 dark:bg-purple-900/20 dark:border-purple-800'
-                          : 'text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-900/20 dark:border-blue-800';
+                          ? 'text-purple-600 bg-purple-50 border-purple-300 dark:text-purple-400 dark:bg-purple-900/20 dark:border-purple-800'
+                          : 'text-blue-600 bg-blue-50 border-blue-300 dark:text-blue-400 dark:bg-blue-900/20 dark:border-blue-800';
                         return (
                           <tr key={c.id}>
                             <td className="px-4 py-3 text-text-primary">#{c.conversation_id}</td>

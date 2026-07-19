@@ -19,9 +19,9 @@ const STATUS_DOT: Record<string, string> = {
 };
 
 const STATUS_PILL: Record<string, string> = {
-  active:             'bg-green-50 text-green-700 border-green-200',
-  pending_acceptance: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  rejected:           'bg-red-50 text-red-600 border-red-200',
+  active:             'bg-green-50 text-green-800 border-green-300',
+  pending_acceptance: 'bg-yellow-50 text-yellow-800 border-yellow-300',
+  rejected:           'bg-red-50 text-red-600 border-red-300',
   inactive:           'bg-gray-100 text-gray-500 border-gray-200',
 };
 
@@ -290,7 +290,7 @@ export function EmployeeTable({ employees, groups, onRowClick, onResendInvite, o
                         if (emp.session_active && remaining) {
                           return (
                             <span
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-800 border-emerald-300"
                               title={`Free-form messages allowed for ${remaining} (until ${new Date(emp.session_window_expires_at!).toLocaleString()})`}
                             >
                               <MessageCircle className="w-3 h-3" />

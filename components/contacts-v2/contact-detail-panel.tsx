@@ -871,7 +871,7 @@ function FieldsTab({ contact, contactId }: { contact: Contact; contactId: number
     if (f.field_type === 'boolean') {
       return (
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-          v === true ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-500'
+          v === true ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-500'
         }`}>
           {v === true ? 'Yes' : 'No'}
         </span>

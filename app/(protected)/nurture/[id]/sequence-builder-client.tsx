@@ -34,11 +34,11 @@ function fmtDelay(days: number, hours: number) {
 
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, string> = {
-    active:   'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-    draft:    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+    active:   'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+    draft:    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
     archived: 'bg-gray-100 text-gray-400',
-    paused:   'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-    completed:'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    paused:   'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+    completed:'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
     cancelled:'bg-gray-100 text-gray-400',
   };
   return (
@@ -190,7 +190,7 @@ function StepEditor({ step, sequenceId, isNew, onSave, onClose, leads }: StepEdi
                     >
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span className="text-sm font-semibold text-text-primary truncate">{t.name}</span>
-                        <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                        <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
                           Approved
                         </span>
                       </div>

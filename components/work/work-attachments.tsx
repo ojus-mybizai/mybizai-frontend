@@ -142,7 +142,7 @@ export function WorkAttachments({ workId, canEdit }: WorkAttachmentsProps) {
 
       {/* error banner */}
       {error && (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+        <div className="mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
           {error}
           <button
             type="button"

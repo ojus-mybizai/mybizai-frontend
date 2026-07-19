@@ -48,19 +48,19 @@ export default function FilterBar({
   const filtered = resultCount !== totalCount;
 
   return (
-    <div className="rounded-lg border border-border-color bg-card-bg overflow-hidden">
+    <div className="rounded-2xl border border-border-color bg-card-bg overflow-hidden">
       {/* Row 1 — controls. Grouped into 3 zones: primary / state filters / view */}
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 px-2.5 py-2">
         {/* ─ Primary: search + assignee */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <div className="relative">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary"><Icon.search size={13} /></span>
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary"><Icon.search size={14} /></span>
             <input
               type="text"
               value={filters.search}
               onChange={(e) => onChange({ ...filters, search: e.target.value })}
               placeholder="Search…"
-              className="pl-7 pr-2.5 h-7 text-[12px] rounded-md border border-border-color bg-bg-primary text-text-primary placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent w-44"
+              className="pl-8 pr-3 h-8 text-[13px] rounded-lg border border-border-color bg-bg-primary text-text-primary placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent w-48"
             />
           </div>
           <select
@@ -69,7 +69,7 @@ export default function FilterBar({
               const v = e.target.value;
               onChange({ ...filters, assigneeId: v === 'all' ? 'all' : v === 'unassigned' ? 'unassigned' : Number(v) });
             }}
-            className="h-7 px-2 text-[12px] rounded-md border border-border-color bg-bg-primary text-text-primary focus:outline-none focus:ring-2 focus:ring-accent max-w-[140px]"
+            className="h-8 px-2.5 text-[13px] rounded-lg border border-border-color bg-bg-primary text-text-primary focus:outline-none focus:ring-2 focus:ring-accent max-w-[140px]"
           >
             <option value="all">Anyone</option>
             <option value="unassigned">Unassigned</option>
@@ -81,13 +81,13 @@ export default function FilterBar({
         <span className="h-5 w-px bg-border-color hidden sm:block" />
 
         {/* ─ State filters: priority + stuck */}
-        <div className="flex items-center gap-1.5">
-          <div className="inline-flex items-center rounded-md border border-border-color overflow-hidden h-7">
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center rounded-lg border border-border-color overflow-hidden h-8">
             {(['all','high','medium','low'] as const).map(p => (
               <button
                 key={p}
                 onClick={() => onChange({ ...filters, priority: p })}
-                className={`px-2 h-full text-[11px] font-medium capitalize transition-quick inline-flex items-center gap-1
+                className={`px-2.5 h-full text-xs font-medium capitalize transition-quick inline-flex items-center gap-1
                   ${filters.priority === p ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
                 title={p === 'all' ? 'Any priority' : `${p} priority`}
               >
@@ -103,19 +103,19 @@ export default function FilterBar({
 
           <button
             onClick={() => onChange({ ...filters, stuckOnly: !filters.stuckOnly })}
-            className={`inline-flex items-center gap-1 h-7 px-2 text-[11px] font-medium rounded-md border transition-quick
+            className={`inline-flex items-center gap-1.5 h-8 px-2.5 text-xs font-medium rounded-lg border transition-quick
               ${filters.stuckOnly
                 ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-700'
                 : 'bg-bg-primary text-text-secondary border-border-color hover:bg-bg-secondary'}`}
             title="Show only entries past warn/SLA threshold"
           >
-            <Icon.alert size={11} /> Stuck
+            <Icon.alert size={12} /> Stuck
           </button>
 
           {activeCount > 0 && (
             <button
               onClick={() => onChange(DEFAULT_FILTERS)}
-              className="h-7 px-2 text-[11px] font-medium text-accent hover:underline"
+              className="h-8 px-2 text-xs font-medium text-accent hover:underline"
             >
               Clear ({activeCount})
             </button>
@@ -125,27 +125,27 @@ export default function FilterBar({
         <div className="flex-1" />
 
         {/* ─ View: density + select */}
-        <div className="flex items-center gap-1.5">
-          <div className="inline-flex items-center rounded-md border border-border-color overflow-hidden h-7">
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center rounded-lg border border-border-color overflow-hidden h-8">
             <button onClick={() => onDensityChange('compact')}
-              className={`p-1.5 h-full transition-quick ${density === 'compact' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
+              className={`px-2 h-full transition-quick ${density === 'compact' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
               title="Compact rows"
               aria-pressed={density === 'compact'}
             >
-              <Icon.list size={12} />
+              <Icon.list size={13} />
             </button>
             <button onClick={() => onDensityChange('standard')}
-              className={`p-1.5 h-full transition-quick ${density === 'standard' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
+              className={`px-2 h-full border-l border-border-color transition-quick ${density === 'standard' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
               title="Detailed cards"
               aria-pressed={density === 'standard'}
             >
-              <Icon.grid size={12} />
+              <Icon.grid size={13} />
             </button>
           </div>
 
           <button
             onClick={onSelectionModeToggle}
-            className={`h-7 px-2 text-[11px] font-medium rounded-md border transition-quick
+            className={`h-8 px-2.5 text-xs font-medium rounded-lg border transition-quick
               ${selectionMode ? 'bg-accent text-white border-accent' : 'bg-bg-primary text-text-secondary border-border-color hover:bg-bg-secondary'}`}
           >
             {selectionMode
@@ -157,7 +157,7 @@ export default function FilterBar({
 
       {/* Row 2 — quiet result counter strip. Only shows on filter activity or value. */}
       {(filtered || totalValue > 0) && (
-        <div className="px-3 py-1.5 border-t border-border-color bg-bg-secondary/30 text-[11px] text-text-secondary flex items-center gap-3">
+        <div className="px-3.5 py-2 border-t border-border-color bg-bg-secondary/30 text-xs text-text-secondary flex items-center gap-3">
           <span>
             Showing{' '}
             <span className="tabular-nums font-semibold text-text-primary">{resultCount}</span>

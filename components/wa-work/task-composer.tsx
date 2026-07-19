@@ -177,13 +177,13 @@ export function TaskComposer({
             New Task
           </p>
           {lockedEmployee && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold text-green-800 bg-green-50 border border-green-300 rounded-full">
               <Pin className="w-2.5 h-2.5" />
               <span className="truncate max-w-[140px]">{lockedEmployee.name}</span>
             </span>
           )}
           {lockedTemplate && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 bg-purple-50 dark:bg-purple-900/20 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-full">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold text-purple-800 bg-purple-50 dark:bg-purple-900/20 dark:text-purple-300 border border-purple-300 dark:border-purple-800 rounded-full">
               <Pin className="w-2.5 h-2.5" />
               <span className="truncate max-w-[140px]">{lockedTemplate.name}</span>
             </span>
@@ -347,7 +347,7 @@ export function TaskComposer({
             title="Template, due date & options"
             className={`p-2 rounded-lg border transition-colors ${
               advancedOpen
-                ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800 text-green-600'
+                ? 'bg-green-50 dark:bg-green-950/20 border-green-300 dark:border-green-800 text-green-600'
                 : 'border-border-color hover:bg-bg-secondary text-text-secondary'
             }`}
           >
@@ -365,7 +365,7 @@ export function TaskComposer({
       </div>
 
       {error && (
-        <div className="mx-3 mb-2.5 flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900 px-2.5 py-1.5">
+        <div className="mx-3 mb-2.5 flex items-start gap-1.5 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/20 dark:border-red-900 px-2.5 py-1.5">
           <AlertCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
           <p className="text-xs text-red-600 dark:text-red-300 flex-1">{error}</p>
           <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">

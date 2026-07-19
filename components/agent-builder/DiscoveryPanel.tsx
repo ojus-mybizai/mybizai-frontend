@@ -152,7 +152,7 @@ function DiscoveryRow({ row }: { row: ChecklistRow }) {
     <div
       className={`rounded-lg border px-3 py-2 transition ${
         row.filled
-          ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-900/10'
+          ? 'border-emerald-300 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-900/10'
           : 'border-border-color bg-bg-primary'
       }`}
     >

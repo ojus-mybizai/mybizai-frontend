@@ -73,7 +73,7 @@ export function UnknownSendersBanner({ onResolved, agents }: Props) {
   if (count === 0) return null;
 
   return (
-    <div className="border-b border-yellow-200 bg-yellow-50">
+    <div className="border-b border-yellow-300 bg-yellow-50">
       {/* Banner row */}
       <button
         onClick={handleExpand}
@@ -173,7 +173,7 @@ function SenderRow({
           </button>
           <button
             onClick={onBlock}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
           >
             <Ban className="w-3.5 h-3.5" /> Block
           </button>

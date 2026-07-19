@@ -539,6 +539,43 @@ export interface ReverseRelationResponse {
   source_field: ReverseRelationMeta | null;
 }
 
+// ── Records linked TO a built-in record (contact / work / …) ──────
+
+export interface LinkedRecordItem {
+  id: number;
+  record_key: string;
+  title: string;
+  data: Record<string, unknown>;
+  created_at: string | null;
+}
+
+export interface LinkedRecordGroup {
+  model_id: number;
+  model_name: string;
+  model_display_name: string;
+  field_display_name: string | null;
+  records: LinkedRecordItem[];
+}
+
+export interface LinkedRecordsResponse {
+  groups: LinkedRecordGroup[];
+  total: number;
+}
+
+/**
+ * Datasheet records that link TO a contact via a relation field whose target
+ * is the built-in `contacts` model. Grouped by source datasheet model.
+ * Powers the "Datasheets" section on the contact profile.
+ */
+export async function getRecordsLinkedToContact(
+  contactId: number | string,
+): Promise<LinkedRecordsResponse> {
+  return apiFetch<LinkedRecordsResponse>(
+    `/dynamic-data/linked-records/contacts/${contactId}`,
+    { method: 'GET' },
+  );
+}
+
 /**
  * Get metadata about all fields on OTHER models that point TO this model.
  * Powers the "Related Records" section headers in the detail panel.

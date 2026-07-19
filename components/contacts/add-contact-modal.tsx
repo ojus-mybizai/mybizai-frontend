@@ -402,7 +402,7 @@ export function AddContactModal({ agents, onClose, onCreated, groupName }: Props
                   Assign Agent <span className="text-red-500">*</span>
                 </label>
                 {activeAgents.length === 0 ? (
-                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
                     No active agents found. Create an agent first.
                   </p>
                 ) : (
@@ -435,7 +435,7 @@ export function AddContactModal({ agents, onClose, onCreated, groupName }: Props
 
           {/* General API error */}
           {errors.general && (
-            <div className="flex items-start gap-2 mt-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200">
+            <div className="flex items-start gap-2 mt-3 px-3 py-2 rounded-lg bg-red-50 border border-red-300">
               <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-red-600">{errors.general}</p>
             </div>

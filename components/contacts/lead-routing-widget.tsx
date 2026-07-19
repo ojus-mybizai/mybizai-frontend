@@ -30,9 +30,9 @@ const ROUTING_LABELS: Record<RoutingMode, string> = {
 };
 
 const ROUTING_COLORS: Record<RoutingMode, string> = {
-  ai:      'text-green-700 bg-green-50 border-green-200',
-  manual:  'text-amber-700 bg-amber-50 border-amber-200',
-  blocked: 'text-red-600  bg-red-50   border-red-200',
+  ai:      'text-green-800 bg-green-50 border-green-300',
+  manual:  'text-amber-800 bg-amber-50 border-amber-300',
+  blocked: 'text-red-600  bg-red-50   border-red-300',
 };
 
 function RoutingIcon({ mode }: { mode: RoutingMode }) {

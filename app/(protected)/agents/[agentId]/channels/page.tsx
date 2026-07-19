@@ -126,7 +126,7 @@ export default function ChannelsPage() {
                     disabled={!!linkedToOther}
                     className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition ${
                       on
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                         : 'bg-bg-primary border-border-color text-text-secondary hover:border-text-secondary'
                     } ${linkedToOther ? 'cursor-not-allowed' : ''}`}
                   >
@@ -138,7 +138,7 @@ export default function ChannelsPage() {
           </div>
         )}
 
-        {notice && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">{notice}</div>}
+        {notice && <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">{notice}</div>}
 
         <button
           type="button"

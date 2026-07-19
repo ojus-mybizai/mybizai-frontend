@@ -270,13 +270,13 @@ export default function EmployeesPage() {
           </div>
 
           {notice && (
-            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/30 dark:text-green-300">
+            <div className="rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
               {notice}
             </div>
           )}
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+            <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
               {error}
             </div>
           )}
@@ -348,7 +348,7 @@ export default function EmployeesPage() {
                           Active: {stats.active}
                         </span>
                         {stats.inactive > 0 && (
-                          <span className="rounded-full bg-gray-100 px-2.5 py-0.5 font-medium text-gray-600 dark:bg-gray-700/40 dark:text-gray-400">
+                          <span className="rounded-full bg-gray-100 px-2.5 py-0.5 font-medium text-gray-700 dark:bg-gray-700/40 dark:text-gray-400">
                             Inactive: {stats.inactive}
                           </span>
                         )}
@@ -548,7 +548,7 @@ export default function EmployeesPage() {
                               : invite.status === 'accepted'
                                 ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
                                 : invite.status === 'revoked'
-                                  ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                                  ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
                                   : 'bg-gray-100 text-gray-700 dark:bg-gray-700/40 dark:text-gray-300'
                               }`}>
                               {invite.status}
@@ -571,7 +571,7 @@ export default function EmployeesPage() {
                                   type="button"
                                   disabled={inviteActionId === invite.id}
                                   onClick={() => void handleRevokeInvite(invite.id)}
-                                  className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 disabled:opacity-60"
+                                  className="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 disabled:opacity-60"
                                 >
                                   Revoke
                                 </button>
@@ -630,7 +630,7 @@ export default function EmployeesPage() {
                   </button>
                 </div>
                 {addError && (
-                  <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                  <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
                     {addError}
                   </div>
                 )}

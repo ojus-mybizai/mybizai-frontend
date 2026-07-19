@@ -31,18 +31,18 @@ function fmtTime(iso: string | null | undefined) {
 
 const WORK_STATUS_COLORS: Record<string, string> = {
   draft:       'bg-bg-secondary text-text-secondary',
-  dispatched:  'bg-blue-100 text-blue-700',
-  in_progress: 'bg-yellow-100 text-yellow-700',
-  completed:   'bg-green-100 text-green-700',
+  dispatched:  'bg-blue-100 text-blue-800',
+  in_progress: 'bg-yellow-100 text-yellow-800',
+  completed:   'bg-green-100 text-green-800',
   cancelled:   'bg-red-100 text-red-600',
 };
 
 const ASSIGN_STATUS: Record<string, { icon: string; label: string; cls: string }> = {
-  awaiting:    { icon: '⏳', label: 'Awaiting',    cls: 'text-orange-700 bg-orange-50 border-orange-200' },
-  done:        { icon: '✅', label: 'Done',         cls: 'text-green-700  bg-green-50  border-green-200'  },
-  not_done:    { icon: '❌', label: 'Not Done',     cls: 'text-red-600   bg-red-50    border-red-200'     },
-  in_progress: { icon: '▶', label: 'In Progress',  cls: 'text-blue-700  bg-blue-50   border-blue-200'    },
-  failed:      { icon: '⚠', label: 'Failed',       cls: 'text-red-700   bg-red-50    border-red-200'     },
+  awaiting:    { icon: '⏳', label: 'Awaiting',    cls: 'text-orange-800 bg-orange-50 border-orange-300' },
+  done:        { icon: '✅', label: 'Done',         cls: 'text-green-800  bg-green-50  border-green-300'  },
+  not_done:    { icon: '❌', label: 'Not Done',     cls: 'text-red-600   bg-red-50    border-red-300'     },
+  in_progress: { icon: '▶', label: 'In Progress',  cls: 'text-blue-800  bg-blue-50   border-blue-300'    },
+  failed:      { icon: '⚠', label: 'Failed',       cls: 'text-red-800   bg-red-50    border-red-300'     },
   pending:     { icon: '●', label: 'Pending',      cls: 'text-text-secondary bg-bg-secondary border-border-color' },
 };
 

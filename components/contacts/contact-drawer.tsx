@@ -129,9 +129,9 @@ const ROUTING_LABELS: Record<RoutingMode, string> = {
   ai: 'AI Agent', manual: 'Manual', blocked: 'Blocked',
 };
 const ROUTING_COLORS: Record<RoutingMode, string> = {
-  ai:      'text-green-700 bg-green-50 border-green-200',
-  manual:  'text-amber-700 bg-amber-50 border-amber-200',
-  blocked: 'text-red-600  bg-red-50   border-red-200',
+  ai:      'text-green-800 bg-green-50 border-green-300',
+  manual:  'text-amber-800 bg-amber-50 border-amber-300',
+  blocked: 'text-red-600  bg-red-50   border-red-300',
 };
 
 function RoutingIcon({ mode }: { mode: RoutingMode }) {
@@ -615,11 +615,11 @@ export function ContactDrawer({ contact, agents, onClose, onContactUpdated }: Pr
                 <div className="space-y-2">
                   {followUps.map(fu => {
                     const statusColors: Record<string, string> = {
-                      scheduled:      'text-blue-600 bg-blue-50 border-blue-200',
-                      pending_manual: 'text-amber-700 bg-amber-50 border-amber-200',
-                      sent:           'text-green-700 bg-green-50 border-green-200',
+                      scheduled:      'text-blue-600 bg-blue-50 border-blue-300',
+                      pending_manual: 'text-amber-800 bg-amber-50 border-amber-300',
+                      sent:           'text-green-800 bg-green-50 border-green-300',
                       cancelled:      'text-secondary-text bg-bg-secondary border-border-color',
-                      failed:         'text-red-600 bg-red-50 border-red-200',
+                      failed:         'text-red-600 bg-red-50 border-red-300',
                     };
                     const color = statusColors[fu.status] ?? statusColors.cancelled;
                     return (

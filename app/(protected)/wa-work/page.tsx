@@ -42,9 +42,9 @@ const STATUS_TABS: { value: WaWorkStatus | ''; label: string }[] = [
 
 const WORK_STATUS_COLORS: Record<string, string> = {
   draft: 'bg-bg-secondary text-text-secondary',
-  dispatched: 'bg-blue-100 text-blue-700',
-  in_progress: 'bg-yellow-100 text-yellow-700',
-  completed: 'bg-green-100 text-green-700',
+  dispatched: 'bg-blue-100 text-blue-800',
+  in_progress: 'bg-yellow-100 text-yellow-800',
+  completed: 'bg-green-100 text-green-800',
   cancelled: 'bg-red-100 text-red-600',
 };
 
@@ -101,11 +101,11 @@ function AssignmentCard({ a, onStatus, onResend }: AssignmentCardProps) {
     a.status === 'pending' && a.wa_message_id && !a.responded_at ? 'awaiting' : a.status;
 
   const statusConfig: Record<string, { label: string; cls: string }> = {
-    awaiting:    { label: '⏳ Awaiting',   cls: 'bg-orange-100 text-orange-700' },
-    done:        { label: '✅ Done',        cls: 'bg-green-100 text-green-700' },
+    awaiting:    { label: '⏳ Awaiting',   cls: 'bg-orange-100 text-orange-800' },
+    done:        { label: '✅ Done',        cls: 'bg-green-100 text-green-800' },
     not_done:    { label: '❌ Not Done',    cls: 'bg-red-100 text-red-600' },
-    in_progress: { label: '▶ In Progress', cls: 'bg-blue-100 text-blue-700' },
-    failed:      { label: '⚠ Failed',      cls: 'bg-red-100 text-red-700' },
+    in_progress: { label: '▶ In Progress', cls: 'bg-blue-100 text-blue-800' },
+    failed:      { label: '⚠ Failed',      cls: 'bg-red-100 text-red-800' },
     pending:     { label: '● Pending',     cls: 'bg-bg-secondary text-text-secondary' },
   };
   const cfg = statusConfig[effectiveStatus] || statusConfig.pending;
@@ -177,8 +177,8 @@ function AssignmentCard({ a, onStatus, onResend }: AssignmentCardProps) {
                 <div key={leadId} className="flex items-center justify-between text-xs">
                   <span className="text-gray-600 font-mono">{leadId}</span>
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${
-                    info.status === 'done' ? 'bg-green-100 text-green-700' :
-                    info.status === 'callback' ? 'bg-blue-100 text-blue-700' :
+                    info.status === 'done' ? 'bg-green-100 text-green-800' :
+                    info.status === 'callback' ? 'bg-blue-100 text-blue-800' :
                     'bg-bg-secondary text-text-secondary'
                   }`}>
                     {info.status}
@@ -197,13 +197,13 @@ function AssignmentCard({ a, onStatus, onResend }: AssignmentCardProps) {
             <>
               <button
                 onClick={() => onStatus(a.id, 'done')}
-                className="flex-1 text-xs py-1.5 bg-green-50 text-green-700 rounded-lg border border-green-200 hover:bg-green-100 font-medium transition-colors"
+                className="flex-1 text-xs py-1.5 bg-green-50 text-green-800 rounded-lg border border-green-300 hover:bg-green-100 font-medium transition-colors"
               >
                 ✓ Done
               </button>
               <button
                 onClick={() => onStatus(a.id, 'not_done')}
-                className="flex-1 text-xs py-1.5 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100 font-medium transition-colors"
+                className="flex-1 text-xs py-1.5 bg-red-50 text-red-600 rounded-lg border border-red-300 hover:bg-red-100 font-medium transition-colors"
               >
                 ✗ Not Done
               </button>
@@ -212,7 +212,7 @@ function AssignmentCard({ a, onStatus, onResend }: AssignmentCardProps) {
           {(a.status === 'failed' || a.wa_failed_reason) && (
             <button
               onClick={() => onResend(a.id)}
-              className="flex items-center gap-1 text-xs py-1.5 px-3 bg-blue-50 text-blue-700 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
+              className="flex items-center gap-1 text-xs py-1.5 px-3 bg-blue-50 text-blue-800 rounded-lg border border-blue-300 hover:bg-blue-100 transition-colors"
             >
               <RefreshCw className="w-3 h-3" /> Resend
             </button>
@@ -416,7 +416,7 @@ export default function WaWorkPage() {
                   <span
                     className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                       isActive
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
                         : 'bg-bg-secondary text-text-secondary'
                     }`}
                   >
@@ -688,7 +688,7 @@ export default function WaWorkPage() {
                       {selectedWork.status === 'dispatched' ? '🟢 Live' : selectedWork.status}
                     </span>
                     {selectedWork.template_name && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-100">
                         📋 {selectedWork.template_name}
                       </span>
                     )}

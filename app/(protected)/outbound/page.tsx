@@ -40,11 +40,11 @@ const CATEGORY_META: Record<
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
-  scheduled: 'bg-yellow-100 text-yellow-700',
-  sending: 'bg-blue-100 text-blue-700',
-  completed: 'bg-green-100 text-green-700',
-  cancelled: 'bg-red-100 text-red-700',
-  failed: 'bg-red-100 text-red-700',
+  scheduled: 'bg-yellow-100 text-yellow-800',
+  sending: 'bg-blue-100 text-blue-800',
+  completed: 'bg-green-100 text-green-800',
+  cancelled: 'bg-red-100 text-red-800',
+  failed: 'bg-red-100 text-red-800',
 };
 
 function formatMoney(value: string | number, currency = 'INR'): string {
@@ -161,7 +161,7 @@ export default function OutboundHubPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+          <div className="bg-red-50 border border-red-300 text-red-800 px-4 py-3 rounded-md">
             {error}
           </div>
         )}
@@ -290,7 +290,7 @@ export default function OutboundHubPage() {
               ) : metaUsage.error ? (
                 <div className="space-y-3">
                   {/* Main error */}
-                  <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 rounded-md px-3 py-2">
+                  <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 rounded-md px-3 py-2">
                     <span className="shrink-0">⚠️</span>
                     <span>{metaUsage.error}</span>
                   </div>
@@ -298,7 +298,7 @@ export default function OutboundHubPage() {
                   {/* Debug info */}
                   {metaUsage.debug && (
                     <details className="text-xs border border-gray-200 dark:border-neutral-700 rounded-md overflow-hidden">
-                      <summary className="px-3 py-2 cursor-pointer bg-gray-50 dark:bg-neutral-800 font-medium text-gray-600 dark:text-gray-300 select-none">
+                      <summary className="px-3 py-2 cursor-pointer bg-gray-50 dark:bg-neutral-800 font-medium text-gray-700 dark:text-gray-300 select-none">
                         Debug info (expand to share with support)
                       </summary>
                       <div className="p-3 space-y-2 font-mono text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-900">
@@ -333,7 +333,7 @@ export default function OutboundHubPage() {
                             </div>
                             <div className="text-gray-500 break-all">{call.exact_url}</div>
                             {!!call.meta_error && (
-                              <pre className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded p-2 whitespace-pre-wrap break-all">
+                              <pre className="bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-400 rounded p-2 whitespace-pre-wrap break-all">
                                 {typeof call.meta_error === 'string'
                                   ? call.meta_error
                                   : JSON.stringify(call.meta_error, null, 2)}
@@ -460,7 +460,7 @@ export default function OutboundHubPage() {
             </div>
 
             {/* ── Meta Billing Info ───────────────────────────────── */}
-            <div className="border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 rounded-lg p-5">
+            <div className="border border-blue-300 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 rounded-lg p-5">
               {/* Header row */}
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-2">
@@ -486,7 +486,7 @@ export default function OutboundHubPage() {
                     href="https://business.facebook.com/wa/manage/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs font-medium px-3 py-1.5 rounded-md border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-center whitespace-nowrap"
+                    className="text-xs font-medium px-3 py-1.5 rounded-md border border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-center whitespace-nowrap"
                   >
                     WhatsApp Manager →
                   </a>

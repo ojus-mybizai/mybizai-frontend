@@ -7,6 +7,7 @@ import { listAttachments } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { CardViewConfig } from '@/features/data-sheet/state/view-state';
 import { FieldLabelValue } from '@/components/data-sheet/field-display';
+import { valueColor } from '@/components/data-sheet/value-colors';
 
 type RecordItem = QueryResponse['items'][number];
 
@@ -155,8 +156,10 @@ export function CardView({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-border-color bg-card-bg px-6 py-10 text-center text-sm text-text-secondary">
-        No records yet. Click the button above to add your first entry.
+      <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border-color bg-card-bg/50 py-14 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-bg-secondary text-xl">🗂️</div>
+        <p className="text-sm font-medium text-text-primary">No records yet</p>
+        <p className="max-w-xs text-xs text-text-secondary">Click the button above to add your first entry.</p>
       </div>
     );
   }
@@ -169,24 +172,27 @@ export function CardView({
         const isSelected = selectedIds.has(recordId);
         const titleValue = titleField ? data[titleField.name] : null;
         const title = titleValue ? String(titleValue) : String(row.record_key ?? row.id);
+        const accent = valueColor(null, title);
 
         return (
           <div
             key={recordId}
-            className={`group relative flex flex-col overflow-hidden rounded-xl border bg-card-bg shadow-sm transition-all hover:shadow-md ${
+            className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-card-bg shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
               isSelected
                 ? 'border-accent ring-2 ring-accent/20'
                 : 'border-border-color hover:border-accent/40'
             }`}
           >
-            {/* Cover image carousel */}
-            {coverImageField && (
+            {/* Cover image carousel, or a coloured identity strip when there's no image */}
+            {coverImageField ? (
               <div
                 onClick={() => onViewDetail({ id: recordId, data, recordKey: String(row.record_key ?? row.id) })}
                 className="cursor-pointer"
               >
                 <CardCover attachments={attachmentsByRecord[recordId] ?? []} />
               </div>
+            ) : (
+              <div className={`h-1.5 w-full ${accent.dot}`} aria-hidden />
             )}
 
             {/* Header */}
@@ -195,7 +201,7 @@ export function CardView({
                 type="checkbox"
                 checked={isSelected}
                 onChange={() => onToggleSelect(recordId)}
-                className="mt-1 shrink-0"
+                className="mt-1 shrink-0 accent-accent"
                 aria-label={`Select ${title}`}
               />
               <div className="min-w-0 flex-1">

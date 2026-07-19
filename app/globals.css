@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Drive Tailwind's `dark:` variant from the `.dark` class (toggled by
+   ThemeController / the layout boot script) instead of Tailwind v4's default
+   `@media (prefers-color-scheme: dark)`. Without this, `dark:` utilities keyed
+   off the OS setting while the app's own theme keyed off the `.dark` class — so
+   a dark-OS user viewing the LIGHT app got dark pill styling on a light page
+   (washed fills, invisible text), and vice-versa. This aligns both. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   /* ── Light theme ─────────────────────────────────────────────────────────── */
   --bg-primary:     #f8fafc;   /* slate-50  — page background                  */
@@ -76,6 +84,43 @@ body {
 .text-accent        { color: var(--accent); }
 .border-accent      { border-color: var(--accent); }
 .ring-accent        { --tw-ring-color: var(--accent); }
+
+/* ── Motion utilities ─────────────────────────────────────────────────────────
+   These classes are referenced pervasively across the Processes module (and a
+   few other surfaces) but were never defined — in Tailwind v4 an unknown
+   utility emits NO CSS, so every hover / active / drag state change was
+   snapping instantly with zero easing (the "sharp / laggy" feel). We transition
+   a curated set of properties (never `all`) to keep interactions smooth without
+   triggering layout-thrash on large containers. */
+.transition-quick {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform, fill, stroke;
+  transition-duration: 120ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+.transition-card {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform, width;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+.transition-drawer {
+  transition-property: transform, opacity, box-shadow;
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Minimal enter-animation shims for `animate-in fade-in` / `slide-in-from-*`
+   usages (the tailwindcss-animate plugin is not installed here). */
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes ui-slide-in-right {
+  from { opacity: 0; transform: translateX(1rem); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-in            { animation-duration: 200ms; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); animation-fill-mode: both; }
+.fade-in               { animation-name: ui-fade-in; }
+.slide-in-from-right-4 { animation-name: ui-slide-in-right; }
 
 /* ── Page transition ──────────────────────────────────────────────────────── */
 @keyframes fade-in-up {

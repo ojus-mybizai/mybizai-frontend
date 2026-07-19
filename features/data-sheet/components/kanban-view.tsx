@@ -18,27 +18,13 @@ import type { DynamicField } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { KanbanViewConfig } from '@/features/data-sheet/state/view-state';
 import { FieldDisplay } from '@/components/data-sheet/field-display';
+import { valueColor, HUES, type ValueColor } from '@/components/data-sheet/value-colors';
 
 type RecordItem = QueryResponse['items'][number];
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-const COLUMN_COLORS = [
-  'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-  'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
-  'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
-  'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-  'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
-];
-
-function getColumnColor(idx: number): string {
-  return COLUMN_COLORS[idx % COLUMN_COLORS.length];
-}
 
 function isEmptyValue(v: unknown): boolean {
   return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
@@ -53,13 +39,13 @@ const UNCATEGORIZED = '__uncategorized__';
 function KanbanColumn({
   columnId,
   label,
-  colorClass,
+  color,
   children,
   count,
 }: {
   columnId: string;
   label: string;
-  colorClass: string;
+  color: ValueColor;
   children: React.ReactNode;
   count: number;
 }) {
@@ -68,22 +54,33 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`min-w-[250px] flex-1 rounded-xl bg-bg-secondary p-3 transition-colors
-        max-h-[calc(100vh-280px)] overflow-y-auto
-        ${isOver ? 'ring-2 ring-accent/50' : ''}`}
+      className={`flex min-w-[264px] max-w-[300px] flex-1 flex-col overflow-hidden rounded-2xl border bg-bg-secondary/40
+        max-h-[calc(100vh-280px)] transition-colors
+        ${isOver ? 'border-accent ring-2 ring-accent/30 bg-accent/[0.04]' : 'border-border-color'}`}
     >
-      <div className="mb-3 flex items-center gap-2">
-        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${colorClass}`}>
-          {label}
+      {/* Coloured identity rail */}
+      <div className={`h-1 w-full ${color.dot}`} />
+
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 pb-2 pt-2.5">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${color.dot}`} aria-hidden />
+        <span className={`inline-flex min-w-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${color.chip}`}>
+          <span className="truncate">{label}</span>
         </span>
-        <span className="rounded-full bg-bg-primary px-2 py-0.5 text-xs font-medium text-text-secondary">
+        <span className="ml-auto rounded-full bg-bg-primary px-2 py-0.5 text-[11px] font-semibold tabular-nums text-text-secondary">
           {count}
         </span>
       </div>
-      <div className="flex flex-col gap-2">{children}</div>
-      {count === 0 && (
-        <p className="py-8 text-center text-xs text-text-secondary">No items</p>
-      )}
+
+      {/* Cards lane */}
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-3">
+        {children}
+        {count === 0 && (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-color/70 py-8 text-center">
+            <p className="text-xs text-text-secondary/70">Drop records here</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -96,12 +93,14 @@ function KanbanCard({
   record,
   cardFieldNames,
   fields,
+  accent,
   onClick,
   overlay = false,
 }: {
   record: RecordItem;
   cardFieldNames: string[];
   fields: DynamicField[];
+  accent: ValueColor;
   onClick: (row: RecordItem) => void;
   overlay?: boolean;
 }) {
@@ -147,14 +146,18 @@ function KanbanCard({
           onClick(record);
         }
       }}
-      className={`rounded-lg border border-border-color bg-card-bg p-3 shadow-sm transition-shadow hover:shadow-md
+      className={`group relative overflow-hidden rounded-xl border border-border-color bg-card-bg p-3 pl-3.5 shadow-sm transition-all
+        hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md
         ${isDragging && !overlay ? 'opacity-30' : ''}
         ${overlay ? 'rotate-2 shadow-lg' : ''}
         cursor-grab active:cursor-grabbing`}
     >
-      <p className="truncate text-sm font-medium text-text-primary">{title}</p>
+      {/* Left accent tied to the column hue */}
+      <span className={`absolute inset-y-0 left-0 w-1 ${accent.dot}`} aria-hidden />
+
+      <p className="truncate text-sm font-semibold text-text-primary group-hover:text-accent">{title}</p>
       {details.length > 0 && (
-        <div className="mt-1.5 space-y-1">
+        <div className="mt-2 space-y-1">
           {details.slice(0, 3).map((d) => (
             <div key={d.name} className="flex min-w-0 items-center gap-1.5 text-xs">
               <span className="shrink-0 text-text-secondary/70">{d.field.display_name}</span>
@@ -165,7 +168,7 @@ function KanbanCard({
           ))}
         </div>
       )}
-      <p className="mt-1.5 text-[10px] text-text-secondary/60">{String(record.record_key ?? '')}</p>
+      <p className="mt-2 truncate text-[10px] font-medium text-text-secondary/60">{String(record.record_key ?? '')}</p>
     </div>
   );
 }
@@ -227,6 +230,12 @@ export default function KanbanView({
       .slice(0, 4)
       .map((f) => f.name);
   }, [config.cardFields, fields]);
+
+  // Stable colour per column value (shared with every other view).
+  const colorFor = useCallback(
+    (col: string): ValueColor => (col === UNCATEGORIZED ? HUES.slate : valueColor(groupByField ?? null, col)),
+    [groupByField],
+  );
 
   // Bucket items by groupByField
   const buckets = useMemo(() => {
@@ -290,11 +299,13 @@ export default function KanbanView({
   /* ── No groupBy field selected ── */
   if (!config.groupByField || !groupByField) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-4">
-        <Columns3 className="h-12 w-12 text-text-secondary" />
+      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border-color bg-card-bg/50 py-16">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-bg-secondary text-text-secondary">
+          <Columns3 className="h-6 w-6" />
+        </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-text-primary mb-1">Select a dropdown field</p>
-          <p className="text-xs text-text-secondary mb-4">Choose which dropdown field to use for organizing records into columns</p>
+          <p className="mb-1 text-sm font-semibold text-text-primary">Group into columns</p>
+          <p className="mb-4 text-xs text-text-secondary">Pick a dropdown field to organise records into a board</p>
         </div>
         {enumFields.length === 0 ? (
           <p className="text-xs text-text-secondary">No dropdown fields found in this datasheet</p>
@@ -322,9 +333,9 @@ export default function KanbanView({
     <div className="flex flex-col gap-3">
       {/* Group-by field selector */}
       <div className="flex items-center gap-2">
-        <span className="text-xs text-text-secondary">Group by:</span>
+        <span className="text-xs font-medium text-text-secondary">Group by</span>
         <select
-          className="rounded-md border border-border-color bg-transparent px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+          className="rounded-lg border border-border-color bg-card-bg px-2.5 py-1 text-xs font-medium text-text-primary transition-colors hover:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent"
           value={config.groupByField}
           onChange={(e) => onConfigChange({ ...config, groupByField: e.target.value || null })}
         >
@@ -341,26 +352,30 @@ export default function KanbanView({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {allColumns.map((col, idx) => (
-            <KanbanColumn
-              key={col}
-              columnId={col}
-              label={col === UNCATEGORIZED ? 'Uncategorized' : col}
-              colorClass={col === UNCATEGORIZED ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' : getColumnColor(idx)}
-              count={buckets[col]?.length ?? 0}
-            >
-              {(buckets[col] ?? []).map((record) => (
-                <KanbanCard
-                  key={String(record.id)}
-                  record={record}
-                  cardFieldNames={cardFieldNames}
-                  fields={fields}
-                  onClick={handleRecordClick}
-                />
-              ))}
-            </KanbanColumn>
-          ))}
+        <div className="flex items-start gap-3 overflow-x-auto pb-2">
+          {allColumns.map((col) => {
+            const color = colorFor(col);
+            return (
+              <KanbanColumn
+                key={col}
+                columnId={col}
+                label={col === UNCATEGORIZED ? 'Uncategorized' : col}
+                color={color}
+                count={buckets[col]?.length ?? 0}
+              >
+                {(buckets[col] ?? []).map((record) => (
+                  <KanbanCard
+                    key={String(record.id)}
+                    record={record}
+                    cardFieldNames={cardFieldNames}
+                    fields={fields}
+                    accent={color}
+                    onClick={handleRecordClick}
+                  />
+                ))}
+              </KanbanColumn>
+            );
+          })}
         </div>
 
         <DragOverlay>
@@ -369,6 +384,9 @@ export default function KanbanView({
               record={activeRecord}
               cardFieldNames={cardFieldNames}
               fields={fields}
+              accent={colorFor(
+                String(((activeRecord.data ?? {}) as Record<string, unknown>)[config.groupByField] ?? UNCATEGORIZED) || UNCATEGORIZED,
+              )}
               onClick={() => {}}
               overlay
             />

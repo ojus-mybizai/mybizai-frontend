@@ -211,7 +211,7 @@ export function ImportPage() {
         </p>
 
         {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+          <div className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
             {error}
           </div>
         )}
@@ -297,7 +297,7 @@ export function ImportPage() {
               <p>Total: {(job.stats as Record<string, number>).total ?? 0}</p>
             </div>
             {((job.error_report as Record<string, unknown[]>).rows?.length ?? 0) > 0 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/30">
                 <p className="font-medium text-amber-800 dark:text-amber-400">Some rows failed</p>
                 <pre className="mt-2 max-h-40 overflow-auto text-xs">
                   {JSON.stringify((job.error_report as Record<string, unknown>).rows, null, 2)}

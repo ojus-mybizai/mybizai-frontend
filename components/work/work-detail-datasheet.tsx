@@ -466,7 +466,7 @@ function CreateRecordsView({
     if (field.field_type === 'boolean') {
       return value === true || value === 'true'
         ? <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">Yes</span>
-        : <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">No</span>;
+        : <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-400">No</span>;
     }
     if (field.field_type === 'enum') {
       return <span className="inline-flex rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-accent">{String(value)}</span>;
@@ -594,7 +594,7 @@ function CreateRecordsView({
 
       {/* Start work callout */}
       {work.status === 'pending' && canAct && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/10">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/10">
           <div className="flex items-center gap-2.5">
             <span className="text-lg" aria-hidden>&#9203;</span>
             <div>
@@ -641,7 +641,7 @@ function CreateRecordsView({
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+        <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
           {error}
         </div>
       )}
@@ -661,7 +661,7 @@ function CreateRecordsView({
       )}
 
       {isComplete && work.status !== 'completed' && canAct && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center dark:border-emerald-800/40 dark:bg-emerald-900/10">
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-center dark:border-emerald-800/40 dark:bg-emerald-900/10">
           <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
             All {targetCount} records have been created!
           </p>
@@ -999,7 +999,7 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, for
 
       {/* "Start work first" callout */}
       {work.status === 'pending' && canAct && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/10">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/10">
           <div className="flex items-center gap-2.5">
             <span className="text-lg" aria-hidden>⏳</span>
             <div>
@@ -1086,7 +1086,7 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, for
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+        <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
           {error}
         </div>
       )}
@@ -1176,7 +1176,7 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, for
                               rec.status === 'done'
                                 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                                 : rec.status === 'skipped'
-                                  ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                  ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                                   : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
                             }`}
                           >
@@ -1191,7 +1191,7 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, for
                                 onClick={() => openFormModal(rec, false)}
                                 className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
                                   hasFilledForm
-                                    ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
+                                    ? 'border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
                                     : 'border border-border-color bg-bg-primary text-text-secondary hover:border-accent hover:text-text-primary'
                                 }`}
                               >
@@ -1267,7 +1267,7 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, for
                   key={rec.dynamic_record_id}
                   className={`overflow-hidden rounded-xl border p-4 transition-colors ${
                     rec.status === 'done'
-                      ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-800/40 dark:bg-emerald-900/10'
+                      ? 'border-emerald-300 bg-emerald-50/40 dark:border-emerald-800/40 dark:bg-emerald-900/10'
                       : 'border-border-color bg-card-bg'
                   }`}
                 >
@@ -1280,7 +1280,7 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, for
                             rec.status === 'done'
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                               : rec.status === 'skipped'
-                                ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                                 : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
                           }`}
                         >
@@ -1334,7 +1334,7 @@ export default function WorkDetailDatasheet({ work, onWorkUpdated, uiSchema, for
                             onClick={() => openFormModal(rec, false)}
                             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                               hasFilledForm
-                                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
+                                ? 'border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
                                 : 'border border-border-color bg-bg-primary text-text-secondary hover:border-accent'
                             }`}
                           >

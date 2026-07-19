@@ -86,7 +86,7 @@ export function FileImportAudience({ onImported }: Props) {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
+        <div className="bg-red-50 border border-red-300 text-red-800 px-3 py-2 rounded-md text-sm">
           {error}
         </div>
       )}
@@ -213,7 +213,7 @@ export function FileImportAudience({ onImported }: Props) {
       {/* ── STEP 4: Done ───────────────────────────────────────── */}
       {step === 'done' && result && (
         <div className="space-y-3">
-          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-4">
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-800 rounded-md p-4">
             <div className="text-green-800 dark:text-green-200 font-medium">
               ✓ {result.imported} lead{result.imported !== 1 ? 's' : ''} imported and selected as audience
             </div>

@@ -70,16 +70,36 @@ export interface CostEstimate {
   has_sufficient_balance: boolean;
 }
 
+// ── Custom-field filter op (T2.2) ────────────────────────────────────────
+export type CustomFieldOp = 'eq' | 'contains' | 'in' | 'is_set' | 'gt' | 'lt';
+export interface CustomFieldFilter {
+  op: CustomFieldOp;
+  value?: string | number | boolean | string[] | null;
+  type?: string;                        // field_type hint (number | date | …)
+}
+
 export interface AudienceFilter {
   // ── Primary filters (applied by backend _apply_contact_filter) ───────────
   group_ids?: number[];                 // ContactGroup IDs — contacts in ANY of these
   tag_ids?: number[];                   // ContactTagDef IDs — contacts with ANY of these
   source_channels?: string[];           // contact.source: whatsapp / instagram / manual / …
   priority?: string[];                  // hot | high | medium | low
-  last_messaged_within_days?: number;   // updated_at >= now - N days
-  not_messaged_within_days?: number;    // updated_at < now - N days
+  last_messaged_within_days?: number;   // had a conversation message within the last N days
+  not_messaged_within_days?: number;    // no conversation message for N+ days (or never)
   created_after?: string;               // ISO date "YYYY-MM-DD"
   created_before?: string;              // ISO date "YYYY-MM-DD"
+
+  // ── Tier 2 dimensions ─────────────────────────────────────────────────
+  pipeline_stage_ids?: number[];        // ProcessStage IDs — contacts at ANY of these
+  exclude_pipeline_stage_ids?: number[];// contacts NOT at any of these stages
+  assigned_to_ids?: number[];           // platform User IDs (owner)
+  assigned_wa_employee_ids?: number[];  // WaEmployee IDs (owner)
+  company_contains?: string;            // Contact.company ILIKE %substr%
+  ad_platform?: string;                 // e.g. "meta"
+  ad_campaign_names?: string[];         // Contact.meta_campaign_name values
+  has_email?: boolean;                  // only contacts with a non-empty email
+  custom_field_filters?: Record<string, CustomFieldFilter>;  // keyed by field def id
+  exclude_contact_ids?: number[];       // interactive recipient-list trim (T2.2)
 
   // ── Backward-compat only (never shown in UI, silently ignored by backend) ─
   contact_type_ids?: number[];          // removed — contact types no longer exist
@@ -98,10 +118,38 @@ export interface SourceOption {
   value: string;
   label: string;
 }
+export interface StageOption {
+  id: number;
+  name: string;
+  color: string;
+  process_id: number;
+  process_name: string;
+}
+export interface OwnerOption {
+  id: number;
+  name: string;
+  email?: string;
+}
+export interface WaEmployeeOption {
+  id: number;
+  name: string;
+}
+export interface CustomFieldOption {
+  id: number;
+  name: string;
+  field_type: string;                   // text | number | date | boolean | select | multi_select | …
+  options: string[];                    // for select / multi_select
+  group_id?: number | null;
+}
 export interface FilterOptions {
   groups: FilterPickItem[];             // primary organisation unit
   tags: FilterPickItem[];               // includes group_id for scope display
   sources: SourceOption[];
+  stages?: StageOption[];               // pipeline stages (T2)
+  owners?: OwnerOption[];               // assigned platform users (T2)
+  wa_employees?: WaEmployeeOption[];    // assigned WhatsApp employees (T2)
+  ad_campaigns?: SourceOption[];        // distinct Meta campaign names (T2)
+  custom_fields?: CustomFieldOption[];  // ContactFieldDef picklist (T2)
 }
 
 export interface AudiencePreview {
@@ -249,6 +297,37 @@ export async function previewAudience(
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// ── Interactive recipient preview (T2.2) ────────────────────────────────
+export interface RecipientPreviewContact {
+  id: number | null;
+  name: string | null;
+  phone: string | null;
+  source: string | null;
+  stage: string | null;
+  owner: string | null;
+  tags: string[];
+}
+export interface RecipientPreview {
+  contacts: RecipientPreviewContact[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export async function previewAudienceContacts(
+  payload: AudiencePreviewRequest,
+  params?: { page?: number; per_page?: number },
+): Promise<RecipientPreview> {
+  const search = new URLSearchParams();
+  if (params?.page !== undefined) search.set('page', String(params.page));
+  if (params?.per_page !== undefined) search.set('per_page', String(params.per_page));
+  const q = search.toString();
+  return apiFetch<RecipientPreview>(
+    `/campaigns/preview-audience/contacts${q ? `?${q}` : ''}`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
 }
 
 export interface CreateCampaignPayload {

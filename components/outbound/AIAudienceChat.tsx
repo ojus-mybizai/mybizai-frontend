@@ -137,14 +137,14 @@ export function AIAudienceChat({ onCommit }: Props) {
 
       {/* Committed banner */}
       {committedName && (
-        <div className="px-4 py-2 bg-green-50 dark:bg-green-900/20 border-t border-green-200 dark:border-green-800 text-sm text-green-800 dark:text-green-200">
+        <div className="px-4 py-2 bg-green-50 dark:bg-green-900/20 border-t border-green-300 dark:border-green-800 text-sm text-green-800 dark:text-green-200">
           ✓ Audience ready: <strong>{committedName}</strong>
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-sm text-red-700">
+        <div className="px-4 py-2 bg-red-50 border-t border-red-300 text-sm text-red-800">
           {error}
         </div>
       )}

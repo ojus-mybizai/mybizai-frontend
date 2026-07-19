@@ -5,6 +5,7 @@ import type { DynamicField } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { ListViewConfig } from '@/features/data-sheet/state/view-state';
 import { FieldDisplay } from '@/components/data-sheet/field-display';
+import { valueColor } from '@/components/data-sheet/value-colors';
 
 type RecordItem = QueryResponse['items'][number];
 
@@ -49,38 +50,41 @@ export function ListView({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-border-color bg-card-bg px-6 py-10 text-center text-sm text-text-secondary">
-        No records yet. Click the button above to add your first entry.
+      <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border-color bg-card-bg/50 py-14 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-bg-secondary text-xl">📄</div>
+        <p className="text-sm font-medium text-text-primary">No records yet</p>
+        <p className="max-w-xs text-xs text-text-secondary">Click the button above to add your first entry.</p>
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border-color bg-card-bg shadow-sm">
+    <div className="overflow-hidden rounded-2xl border border-border-color bg-card-bg shadow-sm">
       {items.map((row, idx) => {
         const recordId = Number(row.id);
         const data = (row.data ?? row.normalized_data ?? {}) as Record<string, unknown>;
         const isSelected = selectedIds.has(recordId);
         const titleValue = titleField ? data[titleField.name] : null;
         const title = titleValue ? String(titleValue) : String(row.record_key ?? row.id);
+        const avatar = valueColor(null, title);
 
         return (
           <div
             key={recordId}
-            className={`group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-secondary/60 ${
+            className={`group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-secondary/50 ${
               idx !== 0 ? 'border-t border-border-color' : ''
-            } ${isSelected ? 'bg-accent/5' : ''}`}
+            } ${isSelected ? 'bg-accent/[0.06]' : ''}`}
           >
             <input
               type="checkbox"
               checked={isSelected}
               onChange={() => onToggleSelect(recordId)}
-              className="shrink-0"
+              className="shrink-0 accent-accent"
               aria-label={`Select ${title}`}
             />
 
-            {/* Avatar / initial */}
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-sm font-bold text-accent">
+            {/* Avatar / initial — deterministic colour per record */}
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold shadow-sm ${avatar.solid}`}>
               {title.charAt(0).toUpperCase()}
             </div>
 

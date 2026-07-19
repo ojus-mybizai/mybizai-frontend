@@ -90,7 +90,7 @@ function PlanSelectionContent() {
         </div>
 
         {error && (
-          <div className="mb-6 rounded-lg bg-red-50 px-4 py-3 text-center text-sm text-red-700">
+          <div className="mb-6 rounded-lg bg-red-50 px-4 py-3 text-center text-sm text-red-800">
             {error}
           </div>
         )}

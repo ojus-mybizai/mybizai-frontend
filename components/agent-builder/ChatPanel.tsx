@@ -150,7 +150,7 @@ export default function ChatPanel({ className = '' }: Props) {
 
         {/* Error banner */}
         {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-600 dark:text-red-400 flex items-center justify-between">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-600 dark:text-red-400 flex items-center justify-between">
             <span>{error}</span>
             <button onClick={clearError} className="ml-3 text-red-400 hover:text-red-600 font-bold">×</button>
           </div>

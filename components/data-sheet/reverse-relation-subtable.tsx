@@ -360,10 +360,34 @@ export function ReverseRelationSubTable({
                           ${idx % 2 === 1 ? 'bg-bg-secondary/10' : ''}
                           hover:bg-accent/5`}
                       >
-                        {visibleColumns.map((col) => {
+                        {visibleColumns.map((col, colIdx) => {
                           const isEditing =
                             editingCell?.recordId === item.id &&
                             editingCell?.fieldName === col.name;
+                          // The first column acts as the record's title link —
+                          // clicking it opens the record (always visible on the
+                          // left, so routing is discoverable even when the
+                          // actions column is scrolled off).
+                          const isTitleCol = colIdx === 0;
+                          if (isTitleCol && !isEditing) {
+                            return (
+                              <td key={col.id} className="px-3 py-2 max-w-[180px]">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    router.push(`/data-sheet/${sourceModelId}/${item.id}`)
+                                  }
+                                  title={`Open ${singularName}`}
+                                  className="group/title flex w-full items-center gap-1 text-left"
+                                >
+                                  <span className="truncate text-[13px] font-medium text-accent group-hover/title:underline">
+                                    {formatCellValue(item.data[col.name], col) || `#${item.id}`}
+                                  </span>
+                                  <ArrowUpRight className="h-3 w-3 shrink-0 text-accent opacity-0 transition-opacity group-hover/title:opacity-100" />
+                                </button>
+                              </td>
+                            );
+                          }
                           return (
                             <td
                               key={col.id}

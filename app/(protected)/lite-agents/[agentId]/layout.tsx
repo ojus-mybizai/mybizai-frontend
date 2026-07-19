@@ -15,9 +15,9 @@ const tabs = [
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    draft: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-    paused: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    active: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+    draft: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
+    paused: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   };
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.draft}`}>
@@ -66,7 +66,7 @@ export default function LiteAgentLayout({ children }: { children: React.ReactNod
             <h1 className="text-lg font-bold text-text-primary flex items-center gap-2">
               {current?.name || 'Loading...'}
               {current && <StatusBadge status={current.status} />}
-              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
                 LITE
               </span>
             </h1>
@@ -77,8 +77,8 @@ export default function LiteAgentLayout({ children }: { children: React.ReactNod
             onClick={handleToggle}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               current.status === 'active'
-                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
-                : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
+                : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
             }`}
           >
             {current.status === 'active' ? 'Pause' : 'Deploy'}

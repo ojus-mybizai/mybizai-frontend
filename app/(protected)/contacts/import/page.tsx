@@ -478,7 +478,7 @@ function DoneStep({ result, onImportAnother }: { result: ContactImportConfirmRes
       </div>
 
       {result.error_details.length > 0 && (
-        <div className="w-full rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 p-3">
+        <div className="w-full rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/20 dark:border-red-800 p-3">
           <p className="text-xs font-semibold text-red-700 dark:text-red-300 mb-2">Row errors</p>
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {result.error_details.map((e, i) => (
@@ -689,7 +689,7 @@ export default function ImportContactsPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 px-4 py-3 flex items-start gap-2">
+        <div className="rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/20 dark:border-red-800 px-4 py-3 flex items-start gap-2">
           <svg className="h-4 w-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>

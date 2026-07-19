@@ -264,8 +264,8 @@ export default function AgentOverviewClient() {
           </div>
         )}
 
-        {notice && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">{notice}</div>}
-        {runError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">{runError}</div>}
+        {notice && <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">{notice}</div>}
+        {runError && <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">{runError}</div>}
       </div>
 
       {/* ─── RIGHT: Quick actions ────────────────────────── */}
@@ -331,14 +331,14 @@ function StatCard({ icon: Icon, label, value }: { icon: any; label: string; valu
 
 const TONES = {
   blue: {
-    on: 'border-blue-200 bg-blue-50/50 dark:border-blue-800/40 dark:bg-blue-900/10',
+    on: 'border-blue-300 bg-blue-50/50 dark:border-blue-800/40 dark:bg-blue-900/10',
     iconOn: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',
-    badgeOn: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    badgeOn: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   },
   amber: {
-    on: 'border-amber-200 bg-amber-50/50 dark:border-amber-800/40 dark:bg-amber-900/10',
+    on: 'border-amber-300 bg-amber-50/50 dark:border-amber-800/40 dark:bg-amber-900/10',
     iconOn: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300',
-    badgeOn: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    badgeOn: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
   },
 } as const;
 

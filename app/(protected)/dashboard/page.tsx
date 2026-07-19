@@ -1574,7 +1574,7 @@ export default function NewDashboardPage() {
 
       {/* ── Edit-mode banner ── */}
       {editing && (
-        <div className="sticky top-0 z-40 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/60 px-6 py-2.5 flex items-center gap-3">
+        <div className="sticky top-0 z-40 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-300 dark:border-amber-800/60 px-6 py-2.5 flex items-center gap-3">
           <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
           <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
             Editing — drag to reorder, × to remove
@@ -1588,7 +1588,7 @@ export default function NewDashboardPage() {
             </button>
             <button
               onClick={handleEditToggle}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-card-bg border border-amber-200 dark:border-amber-700/60 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-card-bg border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
             >
               <Check size={13} /> Done
             </button>

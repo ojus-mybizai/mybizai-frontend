@@ -369,7 +369,7 @@ export function SettingsPage() {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+          <div className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
             {typeof error === 'string' ? error : error.message}
             {typeof error === 'object' && error.linked_tool_names?.length ? (
               <p className="mt-2 text-sm">
@@ -537,7 +537,7 @@ export function SettingsPage() {
         />
       )}
 
-      <section className="rounded-xl border border-red-200/60 bg-red-50/30 dark:border-red-900/40 dark:bg-red-950/10 p-6">
+      <section className="rounded-xl border border-red-300/60 bg-red-50/30 dark:border-red-900/40 dark:bg-red-950/10 p-6">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 dark:bg-red-900/30">
             <svg className="h-5 w-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -740,7 +740,7 @@ function InlineAddField({
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white text-xs font-bold leading-none">+</span>
           <span className="text-sm font-semibold text-text-primary">Add fields</span>
           {addedCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs font-medium text-green-800 dark:text-green-400">
               <span>✓</span>
               <span>{addedCount} added{lastAdded ? ` · "${lastAdded}"` : ''}</span>
             </span>
@@ -895,7 +895,7 @@ function InlineAddField({
 
         {/* Error */}
         {fieldError && (
-          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+          <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
             {fieldError}
           </p>
         )}

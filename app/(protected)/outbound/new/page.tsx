@@ -470,7 +470,7 @@ function CampaignWizardInner() {
 
         {/* Loading overlay while fetching repeat campaign data */}
         {repeatLoading && (
-          <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg mb-4 text-sm text-blue-700 dark:text-blue-300">
+          <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-300 dark:border-blue-800 rounded-lg mb-4 text-sm text-blue-800 dark:text-blue-300">
             <svg className="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
@@ -505,7 +505,7 @@ function CampaignWizardInner() {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-4">
+          <div className="bg-red-50 border border-red-300 text-red-800 px-4 py-3 rounded-md mb-4">
             {error}
           </div>
         )}
@@ -579,7 +579,7 @@ function CampaignWizardInner() {
                 </select>
                 {selectedTemplate &&
                   (selectedTemplate.parameter_mapping?.length ?? 0) > 0 && (
-                    <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 p-3 rounded-md text-xs">
+                    <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 p-3 rounded-md text-xs">
                       ⚠️ This template has{" "}
                       <strong>
                         {selectedTemplate.parameter_mapping!.length}{" "}
@@ -707,7 +707,7 @@ function CampaignWizardInner() {
                   </label>
                   <FileImportAudience onImported={handleFileImported} />
                   {selectedLeadIds.length > 0 && (
-                    <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md text-sm text-green-800 dark:text-green-200">
+                    <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-800 rounded-md text-sm text-green-800 dark:text-green-200">
                       ✓ {selectedLeadIds.length} contact
                       {selectedLeadIds.length !== 1 ? "s" : ""} imported and
                       selected
@@ -1006,7 +1006,7 @@ function CampaignWizardInner() {
                   )}
                 </dl>
                 {costEstimate && !costEstimate.sufficient && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-xs mt-2">
+                  <div className="bg-red-50 border border-red-300 text-red-800 px-3 py-2 rounded-md text-xs mt-2">
                     Insufficient balance. Please top up before launching.{" "}
                     <Link href="/outbound" className="underline">
                       Go to wallet →

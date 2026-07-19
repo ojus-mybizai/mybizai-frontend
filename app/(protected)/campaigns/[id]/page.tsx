@@ -25,18 +25,18 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   completed: { label: 'Completed', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' },
   cancelled: { label: 'Cancelled', className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
   failed:    { label: 'Failed',    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' },
-  archived:  { label: 'Archived',  className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-500' },
-  sent:      { label: 'Sent',      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
-  delivered: { label: 'Delivered', className: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300' },
-  read:      { label: 'Read',      className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
-  replied:   { label: 'Replied',   className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  pending:   { label: 'Pending',   className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
-  skipped:   { label: 'Skipped',   className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
-  paused:    { label: 'Paused',    className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  archived:  { label: 'Archived',  className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-500' },
+  sent:      { label: 'Sent',      className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
+  delivered: { label: 'Delivered', className: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300' },
+  read:      { label: 'Read',      className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' },
+  replied:   { label: 'Replied',   className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  pending:   { label: 'Pending',   className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
+  skipped:   { label: 'Skipped',   className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
+  paused:    { label: 'Paused',    className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' },
 };
 
 function Badge({ status }: { status: string }) {
-  const cfg = STATUS_BADGE[status] || { label: status, className: 'bg-gray-100 text-gray-600' };
+  const cfg = STATUS_BADGE[status] || { label: status, className: 'bg-gray-100 text-gray-700' };
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.className}`}>{cfg.label}</span>;
 }
 

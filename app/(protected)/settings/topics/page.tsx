@@ -175,7 +175,7 @@ export default function ConversationTopicsPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="flex-shrink-0 flex items-center gap-2 px-6 py-2.5 bg-red-50 border-b border-red-200 text-sm text-red-700">
+        <div className="flex-shrink-0 flex items-center gap-2 px-6 py-2.5 bg-red-50 border-b border-red-300 text-sm text-red-800">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {error}
           <button onClick={() => setError(null)} className="ml-auto"><X className="w-4 h-4" /></button>

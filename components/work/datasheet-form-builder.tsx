@@ -34,32 +34,32 @@ function fieldTypeBadgeColor(ft: string): string {
   switch (ft) {
     case 'text':
     case 'string':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
     case 'number':
     case 'integer':
     case 'float':
     case 'decimal':
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300';
     case 'date':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
     case 'boolean':
     case 'checkbox':
-      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300';
+      return 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300';
     case 'select':
     case 'enum':
-      return 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300';
+      return 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300';
     case 'email':
-      return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300';
+      return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300';
     case 'phone':
-      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300';
+      return 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300';
     case 'url':
-      return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300';
+      return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300';
     case 'textarea':
     case 'long_text':
     case 'rich_text':
-      return 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300';
+      return 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300';
     default:
-      return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
   }
 }
 
@@ -244,12 +244,12 @@ export function DatasheetFormBuilder({
     <div className="space-y-5">
       {/* ---- error / success banners ---- */}
       {error && (
-        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-300">
+        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-900/30 dark:text-red-300">
           {error}
         </div>
       )}
       {success && (
-        <div className="rounded-md border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-700 dark:bg-green-900/30 dark:text-green-300">
+        <div className="rounded-md border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-700 dark:bg-green-900/30 dark:text-green-300">
           {success}
         </div>
       )}

@@ -462,7 +462,7 @@ function EmployeeTabButton({
         <span
           className={[
             'ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full',
-            active ? 'bg-green-100 text-green-700' : 'bg-bg-secondary text-text-secondary',
+            active ? 'bg-green-100 text-green-800' : 'bg-bg-secondary text-text-secondary',
           ].join(' ')}
         >
           {count}
@@ -495,11 +495,11 @@ function AssignmentGroup({
 }
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
-  awaiting:    { label: '⏳ Awaiting',    cls: 'bg-orange-100 text-orange-700' },
-  done:        { label: '✅ Done',         cls: 'bg-green-100 text-green-700'  },
+  awaiting:    { label: '⏳ Awaiting',    cls: 'bg-orange-100 text-orange-800' },
+  done:        { label: '✅ Done',         cls: 'bg-green-100 text-green-800'  },
   not_done:    { label: '❌ Not Done',     cls: 'bg-red-100 text-red-600'      },
-  in_progress: { label: '▶ In Progress',  cls: 'bg-blue-100 text-blue-700'    },
-  failed:      { label: '⚠ Failed',       cls: 'bg-red-100 text-red-700'      },
+  in_progress: { label: '▶ In Progress',  cls: 'bg-blue-100 text-blue-800'    },
+  failed:      { label: '⚠ Failed',       cls: 'bg-red-100 text-red-800'      },
   pending:     { label: '● Pending',      cls: 'bg-bg-secondary text-text-secondary' },
 };
 
@@ -521,7 +521,7 @@ function AssignmentRow({
 
         <div className="flex flex-wrap items-center gap-2 mt-1">
           {item.template_name && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-100 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800">
               {item.template_name}
             </span>
           )}

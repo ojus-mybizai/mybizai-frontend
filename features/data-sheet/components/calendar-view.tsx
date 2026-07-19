@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useMemo, useCallback, useState } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, X } from 'lucide-react';
 import type { DynamicField } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { CalendarViewConfig } from '@/features/data-sheet/state/view-state';
-import { colorForOption, pickTitleField, pickSecondaryField } from '@/components/data-sheet/field-display';
+import { pickTitleField, pickSecondaryField } from '@/components/data-sheet/field-display';
+import { valueColor, type ValueColor } from '@/components/data-sheet/value-colors';
 
 type RecordItem = QueryResponse['items'][number];
 
@@ -21,21 +22,6 @@ const MONTH_NAMES = [
 
 const MAX_PILLS = 3;
 
-const PILL_COLORS = [
-  'border-blue-500 bg-blue-50 dark:bg-blue-900/20',
-  'border-green-500 bg-green-50 dark:bg-green-900/20',
-  'border-purple-500 bg-purple-50 dark:bg-purple-900/20',
-  'border-amber-500 bg-amber-50 dark:bg-amber-900/20',
-  'border-rose-500 bg-rose-50 dark:bg-rose-900/20',
-  'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20',
-];
-
-function getPillColor(value: string): string {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
-  return PILL_COLORS[Math.abs(hash) % PILL_COLORS.length];
-}
-
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -45,6 +31,51 @@ function dateKey(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Record → title / secondary / colour                                */
+/* ------------------------------------------------------------------ */
+
+interface ResolvedRecord {
+  title: string;
+  secondary: string;
+  color: ValueColor;
+}
+
+function resolveRecord(
+  record: RecordItem,
+  titleField: DynamicField | null,
+  secondaryField: DynamicField | null,
+  fields: DynamicField[],
+): ResolvedRecord {
+  const data = (record.data ?? {}) as Record<string, unknown>;
+
+  let title = '';
+  if (titleField) {
+    const v = data[titleField.name];
+    if (v !== null && v !== undefined && v !== '') title = String(v);
+  }
+  if (!title) {
+    for (const f of fields) {
+      if (['text', 'long_text', 'enum'].includes(f.field_type)) {
+        const val = data[f.name];
+        if (val !== null && val !== undefined && val !== '') { title = String(val); break; }
+      }
+    }
+  }
+  if (!title) title = String(record.record_key || `#${record.id}`);
+
+  const secVal = secondaryField ? data[secondaryField.name] : null;
+  const secondary = secVal !== null && secVal !== undefined && secVal !== '' ? String(secVal) : '';
+
+  // Colour: from the secondary enum value when present (so status drives it and
+  // matches the kanban/pills), else a stable hash of the title.
+  const color = secondary && secondaryField?.field_type === 'enum'
+    ? valueColor(secondaryField, secondary)
+    : valueColor(null, title);
+
+  return { title, secondary, color };
 }
 
 /* ------------------------------------------------------------------ */
@@ -62,25 +93,19 @@ function buildCalendarGrid(year: number, month: number): CalendarCell[] {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells: CalendarCell[] = [];
 
-  // Previous month padding
   const prevMonthDays = new Date(year, month, 0).getDate();
   for (let i = startDow - 1; i >= 0; i--) {
     cells.push({ date: new Date(year, month - 1, prevMonthDays - i), inCurrentMonth: false });
   }
-
-  // Current month
   for (let d = 1; d <= daysInMonth; d++) {
     cells.push({ date: new Date(year, month, d), inCurrentMonth: true });
   }
-
-  // Next month padding
   const remaining = 7 - (cells.length % 7);
   if (remaining < 7) {
     for (let d = 1; d <= remaining; d++) {
       cells.push({ date: new Date(year, month + 1, d), inCurrentMonth: false });
     }
   }
-
   return cells;
 }
 
@@ -89,86 +114,37 @@ function buildCalendarGrid(year: number, month: number): CalendarCell[] {
 /* ------------------------------------------------------------------ */
 
 function RecordPill({
-  record,
-  titleField,
-  secondaryField,
-  fields,
+  resolved,
   compact,
   onClick,
 }: {
-  record: RecordItem;
-  titleField: DynamicField | null;
-  secondaryField: DynamicField | null;
-  fields: DynamicField[];
+  resolved: ResolvedRecord;
   compact: boolean;
-  onClick: (row: RecordItem) => void;
+  onClick: () => void;
 }) {
-  const data = (record.data ?? {}) as Record<string, unknown>;
-
-  // Resolve title: configured titleField → first non-empty text-ish field → record_key
-  const title: string = useMemo(() => {
-    if (titleField) {
-      const v = data[titleField.name];
-      if (v !== null && v !== undefined && v !== '') return String(v);
-    }
-    for (const f of fields) {
-      if (['text', 'long_text', 'enum'].includes(f.field_type)) {
-        const val = data[f.name];
-        if (val !== null && val !== undefined && val !== '') return String(val);
-      }
-    }
-    return String(record.record_key || `#${record.id}`);
-  }, [data, titleField, fields, record.record_key, record.id]);
-
-  // Resolve secondary value (if configured)
-  const secondaryValue = secondaryField ? data[secondaryField.name] : null;
-  const hasSecondary = secondaryValue !== null && secondaryValue !== undefined && secondaryValue !== '';
-  const secondaryString = hasSecondary ? String(secondaryValue) : '';
-
-  // Pill border / background: if secondary is an enum with a status color, use that. Otherwise hash from title.
-  const colorClass = useMemo(() => {
-    if (hasSecondary && secondaryField && secondaryField.field_type === 'enum') {
-      // Convert chip-style classes to pill-style (border + bg)
-      const chipCls = colorForOption(secondaryField, secondaryString);
-      // chipCls looks like 'bg-green-100 text-green-700 ring-green-200/60 ...'
-      // For pill: keep bg-*, replace ring-* with a stronger border. Easiest: just append a border-l accent.
-      return chipCls;
-    }
-    return getPillColor(title);
-  }, [hasSecondary, secondaryField, secondaryString, title]);
+  const { title, secondary, color } = resolved;
 
   if (compact) {
-    // Mobile dot — use accent color from the colorClass
-    const bgClass = colorClass.match(/bg-[a-z]+-\d+/)?.[0] ?? 'bg-accent';
     return (
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onClick(record); }}
-        className={`inline-block h-2 w-2 shrink-0 rounded-full ${bgClass}`}
-        title={`${title}${hasSecondary ? ` · ${secondaryString}` : ''}`}
+        onClick={(e) => { e.stopPropagation(); onClick(); }}
+        className={`inline-block h-2 w-2 shrink-0 rounded-full ${color.dot}`}
+        title={`${title}${secondary ? ` · ${secondary}` : ''}`}
       />
     );
   }
 
-  // Strip the ring-* and dark:ring-* classes that don't make sense on a pill background
-  const bgOnly = colorClass.replace(/ring-\S+/g, '').replace(/dark:ring-\S+/g, '').trim();
-
   return (
     <button
       type="button"
-      onClick={(e) => { e.stopPropagation(); onClick(record); }}
-      className={`group w-full rounded border-l-2 border-current px-1.5 py-0.5 text-left leading-tight
-        hover:brightness-95 transition-all overflow-hidden ${bgOnly}`}
-      title={`${title}${hasSecondary ? ` · ${secondaryString}` : ''}`}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className={`group flex w-full items-center gap-1.5 overflow-hidden rounded-md px-1.5 py-1 text-left leading-tight
+        transition-colors hover:brightness-[0.97] ${color.softBg}`}
+      title={`${title}${secondary ? ` · ${secondary}` : ''}`}
     >
-      <div className="flex items-baseline gap-1.5">
-        <span className="truncate text-[11px] font-medium">{title.length > 22 ? `${title.slice(0, 22)}…` : title}</span>
-      </div>
-      {hasSecondary && (
-        <span className="block truncate text-[9px] font-medium uppercase tracking-wider opacity-75">
-          {secondaryString.length > 24 ? `${secondaryString.slice(0, 24)}…` : secondaryString}
-        </span>
-      )}
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${color.dot}`} aria-hidden />
+      <span className={`truncate text-[11px] font-medium ${color.text}`}>{title}</span>
     </button>
   );
 }
@@ -179,68 +155,115 @@ function RecordPill({
 
 function DayCell({
   cell,
-  records,
-  titleField,
-  secondaryField,
-  fields,
+  resolvedRecords,
   isToday,
   onRecordClick,
+  onOverflowClick,
 }: {
   cell: CalendarCell;
-  records: RecordItem[];
-  titleField: DynamicField | null;
-  secondaryField: DynamicField | null;
-  fields: DynamicField[];
+  resolvedRecords: ResolvedRecord[];
   isToday: boolean;
-  onRecordClick: (row: RecordItem) => void;
+  onRecordClick: (idx: number) => void;
+  onOverflowClick: () => void;
 }) {
-  const visible = records.slice(0, MAX_PILLS);
-  const overflow = records.length - MAX_PILLS;
+  const visible = resolvedRecords.slice(0, MAX_PILLS);
+  const overflow = resolvedRecords.length - MAX_PILLS;
 
   return (
     <div
-      className={`relative flex flex-col border border-border-color min-h-[60px] md:min-h-[110px] p-1
-        ${cell.inCurrentMonth ? 'bg-card-bg' : 'bg-bg-secondary/50 opacity-50'}
-        ${isToday ? 'ring-2 ring-accent ring-inset' : ''}`}
+      className={`relative flex min-h-[68px] flex-col p-1.5 md:min-h-[116px]
+        ${cell.inCurrentMonth ? 'bg-card-bg' : 'bg-bg-secondary/40 text-text-secondary/60'}
+        ${isToday ? 'bg-accent/[0.06]' : ''}`}
     >
-      <span className={`mb-0.5 text-xs font-medium ${isToday ? 'text-accent font-bold' : 'text-text-secondary'}`}>
-        {cell.date.getDate()}
-      </span>
+      <div className="mb-1 flex items-center justify-between">
+        <span
+          className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold
+            ${isToday ? 'bg-accent text-white' : cell.inCurrentMonth ? 'text-text-primary' : 'text-text-secondary/60'}`}
+        >
+          {cell.date.getDate()}
+        </span>
+      </div>
 
       {/* Desktop: pills */}
       <div className="hidden flex-col gap-1 sm:flex">
-        {visible.map((r) => (
-          <RecordPill
-            key={String(r.id)}
-            record={r}
-            titleField={titleField}
-            secondaryField={secondaryField}
-            fields={fields}
-            compact={false}
-            onClick={onRecordClick}
-          />
+        {visible.map((r, i) => (
+          <RecordPill key={i} resolved={r} compact={false} onClick={() => onRecordClick(i)} />
         ))}
         {overflow > 0 && (
-          <span className="mt-0.5 text-[10px] font-medium text-accent cursor-default">+{overflow} more</span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOverflowClick(); }}
+            className="mt-0.5 rounded px-1 text-left text-[10px] font-semibold text-accent hover:bg-accent/10"
+          >
+            +{overflow} more
+          </button>
         )}
       </div>
 
       {/* Mobile: dots */}
-      <div className="flex flex-wrap gap-0.5 sm:hidden">
-        {visible.map((r) => (
-          <RecordPill
-            key={String(r.id)}
-            record={r}
-            titleField={titleField}
-            secondaryField={secondaryField}
-            fields={fields}
-            compact
-            onClick={onRecordClick}
-          />
+      <div className="flex flex-wrap gap-1 sm:hidden">
+        {visible.map((r, i) => (
+          <RecordPill key={i} resolved={r} compact onClick={() => onRecordClick(i)} />
         ))}
-        {overflow > 0 && <span className="text-[9px] text-accent">+{overflow}</span>}
+        {overflow > 0 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOverflowClick(); }}
+            className="text-[9px] font-semibold text-accent"
+          >
+            +{overflow}
+          </button>
+        )}
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Day detail popover (for "+N more")                                 */
+/* ------------------------------------------------------------------ */
+
+function DayDetailModal({
+  date,
+  resolvedRecords,
+  onClose,
+  onRecordClick,
+}: {
+  date: Date;
+  resolvedRecords: ResolvedRecord[];
+  onClose: () => void;
+  onRecordClick: (idx: number) => void;
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} aria-hidden />
+      <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-color bg-card-bg p-4 shadow-xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-text-primary">
+            {date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+          </h3>
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-text-secondary hover:bg-bg-secondary hover:text-text-primary" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="max-h-[60vh] space-y-1.5 overflow-y-auto">
+          {resolvedRecords.map((r, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onRecordClick(i)}
+              className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:border-accent/40 ${r.color.soft}`}
+            >
+              <span className={`h-2 w-2 shrink-0 rounded-full ${r.color.dot}`} aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-text-primary">{r.title}</span>
+                {r.secondary && <span className={`block truncate text-xs font-medium ${r.color.text}`}>{r.secondary}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -266,14 +289,12 @@ export default function CalendarView({
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
+  const [detailDay, setDetailDay] = useState<string | null>(null);
 
   const dateFields = useMemo(() => fields.filter((f) => f.field_type === 'date'), [fields]);
 
-  // Resolve title field for pills. Priority: explicit config.titleField → first of legacy config.pillFields → smart heuristic.
   const titleField: DynamicField | null = useMemo(() => {
-    if (config.titleField) {
-      return fields.find((f) => f.name === config.titleField) ?? null;
-    }
+    if (config.titleField) return fields.find((f) => f.name === config.titleField) ?? null;
     const legacyFirst = config.pillFields?.[0];
     if (legacyFirst) {
       const f = fields.find((ff) => ff.name === legacyFirst);
@@ -282,31 +303,27 @@ export default function CalendarView({
     return pickTitleField(fields);
   }, [config.titleField, config.pillFields, fields]);
 
-  // Resolve secondary field. Priority: explicit config.secondaryField → first status-like enum that isn't the title.
   const secondaryField: DynamicField | null = useMemo(() => {
-    if (config.secondaryField) {
-      return fields.find((f) => f.name === config.secondaryField) ?? null;
-    }
+    if (config.secondaryField) return fields.find((f) => f.name === config.secondaryField) ?? null;
     return pickSecondaryField(fields, titleField?.name ?? null);
   }, [config.secondaryField, fields, titleField]);
 
-  // Build calendar grid
   const cells = useMemo(() => buildCalendarGrid(currentYear, currentMonth), [currentYear, currentMonth]);
 
-  // Index records by date
+  // Index resolved records by date key.
   const recordsByDate = useMemo(() => {
-    if (!config.dateField) return new Map<string, RecordItem[]>();
-    const map = new Map<string, RecordItem[]>();
+    const map = new Map<string, { record: RecordItem; resolved: ResolvedRecord }[]>();
+    if (!config.dateField) return map;
     for (const item of items) {
       const val = ((item.data ?? {}) as Record<string, unknown>)[config.dateField];
       if (!val) continue;
-      const key = String(val).slice(0, 10); // YYYY-MM-DD
+      const key = String(val).slice(0, 10);
+      const entry = { record: item, resolved: resolveRecord(item, titleField, secondaryField, fields) };
       const list = map.get(key);
-      if (list) list.push(item);
-      else map.set(key, [item]);
+      if (list) list.push(entry); else map.set(key, [entry]);
     }
     return map;
-  }, [items, config.dateField]);
+  }, [items, config.dateField, titleField, secondaryField, fields]);
 
   const today = useMemo(() => new Date(), []);
 
@@ -328,7 +345,7 @@ export default function CalendarView({
     setCurrentMonth(n.getMonth());
   }, []);
 
-  const handleRecordClick = useCallback(
+  const openRecord = useCallback(
     (record: RecordItem) => {
       onViewDetail({ id: Number(record.id), data: (record.data ?? {}) as Record<string, unknown>, recordKey: String(record.record_key ?? '') });
     },
@@ -338,11 +355,13 @@ export default function CalendarView({
   /* ── No date field selected ── */
   if (!config.dateField) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-4">
-        <CalendarDays className="h-12 w-12 text-text-secondary" />
+      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border-color bg-card-bg/50 py-16">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-bg-secondary text-text-secondary">
+          <CalendarDays className="h-6 w-6" />
+        </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-text-primary mb-1">Select a date field</p>
-          <p className="text-xs text-text-secondary mb-4">Choose which date field to use for placing records on the calendar</p>
+          <p className="mb-1 text-sm font-semibold text-text-primary">Place records on a calendar</p>
+          <p className="mb-4 text-xs text-text-secondary">Choose which date field positions each record</p>
         </div>
         {dateFields.length === 0 ? (
           <p className="text-xs text-text-secondary">No date fields found in this datasheet</p>
@@ -362,23 +381,24 @@ export default function CalendarView({
     );
   }
 
+  const detailEntries = detailDay ? (recordsByDate.get(detailDay) ?? []) : [];
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {/* Navigation bar */}
-      <div className="flex items-center justify-between rounded-lg bg-bg-secondary px-4 py-2">
-        <button type="button" onClick={goToPrev} className="rounded-md p-1.5 text-text-secondary hover:bg-bg-primary hover:text-text-primary transition-colors" aria-label="Previous month">
+      <div className="flex items-center justify-between rounded-2xl border border-border-color bg-card-bg px-3 py-2">
+        <button type="button" onClick={goToPrev} className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-bg-secondary hover:text-text-primary" aria-label="Previous month">
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <h2 className="text-sm font-semibold text-text-primary md:text-base">
             {MONTH_NAMES[currentMonth]} {currentYear}
           </h2>
-          <button type="button" onClick={goToToday} className="rounded-md border border-border-color px-2.5 py-1 text-xs font-medium text-text-secondary hover:bg-bg-primary hover:text-text-primary transition-colors">
+          <button type="button" onClick={goToToday} className="rounded-lg border border-border-color px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-secondary hover:text-text-primary">
             Today
           </button>
-          {/* Date field selector */}
           <select
-            className="rounded-md border border-border-color bg-transparent px-2 py-1 text-xs text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent"
+            className="rounded-lg border border-border-color bg-transparent px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent"
             value={config.dateField}
             onChange={(e) => onConfigChange({ ...config, dateField: e.target.value || null })}
           >
@@ -387,40 +407,50 @@ export default function CalendarView({
             ))}
           </select>
         </div>
-        <button type="button" onClick={goToNext} className="rounded-md p-1.5 text-text-secondary hover:bg-bg-primary hover:text-text-primary transition-colors" aria-label="Next month">
+        <button type="button" onClick={goToNext} className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-bg-secondary hover:text-text-primary" aria-label="Next month">
           <ChevronRight className="h-5 w-5" />
         </button>
       </div>
 
-      {/* Day headers */}
-      <div className="grid grid-cols-7">
-        {DAY_NAMES.map((day) => (
-          <div key={day} className="border border-border-color bg-bg-secondary px-2 py-1.5 text-center text-xs font-semibold text-text-secondary">
-            {day}
-          </div>
-        ))}
+      {/* Grid — gap-px over a border-coloured surface draws crisp 1px gridlines */}
+      <div className="overflow-hidden rounded-2xl border border-border-color">
+        <div className="grid grid-cols-7 gap-px bg-border-color">
+          {/* Day headers */}
+          {DAY_NAMES.map((day) => (
+            <div key={day} className="bg-bg-secondary px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-text-secondary">
+              <span className="hidden sm:inline">{day}</span>
+              <span className="sm:hidden">{day.charAt(0)}</span>
+            </div>
+          ))}
+
+          {/* Day cells */}
+          {cells.map((cell) => {
+            const key = dateKey(cell.date);
+            const entries = recordsByDate.get(key) ?? [];
+            return (
+              <DayCell
+                key={key}
+                cell={cell}
+                resolvedRecords={entries.map((e) => e.resolved)}
+                isToday={isSameDay(cell.date, today)}
+                onRecordClick={(idx) => entries[idx] && openRecord(entries[idx].record)}
+                onOverflowClick={() => setDetailDay(key)}
+              />
+            );
+          })}
+        </div>
       </div>
 
-      {/* Day cells */}
-      <div className="grid grid-cols-7">
-        {cells.map((cell) => {
-          const key = dateKey(cell.date);
-          const records = recordsByDate.get(key) ?? [];
-          const cellIsToday = isSameDay(cell.date, today);
-          return (
-            <DayCell
-              key={key}
-              cell={cell}
-              records={records}
-              titleField={titleField}
-              secondaryField={secondaryField}
-              fields={fields}
-              isToday={cellIsToday}
-              onRecordClick={handleRecordClick}
-            />
-          );
-        })}
-      </div>
+      {detailDay && (
+        <DayDetailModal
+          date={(() => { const [y, m, d] = detailDay.split('-').map(Number); return new Date(y, m - 1, d); })()}
+          resolvedRecords={detailEntries.map((e) => e.resolved)}
+          onClose={() => setDetailDay(null)}
+          onRecordClick={(idx) => {
+            if (detailEntries[idx]) { openRecord(detailEntries[idx].record); setDetailDay(null); }
+          }}
+        />
+      )}
     </div>
   );
 }

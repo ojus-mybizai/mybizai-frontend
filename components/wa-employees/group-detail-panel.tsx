@@ -13,14 +13,14 @@ import type { ToastType } from '@/components/ui/toast';
 /* ─── Avatar helpers ─────────────────────────────────────────────────────── */
 
 const AVATAR_COLORS = [
-  'bg-violet-100 text-violet-700',
-  'bg-blue-100 text-blue-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-orange-100 text-orange-700',
-  'bg-pink-100 text-pink-700',
-  'bg-cyan-100 text-cyan-700',
-  'bg-amber-100 text-amber-700',
-  'bg-rose-100 text-rose-700',
+  'bg-violet-100 text-violet-800',
+  'bg-blue-100 text-blue-800',
+  'bg-emerald-100 text-emerald-800',
+  'bg-orange-100 text-orange-800',
+  'bg-pink-100 text-pink-800',
+  'bg-cyan-100 text-cyan-800',
+  'bg-amber-100 text-amber-800',
+  'bg-rose-100 text-rose-800',
 ];
 
 function avatarColor(name: string) {
@@ -385,7 +385,7 @@ export function GroupDetailPanel({ group, allEmployees, onClose, onChanged, onRe
             <div className="shrink-0 border-t border-border-color px-5 py-4">
               <button
                 onClick={() => onRequestDelete(group)}
-                className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors text-left border border-red-200 dark:border-red-900"
+                className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors text-left border border-red-300 dark:border-red-900"
               >
                 <Trash2 className="w-4 h-4 shrink-0" />
                 <div>

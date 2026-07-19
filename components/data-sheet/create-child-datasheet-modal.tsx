@@ -485,7 +485,7 @@ export function CreateChildDatasheetModal({
 
           {/* Error */}
           {error && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400">
+            <div className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-600 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400">
               {error}
             </div>
           )}

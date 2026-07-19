@@ -380,7 +380,7 @@ export function RecordDetailPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-16">
       {error && (
-        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm whitespace-pre-line text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+        <div className="mb-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm whitespace-pre-line text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
           {error}
         </div>
       )}

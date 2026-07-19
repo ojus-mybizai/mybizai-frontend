@@ -141,7 +141,7 @@ export function ManageSourcesModal({ open, onClose, onChanged }: Props) {
         {/* Body */}
         <div className="px-6 py-5 overflow-y-auto space-y-4">
           {error && (
-            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <div className="text-xs text-red-600 bg-red-50 border border-red-300 rounded-lg px-3 py-2">
               {error}
             </div>
           )}

@@ -284,7 +284,7 @@ export function KpiCompact({
     : tone === 'danger' ? tokens.color.danger
     : 'text-text-primary';
   return (
-    <div className="rounded-md border border-border-color bg-card-bg px-3 py-2 transition-card">
+    <div className="rounded-xl border border-border-color bg-card-bg px-3.5 py-2.5 transition-card">
       <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary truncate">{label}</p>
       <p className={`text-base font-semibold tabular-nums truncate ${toneCls}`}>{value}</p>
       {sub && <p className="text-[11px] text-text-secondary truncate">{sub}</p>}
@@ -314,7 +314,7 @@ export function Button({
   return (
     <button
       {...rest}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-md border font-medium transition-quick focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${variantCls} ${sizeCls} ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg border font-medium transition-quick focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${variantCls} ${sizeCls} ${className}`}
     >
       {icon}
       {children}
@@ -379,8 +379,8 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-10 px-4 text-center rounded-xl border border-dashed border-border-color bg-card-bg/50">
-      <div className="h-12 w-12 rounded-full bg-bg-secondary flex items-center justify-center text-2xl mb-3">{icon}</div>
+    <div className="flex flex-col items-center justify-center py-12 px-4 text-center rounded-2xl border border-dashed border-border-color bg-card-bg/50">
+      <div className="h-14 w-14 rounded-full bg-bg-secondary flex items-center justify-center text-2xl mb-4">{icon}</div>
       <p className="text-sm font-semibold text-text-primary mb-1">{title}</p>
       {body && <p className="text-xs text-text-secondary max-w-xs mb-3">{body}</p>}
       {action}

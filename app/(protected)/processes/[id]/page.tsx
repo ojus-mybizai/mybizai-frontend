@@ -74,8 +74,8 @@ function FunnelRibbon({ stages, entries, activeStageId, onStageClick }: FunnelRi
   if (sortedStages.length === 0) return null;
 
   return (
-    <div className="rounded-lg border border-border-color bg-card-bg overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-color bg-bg-secondary/40">
+    <div className="rounded-2xl border border-border-color bg-card-bg overflow-hidden">
+      <div className="flex items-center justify-between px-3.5 py-2 border-b border-border-color bg-bg-secondary/40">
         <div className="flex items-center gap-1.5">
           <Icon.funnel size={11} />
           <span className="text-[10px] uppercase tracking-wide font-semibold text-text-secondary">
@@ -193,7 +193,7 @@ export default function ProcessDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [focusStageId, setFocusStageId] = useState<number | 'all'>('all');
-  const [showFunnel, setShowFunnel] = useState(true);
+  const [showFunnel, setShowFunnel] = useState(false);
 
   // Board / list controls
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -342,45 +342,45 @@ export default function ProcessDetailPage() {
 
   return (
     <PermissionGuard permission="manage_work" module="lms">
-      <div className="mx-auto max-w-[1400px] px-4 py-4 sm:px-6">
+      <div className="mx-auto max-w-[1600px] px-3 pt-2.5 pb-3">
         {/* Breadcrumb */}
-        <Link href="/processes" className="inline-flex items-center gap-1 text-[11px] text-text-secondary hover:text-accent transition-quick mb-2">
-          <Icon.back size={11} /> Pipelines
+        <Link href="/processes" className="inline-flex items-center gap-1 text-[13px] text-text-secondary hover:text-accent transition-quick mb-1.5">
+          <Icon.back size={13} /> Pipelines
         </Link>
 
         {/* Compact integrated header — single band, info + tabs */}
         {process && (
-          <header className="rounded-xl border border-border-color bg-card-bg overflow-hidden mb-3">
+          <header className="rounded-2xl border border-border-color bg-card-bg overflow-hidden mb-3 shadow-sm">
             {/* Title row with inline metrics */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-border-color">
               {/* Color dot replaces the full color rail — same identity, less chrome */}
               <span
-                className="inline-block h-8 w-1.5 rounded-full flex-shrink-0"
+                className="inline-block h-9 w-1.5 rounded-full flex-shrink-0"
                 style={{ background: process.color || '#3B82F6' }}
                 aria-hidden="true"
               />
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-lg font-bold text-text-primary tracking-tight truncate">{process.name}</h1>
-                  <Pill tone="neutral" size="xs">
+                  <h1 className="text-2xl font-bold text-text-primary tracking-tight truncate">{process.name}</h1>
+                  <Pill tone="neutral" size="sm">
                     {process.entity_type === 'datasheet_record' ? (process.dynamic_model_name || 'Record') : process.entity_type}
                   </Pill>
-                  {process.status === 'archived' && <Pill tone="warn" size="xs">Archived</Pill>}
+                  {process.status === 'archived' && <Pill tone="warn" size="sm">Archived</Pill>}
                 </div>
                 {process.description && (
-                  <p className="text-[11px] text-text-secondary truncate mt-0.5">{process.description}</p>
+                  <p className="text-[13px] text-text-secondary truncate mt-0.5">{process.description}</p>
                 )}
               </div>
 
               {/* Inline hero stats — horizontally aligned with title, no extra row */}
-              <div className="hidden md:flex items-center gap-5 flex-shrink-0">
+              <div className="hidden md:flex items-center gap-6 flex-shrink-0">
                 <Stat label="Open" value={<Money value={activeValue} compact size="lg" tone="success" />} />
-                <Stat label="Active" value={<span className="text-base font-semibold tabular-nums">{formatNumber(activeEntries.length)}</span>} />
-                <Stat label="Stages" value={<span className="text-base font-semibold tabular-nums">{stages.length}</span>} />
+                <Stat label="Active" value={<span className="text-lg font-semibold tabular-nums">{formatNumber(activeEntries.length)}</span>} />
+                <Stat label="Stages" value={<span className="text-lg font-semibold tabular-nums">{stages.length}</span>} />
                 {stuckCount > 0 && (
                   <Stat label="Stuck" value={
-                    <span className="text-base font-semibold tabular-nums text-amber-600 dark:text-amber-400">{stuckCount}</span>
+                    <span className="text-lg font-semibold tabular-nums text-amber-600 dark:text-amber-400">{stuckCount}</span>
                   } />
                 )}
               </div>
@@ -388,27 +388,27 @@ export default function ProcessDetailPage() {
 
             {/* Mobile stats row */}
             <div className="md:hidden flex items-center gap-4 px-4 py-2 border-b border-border-color overflow-x-auto">
-              <Stat label="Open" value={<Money value={activeValue} compact size="sm" tone="success" />} />
-              <Stat label="Active" value={<span className="text-sm font-semibold tabular-nums">{formatNumber(activeEntries.length)}</span>} />
-              <Stat label="Stages" value={<span className="text-sm font-semibold tabular-nums">{stages.length}</span>} />
+              <Stat label="Open" value={<Money value={activeValue} compact size="lg" tone="success" />} />
+              <Stat label="Active" value={<span className="text-base font-semibold tabular-nums">{formatNumber(activeEntries.length)}</span>} />
+              <Stat label="Stages" value={<span className="text-base font-semibold tabular-nums">{stages.length}</span>} />
               {stuckCount > 0 && (
                 <Stat label="Stuck" value={
-                  <span className="text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-400">{stuckCount}</span>
+                  <span className="text-base font-semibold tabular-nums text-amber-600 dark:text-amber-400">{stuckCount}</span>
                 } />
               )}
             </div>
 
             {/* Tab bar with view controls — integrated as a single strip */}
-            <div className="flex items-center justify-between gap-2 px-2 py-1">
-              <nav className="flex overflow-x-auto" role="tablist">
+            <div className="flex items-center justify-between gap-2 px-2.5 py-1.5">
+              <nav className="flex items-center gap-1 overflow-x-auto" role="tablist">
                 {TABS.map(t => (
                   <button
                     key={t.key}
                     role="tab"
                     aria-selected={tab === t.key}
                     onClick={() => setTab(t.key)}
-                    className={`relative inline-flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium transition-quick whitespace-nowrap focus-visible:outline-none rounded
-                      ${tab === t.key ? 'text-accent bg-accent/5' : 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'}
+                    className={`relative inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium transition-quick whitespace-nowrap focus-visible:outline-none rounded-lg
+                      ${tab === t.key ? 'text-accent bg-accent/10' : 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'}
                     `}
                   >
                     {t.icon}
@@ -418,37 +418,37 @@ export default function ProcessDetailPage() {
               </nav>
 
               {tab === 'pipeline' && (
-                <div className="flex items-center gap-1.5 pr-1">
+                <div className="flex items-center gap-2 pr-1">
                   <button
                     onClick={() => setShowFunnel(s => !s)}
-                    className={`inline-flex items-center gap-1 px-2 h-7 text-[11px] font-medium rounded-md border transition-quick
+                    className={`inline-flex items-center gap-1.5 px-2.5 h-8 text-xs font-medium rounded-lg border transition-quick
                       ${showFunnel ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-bg-primary border-border-color text-text-secondary hover:bg-bg-secondary'}`}
                     title="Toggle funnel ribbon"
                   >
-                    <Icon.funnel size={11} />
+                    <Icon.funnel size={12} />
                     Funnel
                   </button>
-                  <div className="flex items-center rounded-md border border-border-color overflow-hidden h-7">
+                  <div className="flex items-center rounded-lg border border-border-color overflow-hidden h-8">
                     <button
                       onClick={() => setLayout('board')}
-                      className={`px-2 h-full inline-flex items-center transition-quick ${layout === 'board' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
+                      className={`px-2.5 h-full inline-flex items-center transition-quick ${layout === 'board' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
                       title="Board view"
                       aria-pressed={layout === 'board'}
                     >
-                      <Icon.grid size={12} />
+                      <Icon.grid size={13} />
                     </button>
                     <button
                       onClick={() => setLayout('list')}
-                      className={`px-2 h-full inline-flex items-center transition-quick ${layout === 'list' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
+                      className={`px-2.5 h-full inline-flex items-center border-l border-border-color transition-quick ${layout === 'list' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
                       title="List view"
                       aria-pressed={layout === 'list'}
                     >
-                      <Icon.list size={12} />
+                      <Icon.list size={13} />
                     </button>
                     {layout === 'board' && (
                       <button
                         onClick={() => setFit(f => !f)}
-                        className={`px-2 h-full inline-flex items-center border-l border-border-color transition-quick text-[10px] font-semibold ${fit ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
+                        className={`px-2.5 h-full inline-flex items-center border-l border-border-color transition-quick text-[10px] font-semibold tracking-wide ${fit ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
                         title={fit ? 'Fit-to-screen ON — stages share width' : 'Fit-to-screen OFF — horizontal scroll'}
                         aria-pressed={fit}
                       >
@@ -456,7 +456,7 @@ export default function ProcessDetailPage() {
                       </button>
                     )}
                   </div>
-                  <Button variant="primary" icon={<Icon.plus size={12} />}
+                  <Button variant="primary" size="md" icon={<Icon.plus size={14} />}
                     onClick={() => { setAddEntryInitialStage(undefined); setAddEntryOpen(true); }}>
                     Add
                   </Button>
@@ -468,17 +468,17 @@ export default function ProcessDetailPage() {
 
         {/* Loading */}
         {loading && (
-          <div className="space-y-3">
-            <div className="h-12 rounded-md bg-bg-secondary animate-pulse" />
+          <div className="space-y-2.5">
+            <div className="h-12 rounded-2xl bg-bg-secondary animate-pulse" />
             <div className="flex gap-3">
-              {[1,2,3,4].map(i => <div key={i} className="h-72 flex-1 rounded-lg bg-bg-secondary animate-pulse" />)}
+              {[1,2,3,4].map(i => <div key={i} className="h-72 flex-1 rounded-2xl bg-bg-secondary animate-pulse" />)}
             </div>
           </div>
         )}
 
         {/* Error */}
         {error && !loading && (
-          <div className="mb-3 rounded-md border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          <div className="mb-4 rounded-xl border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/20 px-4 py-3 text-sm text-red-800 dark:text-red-300">
             {error}
             <button onClick={loadData} className="ml-2 underline">Retry</button>
           </div>
@@ -488,7 +488,7 @@ export default function ProcessDetailPage() {
         {!loading && process && (
           <div className="animate-in fade-in duration-200">
             {tab === 'pipeline' && (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {/* Funnel ribbon — flow visualization */}
                 {showFunnel && (
                   <FunnelRibbon
@@ -597,9 +597,9 @@ export default function ProcessDetailPage() {
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex flex-col">
-      <span className="text-[9px] uppercase tracking-wide text-text-secondary font-semibold leading-tight">{label}</span>
-      <div className="leading-tight">{value}</div>
+    <div className="flex flex-col gap-1">
+      <span className="text-[11px] uppercase tracking-wider text-text-secondary font-semibold leading-none">{label}</span>
+      <div className="leading-none">{value}</div>
     </div>
   );
 }

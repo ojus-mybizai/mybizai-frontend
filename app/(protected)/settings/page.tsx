@@ -530,13 +530,13 @@ export default function SettingsPage() {
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+            <div className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
               <AlertCircle className="h-4 w-4 shrink-0" />
               {error}
             </div>
           )}
           {success && (
-            <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
               {success}
             </div>
@@ -1421,7 +1421,7 @@ export default function SettingsPage() {
             <div className="space-y-6">
               {/* Delete Business Section — owner only */}
               {isOwner && (
-                <div className="rounded-2xl border border-red-200 bg-red-50/60 p-6 dark:border-red-800 dark:bg-red-950/20">
+                <div className="rounded-2xl border border-red-300 bg-red-50/60 p-6 dark:border-red-800 dark:bg-red-950/20">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10">
                       <Building2 className="h-4 w-4 text-red-500" />
@@ -1459,7 +1459,7 @@ export default function SettingsPage() {
               )}
 
               {/* Delete Account Section — all users */}
-              <div className="rounded-2xl border border-red-200 bg-red-50/60 p-6 dark:border-red-800 dark:bg-red-950/20">
+              <div className="rounded-2xl border border-red-300 bg-red-50/60 p-6 dark:border-red-800 dark:bg-red-950/20">
                 <div className="flex items-center gap-2.5">
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10">
                     <User className="h-4 w-4 text-red-500" />
@@ -1517,7 +1517,7 @@ export default function SettingsPage() {
                 </p>
 
                 {deleteError && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     {deleteError}
                   </div>
@@ -1615,7 +1615,7 @@ export default function SettingsPage() {
                 </p>
 
                 {deleteError && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     {deleteError}
                   </div>

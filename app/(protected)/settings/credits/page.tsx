@@ -186,10 +186,10 @@ export default function CreditsPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-lg bg-red-50 border border-red-300 px-4 py-3 text-sm text-red-800">{error}</div>
       )}
       {notice && (
-        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700">{notice}</div>
+        <div className="rounded-lg bg-emerald-50 border border-emerald-300 px-4 py-3 text-sm text-emerald-800">{notice}</div>
       )}
 
       {/* ═══ Section 1: Headline ═════════════════════════════════════════ */}
@@ -283,7 +283,7 @@ export default function CreditsPage() {
                 disabled={buying !== null}
                 className="group flex flex-col items-start rounded-xl border-2 border-border-color bg-card-bg p-4 text-left transition-all hover:border-accent hover:shadow-md disabled:opacity-50"
               >
-                <div className="rounded-lg bg-amber-100 p-1.5 text-amber-700 mb-2">
+                <div className="rounded-lg bg-amber-100 p-1.5 text-amber-800 mb-2">
                   <Coins className="h-4 w-4" />
                 </div>
                 <span className="text-lg font-bold text-text-primary">{pack.credits.toLocaleString()}</span>
@@ -476,10 +476,10 @@ export default function CreditsPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                        entry.entry_type === 'grant' ? 'bg-emerald-100 text-emerald-700'
-                        : entry.entry_type === 'debit' ? 'bg-blue-100 text-blue-700'
-                        : entry.entry_type === 'refund' ? 'bg-purple-100 text-purple-700'
-                        : entry.entry_type === 'expiry' ? 'bg-red-100 text-red-700'
+                        entry.entry_type === 'grant' ? 'bg-emerald-100 text-emerald-800'
+                        : entry.entry_type === 'debit' ? 'bg-blue-100 text-blue-800'
+                        : entry.entry_type === 'refund' ? 'bg-purple-100 text-purple-800'
+                        : entry.entry_type === 'expiry' ? 'bg-red-100 text-red-800'
                         : 'bg-gray-100 text-gray-700'
                       }`}>
                         {entry.entry_type}

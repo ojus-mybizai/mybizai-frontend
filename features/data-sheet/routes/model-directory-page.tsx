@@ -106,7 +106,7 @@ export function ModelDirectoryPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-base text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-base text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
           {typeof error === 'string' ? error : error.message}
           {typeof error === 'object' && error.linked_tool_names?.length ? (
             <p className="mt-2 text-sm">

@@ -6,14 +6,14 @@ import type { AttendanceRecord } from '@/services/waEmployees';
 /* ── Avatar helpers ────────────────────────────────────────────────────────── */
 
 const AVATAR_COLORS = [
-  'bg-violet-100 text-violet-700',
-  'bg-blue-100   text-blue-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-orange-100 text-orange-700',
-  'bg-pink-100   text-pink-700',
-  'bg-cyan-100   text-cyan-700',
-  'bg-amber-100  text-amber-700',
-  'bg-rose-100   text-rose-700',
+  'bg-violet-100 text-violet-800',
+  'bg-blue-100   text-blue-800',
+  'bg-emerald-100 text-emerald-800',
+  'bg-orange-100 text-orange-800',
+  'bg-pink-100   text-pink-800',
+  'bg-cyan-100   text-cyan-800',
+  'bg-amber-100  text-amber-800',
+  'bg-rose-100   text-rose-800',
 ];
 
 function avatarColor(name: string) {
@@ -239,9 +239,9 @@ export function AttendanceDayTable({
                             className={[
                               'inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize',
                               r.check_in_method === 'whatsapp'
-                                ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400'
+                                ? 'bg-green-50 text-green-800 border-green-300 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400'
                                 : r.check_in_method === 'manual'
-                                ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400'
+                                ? 'bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400'
                                 : 'bg-bg-secondary text-text-secondary border-border-color',
                             ].join(' ')}
                           >
@@ -261,7 +261,7 @@ export function AttendanceDayTable({
       </div>
 
       {/* Attendance how-it-works note */}
-      <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-xl p-4 text-sm text-blue-800 dark:text-blue-300">
+      <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-300 dark:border-blue-900 rounded-xl p-4 text-sm text-blue-800 dark:text-blue-300">
         <p className="font-semibold mb-1.5 flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5 shrink-0" /> How attendance works
         </p>

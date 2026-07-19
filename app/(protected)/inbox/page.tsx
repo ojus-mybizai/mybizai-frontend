@@ -204,7 +204,7 @@ const ConversationRow = memo(function ConversationRow({
             <AIStatusBadge mode={conv.status} />
             {conv.agentName && conv.agentName !== '—' && (
               <span
-                className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300"
                 title={`Agent: ${conv.agentName}`}
               >
                 {conv.agentName}
@@ -233,7 +233,7 @@ const ConversationRow = memo(function ConversationRow({
               if (conv.sessionActive && remaining) {
                 return (
                   <span
-                    className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-medium dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
+                    className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 text-[10px] font-medium dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
                     title={`WhatsApp 24h window open · free-form messages allowed for ${remaining}`}
                   >
                     <MessageCircle className="h-2.5 w-2.5" />
@@ -1344,7 +1344,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                     onClick={() => setSessionFilter('')}
                     className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                       sessionFilter === 'open'
-                        ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-300'
                     }`}
                   >
@@ -1745,7 +1745,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
           {toastMessage && (
             <div className={`fixed bottom-6 right-6 z-50 rounded-lg border px-4 py-3 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-bottom-2 ${
               toastType === 'error'
-                ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950 dark:text-red-300'
+                ? 'border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-300'
                 : 'border-border-color bg-card-bg text-text-primary'
             }`}>
               {toastMessage}

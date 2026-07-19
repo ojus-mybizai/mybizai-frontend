@@ -10,6 +10,7 @@ import {
   AlertCircle, Megaphone, Calendar, DollarSign, FolderKanban,
   LayoutList, ChevronRight, Pencil, Save, X, Hash, Shield,
   Bell, Send, CalendarClock, CheckCircle2, XCircle, AlertTriangle,
+  Table2, ExternalLink,
 } from 'lucide-react';
 import ModuleGuard from '@/components/module-guard';
 import { useContactV2Store, type ContactV2State } from '@/lib/contact-v2-store';
@@ -36,12 +37,16 @@ import {
   listMessages, listConversationSessions,
   type Message, type ConversationSession,
 } from '@/services/customers';
+import {
+  getRecordsLinkedToContact,
+  type LinkedRecordGroup,
+} from '@/services/dynamic-data';
 
 // ────────────────────────────────────────────────────────────────
 // Constants
 // ────────────────────────────────────────────────────────────────
 
-type TabId = 'overview' | 'details' | 'conversation' | 'activity' | 'notes' | 'followups' | 'pipeline' | 'channels' | 'groups';
+type TabId = 'overview' | 'details' | 'conversation' | 'activity' | 'notes' | 'followups' | 'pipeline' | 'datasheets' | 'channels' | 'groups';
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'overview',     label: 'Overview',     Icon: User },
@@ -51,6 +56,7 @@ const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'notes',        label: 'Notes',        Icon: FileText },
   { id: 'followups',    label: 'Follow-ups',   Icon: Bell },
   { id: 'pipeline',     label: 'Pipeline',     Icon: Layers },
+  { id: 'datasheets',   label: 'Datasheets',   Icon: Table2 },
   { id: 'channels',     label: 'Channels',     Icon: Wifi },
   { id: 'groups',       label: 'Groups',       Icon: FolderKanban },
 ];
@@ -147,6 +153,7 @@ function ContactDetailInner() {
     loadingActivities, loadingNotes, loadingProcesses,
     select, clearSelected, update, updateRouting, assign,
     addNote, deleteNote, removeTag, moveProcessStage, remove,
+    loadActivities, loadNotes, loadProcesses,
     tags: allTags, loadTags, addTag,
     groups: allGroups, loadGroups, addToGroup, removeFromGroup,
   } = useContactV2Store(useShallow(s => ({
@@ -160,6 +167,9 @@ function ContactDetailInner() {
     loadingProcesses: s.loadingProcesses,
     select: s.select,
     clearSelected: s.clearSelected,
+    loadActivities: s.loadActivities,
+    loadNotes: s.loadNotes,
+    loadProcesses: s.loadProcesses,
     update: s.update,
     updateRouting: s.updateRouting,
     assign: s.assign,
@@ -190,12 +200,18 @@ function ContactDetailInner() {
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // ── Load contact ──────────────────────────────────────────────
+  // ── Load contact + its related data ───────────────────────────
+  // The store loads activities / notes / processes lazily; the page must
+  // trigger them or the Activity, Notes and Pipeline tabs (and the deal
+  // counts) stay empty even when data exists.
   useEffect(() => {
     if (!Number.isFinite(contactId)) return;
     void select(contactId);
+    void loadActivities(contactId);
+    void loadNotes(contactId);
+    void loadProcesses(contactId);
     return () => clearSelected();
-  }, [contactId, select, clearSelected]);
+  }, [contactId, select, clearSelected, loadActivities, loadNotes, loadProcesses]);
 
   // ── Load tags ─────────────────────────────────────────────────
   useEffect(() => {
@@ -248,6 +264,11 @@ function ContactDetailInner() {
 
   const c = selectedContact;
 
+  // Active deals come from the loaded processes (the contact-detail endpoint's
+  // `active_processes` field is unreliable / empty), so counts + the Overview
+  // list stay in sync with the Pipeline tab.
+  const activeDeals = processes.filter(p => p.status === 'active');
+
   const handlePriority = async (p: Priority) => {
     setActionError(null);
     try { await update(c.id, { priority: p }); }
@@ -278,20 +299,20 @@ function ContactDetailInner() {
 
   return (
     <div className="min-h-screen bg-bg-primary">
-      {/* ── Top bar ─────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-10 border-b border-border-color bg-card-bg/95 backdrop-blur supports-[backdrop-filter]:bg-card-bg/75">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+      <div className="mx-auto max-w-[1400px] px-3 py-3 sm:px-4">
+        {/* ── Breadcrumb + page actions ─────────────────────────── */}
+        <div className="mb-3 flex items-center justify-between gap-2">
           <button
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-primary hover:text-text-primary"
+            onClick={() => router.push('/contacts')}
+            className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[13px] text-text-secondary transition-colors hover:text-accent"
           >
-            <ArrowLeft className="h-4 w-4" /> Back
+            <ArrowLeft className="h-4 w-4" /> Contacts
           </button>
           <div className="flex items-center gap-2">
             {c.latest_conversation_id && (
               <Link
                 href={`/inbox?c=${c.latest_conversation_id}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border-color px-3 py-1.5 text-xs font-medium text-text-primary hover:bg-bg-primary"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:bg-bg-secondary"
               >
                 <MessageSquare className="h-3.5 w-3.5" /> Open in Inbox
               </Link>
@@ -299,25 +320,21 @@ function ContactDetailInner() {
             {canManage && (
               <button
                 onClick={handleDelete}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-500/10"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-500 transition-colors hover:bg-red-500/10"
               >
                 <Trash2 className="h-3.5 w-3.5" /> Delete
               </button>
             )}
           </div>
         </div>
-      </div>
 
-      {actionError && (
-        <div className="mx-auto max-w-7xl px-4 pt-3 sm:px-6">
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500 flex items-center gap-2">
+        {actionError && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
             <AlertCircle className="h-4 w-4" /> {actionError}
             <button className="ml-auto" onClick={() => setActionError(null)}><X className="h-4 w-4" /></button>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {/* ── Header card ───────────────────────────────────────── */}
         <ContactHeader
           contact={c}
@@ -328,10 +345,11 @@ function ContactDetailInner() {
           waEmployees={waEmployees}
           agents={agents}
           agentsEnabled={agentsEnabled}
+          activeDealsCount={activeDeals.length}
         />
 
         {/* ── Tabs ──────────────────────────────────────────────── */}
-        <div className="mt-6 overflow-x-auto pb-1 no-scrollbar">
+        <div className="mt-4 overflow-x-auto pb-1 no-scrollbar">
           <div className="flex w-max gap-1 rounded-xl border border-border-color bg-card-bg p-1 shadow-sm">
             {TABS.map(t => {
               const badge =
@@ -368,9 +386,9 @@ function ContactDetailInner() {
         </div>
 
         {/* ── Content grid ──────────────────────────────────────── */}
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
           <div className="min-w-0">
-            {tab === 'overview' && <OverviewTab contact={c} onGoToFollowups={() => setTab('followups')} />}
+            {tab === 'overview' && <OverviewTab contact={c} deals={activeDeals} onGoToFollowups={() => setTab('followups')} />}
             {tab === 'details' && <DetailsTab contact={c} />}
             {tab === 'conversation' && <ConversationTab contact={c} />}
             {tab === 'activity' && <ActivityTab activities={activities} loading={loadingActivities} />}
@@ -394,6 +412,7 @@ function ContactDetailInner() {
                 onMoveStage={(entryId, stageId) => moveProcessStage(c.id, entryId, stageId)}
               />
             )}
+            {tab === 'datasheets' && <DatasheetsTab contactId={c.id} />}
             {tab === 'channels' && (
               <ChannelsTab
                 channels={channels}
@@ -449,7 +468,6 @@ function ContactDetailInner() {
               onRemove={(tagId) => removeTag(c.id, tagId)}
               canManage={canManage}
             />
-            <QuickStatsRail contact={c} />
             <AdAttributionRail contact={c} />
           </aside>
         </div>
@@ -463,7 +481,7 @@ function ContactDetailInner() {
 // ────────────────────────────────────────────────────────────────
 
 function ContactHeader({
-  contact: c, canManage, onPriority, onRouting, onAssign, waEmployees, agents, agentsEnabled,
+  contact: c, canManage, onPriority, onRouting, onAssign, waEmployees, agents, agentsEnabled, activeDealsCount,
 }: {
   contact: Contact;
   canManage: boolean;
@@ -474,6 +492,7 @@ function ContactHeader({
   waEmployees: WaEmployee[];
   agents: Array<{ id: string | number; name: string }>;
   agentsEnabled: boolean;
+  activeDealsCount: number;
 }) {
   const [editMode, setEditMode] = useState(false);
   const [editing, setEditing] = useState<{ name: string; phone: string; email: string; company: string }>({
@@ -500,10 +519,10 @@ function ContactHeader({
   };
 
   return (
-    <div className="rounded-2xl border border-border-color bg-card-bg p-5 shadow-sm">
+    <div className="rounded-2xl border border-border-color bg-card-bg p-4 shadow-sm">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         {/* Avatar */}
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-accent/60 text-xl font-semibold text-white">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-accent/60 text-lg font-semibold text-white ring-2 ring-accent/20 ring-offset-2 ring-offset-card-bg">
           {initials(c.name)}
         </div>
 
@@ -564,20 +583,57 @@ function ContactHeader({
                     <Hash className="h-3 w-3" /> {c.public_id}
                   </span>
                 )}
-                {canManage && (
-                  <button
-                    onClick={() => setEditMode(true)}
-                    className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-secondary hover:bg-bg-primary hover:text-text-primary"
-                  >
-                    <Pencil className="h-3.5 w-3.5" /> Edit
-                  </button>
-                )}
+                {/* Quick actions + edit */}
+                <div className="ml-auto flex items-center gap-1">
+                  {c.phone && (
+                    <a
+                      href={`tel:${c.phone}`}
+                      title={`Call ${c.phone}`}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-color text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent"
+                    >
+                      <Phone className="h-4 w-4" />
+                    </a>
+                  )}
+                  {c.email && (
+                    <a
+                      href={`mailto:${c.email}`}
+                      title={`Email ${c.email}`}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-color text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent"
+                    >
+                      <Mail className="h-4 w-4" />
+                    </a>
+                  )}
+                  {canManage && (
+                    <button
+                      onClick={() => setEditMode(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border-color px-2.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-secondary hover:text-text-primary"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Edit
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-secondary">
-                {c.phone && <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" /> {c.phone}</span>}
-                {c.email && <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /> {c.email}</span>}
-                {c.company && <span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" /> {c.company}</span>}
-                {c.source && <span className="inline-flex items-center gap-1.5"><Wifi className="h-3.5 w-3.5" /> {c.source}</span>}
+              <div className="mt-2 flex flex-wrap gap-1.5 text-sm">
+                {c.phone && (
+                  <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1.5 rounded-lg bg-bg-primary px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:text-accent">
+                    <Phone className="h-3.5 w-3.5" /> {c.phone}
+                  </a>
+                )}
+                {c.email && (
+                  <a href={`mailto:${c.email}`} className="inline-flex items-center gap-1.5 rounded-lg bg-bg-primary px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:text-accent">
+                    <Mail className="h-3.5 w-3.5" /> {c.email}
+                  </a>
+                )}
+                {c.company && (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-bg-primary px-2.5 py-1 text-xs font-medium text-text-secondary">
+                    <Building2 className="h-3.5 w-3.5" /> {c.company}
+                  </span>
+                )}
+                {c.source && (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-bg-primary px-2.5 py-1 text-xs font-medium text-text-secondary">
+                    <Wifi className="h-3.5 w-3.5" /> {c.source}
+                  </span>
+                )}
               </div>
             </>
           )}
@@ -631,9 +687,42 @@ function ContactHeader({
           ]}
           onChange={(v) => onAssign(v === '' ? null : Number(v))}
         />
-        <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-text-secondary">
-          <Clock className="h-3.5 w-3.5" /> Created {formatDate(c.created_at)}
-        </span>
+      </div>
+
+      {/* ── Stat strip ────────────────────────────────────────── */}
+      <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border-color bg-border-color sm:grid-cols-4">
+        <HeaderStat icon={MessageSquare} label="Last message" value={timeAgo(c.last_message_at)} />
+        <HeaderStat icon={FolderKanban} label="Active deals" value={String(activeDealsCount)} />
+        <HeaderStat
+          icon={Bell}
+          label="Overdue"
+          value={String(c.overdue_followup_count)}
+          tone={c.overdue_followup_count > 0 ? 'warn' : 'default'}
+        />
+        <HeaderStat icon={Clock} label="Created" value={formatDate(c.created_at)} />
+      </div>
+    </div>
+  );
+}
+
+function HeaderStat({
+  icon: Icon, label, value, tone = 'default',
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  tone?: 'default' | 'warn';
+}) {
+  return (
+    <div className="flex items-center gap-2.5 bg-card-bg px-3 py-2.5">
+      <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+        tone === 'warn' ? 'bg-amber-500/10 text-amber-600' : 'bg-bg-primary text-text-secondary'
+      }`}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">{label}</p>
+        <p className={`truncate text-sm font-semibold ${tone === 'warn' ? 'text-amber-600' : 'text-text-primary'}`}>{value}</p>
       </div>
     </div>
   );
@@ -673,8 +762,7 @@ function ChipDropdown({
 // Overview tab
 // ────────────────────────────────────────────────────────────────
 
-function OverviewTab({ contact: c, onGoToFollowups }: { contact: Contact; onGoToFollowups: () => void }) {
-  const activeProcesses = c.active_processes ?? [];
+function OverviewTab({ contact: c, deals, onGoToFollowups }: { contact: Contact; deals: ContactV2State['processes']; onGoToFollowups: () => void }) {
   return (
     <div className="space-y-4">
       {/* Last message preview */}
@@ -693,23 +781,34 @@ function OverviewTab({ contact: c, onGoToFollowups }: { contact: Contact; onGoTo
         </SectionCard>
       )}
 
-      {/* Notes preview from contact.notes (the legacy summary field) */}
-      {c.notes && (
-        <SectionCard title="Summary" icon={FileText}>
-          <p className="whitespace-pre-wrap text-sm text-text-primary">{c.notes}</p>
-        </SectionCard>
-      )}
+      {/* Summary — the contact.notes field, inline-editable */}
+      <SummaryCard contact={c} />
 
-      {/* Active deals */}
-      <SectionCard title={`Active deals (${activeProcesses.length})`} icon={FolderKanban}>
-        {activeProcesses.length === 0 ? (
+      {/* Active deals — sourced from the loaded pipeline entries */}
+      <SectionCard title={`Active deals (${deals.length})`} icon={FolderKanban}>
+        {deals.length === 0 ? (
           <p className="text-sm text-text-secondary">Not in any active pipeline.</p>
         ) : (
           <ul className="space-y-2">
-            {activeProcesses.map((p, i) => (
-              <li key={i} className="flex items-center justify-between rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm">
-                <span className="text-text-primary truncate">{(p as { name?: string }).name ?? 'Deal'}</span>
-                <span className="text-xs text-text-secondary">{(p as { stage?: string }).stage ?? ''}</span>
+            {deals.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-border-color bg-bg-primary px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: p.current_stage_color ?? p.process_color ?? '#888' }} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-text-primary">{p.title || p.process_name}</p>
+                    <p className="truncate text-xs text-text-secondary">{p.process_name}</p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end">
+                  <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-[11px] font-medium text-text-secondary">
+                    {p.current_stage_name}
+                  </span>
+                  {p.expected_value != null && (
+                    <span className="mt-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      ₹{p.expected_value.toLocaleString()}
+                    </span>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -733,6 +832,73 @@ function OverviewTab({ contact: c, onGoToFollowups }: { contact: Contact; onGoTo
         </button>
       </SectionCard>
     </div>
+  );
+}
+
+function SummaryCard({ contact: c }: { contact: Contact }) {
+  const { update } = useContactV2Store(useShallow(s => ({ update: s.update })));
+  const canManage = useAuthStore(s => s.hasPermission)('manage_leads');
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(c.notes ?? '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setText(c.notes ?? ''); }, [c.id, c.notes]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await update(c.id, { notes: text.trim() });
+      setEditing(false);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <SectionCard
+      title="Summary"
+      icon={FileText}
+      action={!editing && canManage ? (
+        <button
+          onClick={() => setEditing(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border-color px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-secondary hover:text-text-primary"
+        >
+          <Pencil className="h-3.5 w-3.5" /> {c.notes ? 'Edit' : 'Add'}
+        </button>
+      ) : undefined}
+    >
+      {editing ? (
+        <div className="space-y-2">
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            autoFocus
+            rows={4}
+            placeholder="Write a short summary of this contact — who they are, what they want, key context…"
+            className="w-full resize-none rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => { setText(c.notes ?? ''); setEditing(false); }}
+              className="rounded-lg border border-border-color px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
+            </button>
+          </div>
+        </div>
+      ) : c.notes ? (
+        <p className="whitespace-pre-wrap text-sm text-text-primary">{c.notes}</p>
+      ) : (
+        <p className="text-sm text-text-secondary">
+          No summary yet.{canManage && ' Click Add to write one.'}
+        </p>
+      )}
+    </SectionCard>
   );
 }
 
@@ -1518,35 +1684,51 @@ function PipelineTab({
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: p.process_color ?? '#888' }} />
-                <h3 className="font-medium text-text-primary truncate">{p.process_name}</h3>
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: p.current_stage_color ?? p.process_color ?? '#888' }} />
+                <h3 className="font-medium text-text-primary truncate">{p.title || p.process_name}</h3>
               </div>
-              {p.title && <p className="mt-0.5 text-sm text-text-secondary">{p.title}</p>}
+              {p.title && <p className="mt-0.5 text-sm text-text-secondary">{p.process_name}</p>}
             </div>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${p.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-gray-500/10 text-gray-500'}`}>
               {p.status}
             </span>
           </div>
 
-          {/* Stages */}
+          {/* Stages — the contact-processes endpoint may omit the full stage
+              list; fall back to showing just the current stage so we never
+              crash on an undefined `process_stages`. */}
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {p.process_stages.map(s => {
-              const active = s.id === p.current_stage_id;
-              return (
-                <button
-                  key={s.id}
-                  disabled={active}
-                  onClick={() => onMoveStage(p.id, s.id)}
-                  className={`rounded-md border px-2 py-1 text-xs ${
-                    active
-                      ? 'border-accent bg-accent/10 text-accent font-medium'
-                      : 'border-border-color text-text-secondary hover:bg-bg-primary'
-                  }`}
-                >
-                  {s.name}
-                </button>
-              );
-            })}
+            {(p.process_stages?.length ?? 0) > 0 ? (
+              p.process_stages.map(s => {
+                const active = s.id === p.current_stage_id;
+                return (
+                  <button
+                    key={s.id}
+                    disabled={active}
+                    onClick={() => onMoveStage(p.id, s.id)}
+                    className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+                      active
+                        ? 'border-accent bg-accent/10 text-accent font-medium'
+                        : 'border-border-color text-text-secondary hover:bg-bg-primary'
+                    }`}
+                  >
+                    {s.name}
+                  </button>
+                );
+              })
+            ) : p.current_stage_name ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium"
+                style={{
+                  borderColor: (p.current_stage_color ?? '#888') + '55',
+                  color: p.current_stage_color ?? undefined,
+                  backgroundColor: (p.current_stage_color ?? '#888') + '15',
+                }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: p.current_stage_color ?? '#888' }} />
+                {p.current_stage_name}
+              </span>
+            ) : null}
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-text-secondary sm:grid-cols-4">
@@ -1784,7 +1966,7 @@ function GroupsTab({
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
                   isSystem
                     ? 'border-bg-secondary bg-bg-secondary text-text-secondary'
-                    : 'border-indigo-300/60 bg-indigo-50 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-900/30 dark:text-indigo-200'
+                    : 'border-indigo-300/60 bg-indigo-50 text-indigo-800 dark:border-indigo-500/40 dark:bg-indigo-900/30 dark:text-indigo-200'
                 }`}
                 style={!isSystem && g.color ? { borderColor: g.color, color: g.color, backgroundColor: g.color + '15' } : undefined}
               >
@@ -1918,18 +2100,6 @@ function TagsRail({
   );
 }
 
-function QuickStatsRail({ contact: c }: { contact: Contact }) {
-  return (
-    <SectionCard title="At a glance" icon={Activity}>
-      <dl className="space-y-2 text-sm">
-        <DLRow label="Last message" value={timeAgo(c.last_message_at)} />
-        <DLRow label="Overdue follow-ups" value={String(c.overdue_followup_count)} />
-        <DLRow label="Active deals" value={String((c.active_processes ?? []).length)} />
-      </dl>
-    </SectionCard>
-  );
-}
-
 function AdAttributionRail({ contact: c }: { contact: Contact }) {
   if (!c.ad_platform && !c.meta_ad_id && !c.meta_campaign_name) return null;
   return (
@@ -1948,11 +2118,94 @@ function AdAttributionRail({ contact: c }: { contact: Contact }) {
 // Generic helpers
 // ────────────────────────────────────────────────────────────────
 
+// ────────────────────────────────────────────────────────────────
+// Datasheets tab — datasheet records that link to this contact
+// ────────────────────────────────────────────────────────────────
+
+function DatasheetsTab({ contactId }: { contactId: number }) {
+  const [groups, setGroups] = useState<LinkedRecordGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    getRecordsLinkedToContact(contactId)
+      .then((res) => { if (!cancelled) setGroups(res.groups); })
+      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load linked records'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [contactId]);
+
+  if (loading) return <SkeletonCard />;
+
+  if (error) {
+    return (
+      <SectionCard title="Datasheets" icon={Table2}>
+        <div className="flex items-center gap-2 text-sm text-red-500">
+          <AlertCircle className="h-4 w-4" /> {error}
+        </div>
+      </SectionCard>
+    );
+  }
+
+  if (groups.length === 0) {
+    return (
+      <SectionCard title="Datasheets" icon={Table2}>
+        <p className="text-sm text-text-secondary">
+          No datasheet records are linked to this contact yet. Records appear here
+          when a datasheet has a relation field pointing at this contact.
+        </p>
+      </SectionCard>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {groups.map((g) => (
+        <SectionCard
+          key={g.model_id}
+          title={g.model_display_name}
+          icon={Table2}
+          action={
+            <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-bg-primary px-1.5 text-[11px] font-semibold text-text-secondary">
+              {g.records.length}
+            </span>
+          }
+        >
+          <ul className="divide-y divide-border-color">
+            {g.records.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-text-primary">{r.title}</p>
+                  <p className="truncate font-mono text-[11px] text-text-secondary">
+                    {r.record_key}
+                    {g.field_display_name ? ` · via ${g.field_display_name}` : ''}
+                  </p>
+                </div>
+                <Link
+                  href={`/data-sheet/${g.model_id}/${r.id}`}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border-color px-2.5 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent"
+                >
+                  Open <ExternalLink className="h-3.5 w-3.5" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ))}
+    </div>
+  );
+}
+
 function SectionCard({ title, icon: Icon, children, action }: { title: string; icon: React.ElementType; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-border-color bg-card-bg p-5 shadow-sm">
-      <header className="mb-4 flex items-center gap-2">
-        <Icon className="h-4 w-4 text-text-secondary" />
+    <section className="rounded-2xl border border-border-color bg-card-bg p-4 shadow-sm">
+      <header className="mb-3 flex items-center gap-2">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-bg-primary text-text-secondary">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
         <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
         {action && <div className="ml-auto">{action}</div>}
       </header>

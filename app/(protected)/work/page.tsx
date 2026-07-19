@@ -35,7 +35,7 @@ function statusBadge(s: string) {
     pending: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
     in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
     completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
-    cancelled: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+    cancelled: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
   };
   return map[s] || map.pending;
 }
@@ -465,7 +465,7 @@ export default function WorkPage() {
 
         {/* ── Alerts ── */}
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
             {error}
             <button type="button" onClick={() => setError(null)} className="ml-2 font-medium underline">
               Dismiss
@@ -473,7 +473,7 @@ export default function WorkPage() {
           </div>
         )}
         {notice && !error && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
+          <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
             {notice}
           </div>
         )}

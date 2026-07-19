@@ -303,7 +303,7 @@ export default function BillingPage() {
 
       {/* Trial banner */}
       {isTrialing && (
-        <div className="mt-4 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
+        <div className="mt-4 flex items-center justify-between rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm">
           <div>
             <span className="font-semibold text-blue-800">Free trial active</span>
             <span className="ml-2 text-blue-700">
@@ -323,16 +323,16 @@ export default function BillingPage() {
       )}
 
       {isTrialExpired && (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Your free trial has ended. Subscribe below to restore full access.
         </div>
       )}
 
       {error && (
-        <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
       )}
       {notice && (
-        <div className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>
+        <div className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>
       )}
 
       {/* Credit balance widget */}
@@ -517,7 +517,7 @@ export default function BillingPage() {
                     type="button"
                     onClick={handleCancel}
                     disabled={cancelling}
-                    className="w-full rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    className="w-full rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
                   >
                     {cancelling ? 'Cancelling...' : 'Cancel Plan'}
                   </button>

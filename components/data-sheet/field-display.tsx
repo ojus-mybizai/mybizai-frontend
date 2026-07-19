@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -12,8 +13,10 @@ import {
   Calculator,
   Phone,
   ExternalLink,
+  ArrowUpRight,
 } from 'lucide-react';
 import type { DynamicField } from '@/services/dynamic-data';
+import { HUES, valueColor } from './value-colors';
 
 export type FieldDensity = 'compact' | 'comfortable' | 'detail';
 
@@ -59,50 +62,23 @@ function isEmpty(v: unknown): boolean {
 /*  Smart colors                                                       */
 /* ────────────────────────────────────────────────────────────────── */
 
-const HASH_COLORS = [
-  'bg-blue-100 text-blue-700 ring-blue-200/60 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800/40',
-  'bg-purple-100 text-purple-700 ring-purple-200/60 dark:bg-purple-900/30 dark:text-purple-300 dark:ring-purple-800/40',
-  'bg-cyan-100 text-cyan-700 ring-cyan-200/60 dark:bg-cyan-900/30 dark:text-cyan-300 dark:ring-cyan-800/40',
-  'bg-pink-100 text-pink-700 ring-pink-200/60 dark:bg-pink-900/30 dark:text-pink-300 dark:ring-pink-800/40',
-  'bg-indigo-100 text-indigo-700 ring-indigo-200/60 dark:bg-indigo-900/30 dark:text-indigo-300 dark:ring-indigo-800/40',
-  'bg-teal-100 text-teal-700 ring-teal-200/60 dark:bg-teal-900/30 dark:text-teal-300 dark:ring-teal-800/40',
-];
-
-const STATUS_GREEN = 'bg-green-100 text-green-700 ring-green-200/60 dark:bg-green-900/30 dark:text-green-300 dark:ring-green-800/40';
-const STATUS_RED = 'bg-rose-100 text-rose-700 ring-rose-200/60 dark:bg-rose-900/30 dark:text-rose-300 dark:ring-rose-800/40';
-const STATUS_AMBER = 'bg-amber-100 text-amber-700 ring-amber-200/60 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800/40';
-const STATUS_BLUE = 'bg-blue-100 text-blue-700 ring-blue-200/60 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800/40';
-const STATUS_GRAY = 'bg-gray-100 text-gray-600 ring-gray-200/60 dark:bg-gray-800/50 dark:text-gray-400 dark:ring-gray-700/40';
-
-const STATUS_MAP: Array<{ test: RegExp; cls: string }> = [
-  { test: /^(done|won|complete|completed|success|active|approved|paid|yes|ok|live|resolved|published)$/i, cls: STATUS_GREEN },
-  { test: /^(failed|fail|lost|cancel|cancelled|canceled|reject|rejected|blocked|error|no|overdue|expired)$/i, cls: STATUS_RED },
-  { test: /^(pending|in[\s_-]?progress|review|reviewing|warn|warning|hold|waiting|processing|scheduled)$/i, cls: STATUS_AMBER },
-  { test: /^(new|open|todo|to[\s_-]?do|info|draft|backlog)$/i, cls: STATUS_BLUE },
-  { test: /^(archived|closed|inactive|disabled|deleted)$/i, cls: STATUS_GRAY },
-  // Priority-specific
-  { test: /^(urgent|high|critical|p0|p1)$/i, cls: STATUS_RED },
-  { test: /^(medium|normal|p2)$/i, cls: STATUS_AMBER },
-  { test: /^(low|p3|p4)$/i, cls: STATUS_BLUE },
-];
+// Boolean yes/no swatches — reuse the shared vocabulary so they match every
+// other chip in the app.
+const STATUS_GREEN = HUES.green.chip;
+const STATUS_GRAY = HUES.slate.chip;
 
 const STATUS_FIELD_RE = /(status|stage|priority|state|phase|level|severity|kind|type)/i;
 
-function hashColor(s: string): string {
-  let hash = 0;
-  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
-  return HASH_COLORS[Math.abs(hash) % HASH_COLORS.length];
-}
-
+/**
+ * Chip classes for an enum/status value. Delegates to the shared, deterministic
+ * {@link valueColor} vocabulary so a value renders the same colour in the table,
+ * list, card, kanban and calendar views. A per-option custom colour (rare) still
+ * takes precedence.
+ */
 export function colorForOption(field: DynamicField, value: string): string {
   const userColors = field.config?.option_colors as Record<string, string> | undefined;
   if (userColors && userColors[value]) return userColors[value];
-  if (STATUS_FIELD_RE.test(field.name) || STATUS_FIELD_RE.test(field.display_name)) {
-    for (const m of STATUS_MAP) {
-      if (m.test.test(value.trim())) return m.cls;
-    }
-  }
-  return hashColor(value);
+  return valueColor(field, value).chip;
 }
 
 /** Smart heuristic: pick the best field to use as a "title" for a record (calendar pills, list items, etc.). */
@@ -247,6 +223,7 @@ export function FieldDisplay({
   className,
   showEmpty = true,
 }: FieldDisplayProps) {
+  const router = useRouter();
   const ft = field.field_type;
 
   // Empty handling
@@ -383,18 +360,41 @@ export function FieldDisplay({
     }
 
     const maxVisible = density === 'compact' ? 1 : density === 'detail' ? 20 : 2;
-    const shown = resolved.slice(0, maxVisible);
-    const overflow = resolved.length - shown.length;
+    const shownIds = ids.slice(0, maxVisible);
+    const overflow = resolved.length - shownIds.length;
     const ringCls = 'bg-accent/10 text-accent ring-accent/20 dark:bg-accent/20 dark:text-accent';
+    // Custom-model relations have a record page; builtin ones (contacts/users/
+    // work) do not, so only the former become clickable "open record" chips.
+    const canRoute = !!field.relation_model_id && !field.relation_builtin_model;
 
     return (
       <span className={`inline-flex max-w-full flex-wrap items-center gap-1 ${containerCls}`}>
-        {shown.map((label, i) => (
-          <Chip key={i} colorClass={ringCls} density={density} title={label}>
-            <AvatarInitial label={label} size={density === 'detail' ? 'sm' : 'xs'} />
-            <span className="truncate">{truncate(label, density === 'detail' ? 40 : 18)}</span>
-          </Chip>
-        ))}
+        {shownIds.map((id, i) => {
+          const label = resolved[i];
+          const chip = (
+            <Chip colorClass={ringCls} density={density} title={canRoute ? `Open ${label}` : label}>
+              <AvatarInitial label={label} size={density === 'detail' ? 'sm' : 'xs'} />
+              <span className="truncate">{truncate(label, density === 'detail' ? 40 : 18)}</span>
+              {canRoute && (
+                <ArrowUpRight className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/relchip:opacity-100" />
+              )}
+            </Chip>
+          );
+          if (!canRoute) return <React.Fragment key={i}>{chip}</React.Fragment>;
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/data-sheet/${field.relation_model_id}/${id}`);
+              }}
+              className="group/relchip inline-flex max-w-full items-center rounded-full transition hover:brightness-105"
+            >
+              {chip}
+            </button>
+          );
+        })}
         {overflow > 0 && (
           <span className="text-[10px] font-medium text-text-secondary" title={resolved.slice(maxVisible).join(', ')}>
             +{overflow}

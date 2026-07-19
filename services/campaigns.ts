@@ -17,30 +17,33 @@ export type SequenceStatus = 'draft' | 'active' | 'archived';
 
 // ─── Audience / Segments ─────────────────────────────────────────────────────
 
-export interface AudienceFilter {
-  group_ids?: number[];
-  tag_ids?: number[];
-  source_channels?: string[];
-  priority?: string[];
-  last_messaged_within_days?: number;
-  not_messaged_within_days?: number;
-  created_after?: string;
-  created_before?: string;
-  tags?: string[];
-}
-
-export interface FilterPickItem {
-  id: number;
-  name: string;
-  color: string;
-  group_id?: number | null;
-}
-export interface SourceOption { value: string; label: string; }
-export interface FilterOptions {
-  groups: FilterPickItem[];
-  tags: FilterPickItem[];
-  sources: SourceOption[];
-}
+// Canonical filter/segment types live in ./outbound. Import them for local use
+// and re-export so the wizard (this module) and FilterBuilder (./outbound) share
+// ONE definition — a single source of truth that kills the two-copy drift risk.
+import type {
+  AudienceFilter,
+  CustomFieldFilter,
+  CustomFieldOp,
+  FilterPickItem,
+  SourceOption,
+  StageOption,
+  OwnerOption,
+  WaEmployeeOption,
+  CustomFieldOption,
+  FilterOptions,
+} from './outbound';
+export type {
+  AudienceFilter,
+  CustomFieldFilter,
+  CustomFieldOp,
+  FilterPickItem,
+  SourceOption,
+  StageOption,
+  OwnerOption,
+  WaEmployeeOption,
+  CustomFieldOption,
+  FilterOptions,
+};
 
 export interface AudiencePreview {
   count: number;
@@ -298,6 +301,42 @@ export async function previewAudience(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// ── Interactive recipient preview (T2.2) ────────────────────────────────
+export interface RecipientPreviewContact {
+  id: number | null;
+  name: string | null;
+  phone: string | null;
+  source: string | null;
+  stage: string | null;
+  owner: string | null;
+  tags: string[];
+}
+export interface RecipientPreview {
+  contacts: RecipientPreviewContact[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export async function previewAudienceContacts(
+  payload: {
+    audience_type: AudienceType;
+    filter?: AudienceFilter;
+    segment_id?: number;
+    contact_ids?: number[];
+  },
+  params?: { page?: number; per_page?: number },
+): Promise<RecipientPreview> {
+  const search = new URLSearchParams();
+  if (params?.page !== undefined) search.set('page', String(params.page));
+  if (params?.per_page !== undefined) search.set('per_page', String(params.per_page));
+  const qs = search.toString();
+  return apiFetch<RecipientPreview>(
+    `/campaigns/preview-audience/contacts${qs ? `?${qs}` : ''}`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════

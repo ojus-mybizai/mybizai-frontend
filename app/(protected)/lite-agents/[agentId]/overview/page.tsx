@@ -77,7 +77,7 @@ export default function LiteAgentOverviewPage() {
       {/* Left — Settings */}
       <div className="lg:col-span-2 space-y-5">
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
             {error}
           </div>
         )}
@@ -219,7 +219,7 @@ export default function LiteAgentOverviewPage() {
           </dl>
         </div>
 
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
           <p className="text-xs text-amber-700 dark:text-amber-400">
             <strong>Lite Agent</strong> — Makes a single LLM call per incoming message.
             No tools, no automation, no knowledge files. Fast and cost-efficient.

@@ -705,11 +705,16 @@ export default function AppShell({ children }: AppShellProps) {
         <main
           key={pathname}
           className={`${mounted ? 'animate-page-in' : ''} ${
-            pathname?.startsWith('/inbox') || pathname?.startsWith('/dashboard') || pathname?.startsWith('/wa-work') || pathname?.startsWith('/internal-chat')
+            // Full-bleed app panels: manage their own scroll + header, no shell padding
+            pathname?.startsWith('/inbox') || pathname?.startsWith('/dashboard') || pathname?.startsWith('/wa-work') || pathname?.startsWith('/internal-chat') || pathname === '/contacts'
               ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
               : pathname?.match(/^\/data-sheet\/[^/]+(\/)?$/)
                 ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-2 md:px-3 py-4 md:py-5'
-                : 'min-h-0 flex-1 overflow-y-auto px-2 md:px-3 py-4 md:py-5'
+                // Self-padded scrolling pages (their own container sets the gutter): no shell padding
+                : pathname?.startsWith('/processes/') || pathname?.match(/^\/contacts\/\d+/)
+                  ? 'min-h-0 flex-1 overflow-y-auto'
+                  // Default document pages: keep breathing room so headers don't touch the banner
+                  : 'min-h-0 flex-1 overflow-y-auto px-2 md:px-3 py-4 md:py-5'
           }`}
         >
           {children}

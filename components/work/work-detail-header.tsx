@@ -16,7 +16,7 @@ function statusBadgeClass(status: string): string {
     case 'in_progress':
       return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
     case 'cancelled':
-      return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
     default:
       return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
   }
@@ -29,7 +29,7 @@ function priorityBadgeClass(priority: string): string {
     case 'low':
       return 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300';
     default:
-      return 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
+      return 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300';
   }
 }
 

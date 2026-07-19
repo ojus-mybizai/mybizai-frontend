@@ -90,7 +90,7 @@ export default function AgentTestPage() {
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-border-color bg-card-bg p-5">
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
         </div>
       )}

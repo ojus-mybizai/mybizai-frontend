@@ -228,13 +228,13 @@ export default function ChannelsPage() {
           <FacebookSDKLoader />
 
           {channelsError && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
+            <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
               {channelsError}
             </div>
           )}
 
           {indiamartSuccess && (
-            <div className="flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <div className="flex items-center justify-between rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
               <span>{indiamartSuccess}</span>
               <button
                 type="button"
@@ -297,8 +297,8 @@ export default function ChannelsPage() {
                               <span
                                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm font-medium ${
                                   ch.isConnected
-                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                                    : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                    : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-400'
                                 }`}
                                 title={ch.isConnected
                                   ? 'Platform credentials valid — channel can send and receive.'

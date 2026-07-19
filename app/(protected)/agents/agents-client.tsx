@@ -17,10 +17,10 @@ import { LayoutTemplate, Plus, ChevronDown, ChevronUp, Zap, MessageSquare, Trash
 
 const TemplateCard = memo(function TemplateCard({ t, onUse }: { t: AgentTemplate; onUse: (t: AgentTemplate) => void }) {
   const cat: Record<string, string> = {
-    sales: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
-    marketing: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300',
-    operations: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300',
-    general: 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300',
+    sales: 'bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
+    marketing: 'bg-purple-50 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300',
+    operations: 'bg-orange-50 text-orange-800 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300',
+    general: 'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300',
   };
   return (
     <button
@@ -81,12 +81,12 @@ const AgentCard = memo(function AgentCard({
 
       <div className="flex flex-wrap gap-1.5 mb-3 text-[10px]">
         {chatOn && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
             <MessageSquare className="w-3 h-3" /> Chat
           </span>
         )}
         {autoOn && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
             <Zap className="w-3 h-3" /> Auto
           </span>
         )}

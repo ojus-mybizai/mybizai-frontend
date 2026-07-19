@@ -356,7 +356,7 @@ export default function WaEmployeesPage() {
 
       {/* Channel warning */}
       {!loading && settings && !settings.wa_employee_channel_id && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+        <div className="flex items-start gap-3 bg-red-50 border border-red-300 rounded-xl px-4 py-3 mb-4">
           <Wifi className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-red-700">No WhatsApp channel selected</p>
@@ -402,7 +402,7 @@ export default function WaEmployeesPage() {
         </div>
       )}
       {error && (
-        <div className="flex items-center gap-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-400">
+        <div className="flex items-center gap-3 bg-red-50 dark:bg-red-950/20 border border-red-300 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-800 dark:text-red-400">
           <XCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
@@ -452,7 +452,7 @@ export default function WaEmployeesPage() {
                 const members = detail?.members ?? [];
                 const SHOW    = 5;
                 const extra   = Math.max(0, members.length - SHOW);
-                const avatarColors = ['bg-violet-100 text-violet-700','bg-blue-100 text-blue-700','bg-emerald-100 text-emerald-700','bg-orange-100 text-orange-700','bg-pink-100 text-pink-700'];
+                const avatarColors = ['bg-violet-100 text-violet-800','bg-blue-100 text-blue-800','bg-emerald-100 text-emerald-800','bg-orange-100 text-orange-800','bg-pink-100 text-pink-800'];
                 return (
                   <button
                     key={group.id}
@@ -563,12 +563,12 @@ export default function WaEmployeesPage() {
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-text-primary">Employee WhatsApp Channel</h3>
               {!settings?.wa_employee_channel_id
-                ? <span className="text-xs font-medium text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"><XCircle className="w-3 h-3 inline mr-1" />Required</span>
-                : <span className="text-xs font-medium text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full"><CheckCircle className="w-3 h-3 inline mr-1" />Configured</span>}
+                ? <span className="text-xs font-medium text-red-600 bg-red-50 border border-red-300 px-2 py-0.5 rounded-full"><XCircle className="w-3 h-3 inline mr-1" />Required</span>
+                : <span className="text-xs font-medium text-green-600 bg-green-50 border border-green-300 px-2 py-0.5 rounded-full"><CheckCircle className="w-3 h-3 inline mr-1" />Configured</span>}
             </div>
             <p className="text-sm text-text-secondary">Which WhatsApp number sends invites, tasks, and attendance to employees.</p>
             {(settings?.available_channels || []).length === 0 ? (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+              <div className="bg-red-50 border border-red-300 rounded-lg px-4 py-3 text-sm text-red-800">
                 No WhatsApp channels connected. Go to <strong>Settings → Channels</strong> first.
               </div>
             ) : (
@@ -677,13 +677,13 @@ export default function WaEmployeesPage() {
             </div>
 
             {/* How it works mini-banner */}
-            <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-4 text-xs text-green-700 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400">
+            <div className="bg-green-50 border border-green-300 rounded-lg px-3 py-2 mb-4 text-xs text-green-800 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400">
               <p className="font-semibold">How it works</p>
               <p>An <strong>Accept / Decline</strong> button will be sent to this WhatsApp number. No OTP needed.</p>
             </div>
 
             {settings && !settings.wa_employee_channel_id && (
-              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
+              <div className="flex items-start gap-2 bg-red-50 border border-red-300 rounded-lg px-3 py-2 mb-3">
                 <Wifi className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-red-700 font-medium">No WhatsApp channel selected — invite can't be sent.{' '}
                   <button onClick={() => { setShowAdd(false); setTab('settings'); }} className="underline">Configure →</button>

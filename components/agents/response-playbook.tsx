@@ -92,7 +92,7 @@ export default function ResponsePlaybook() {
         </div>
       )}
       {notice && (
-        <div className="rounded-lg border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-900/20 dark:text-emerald-300">
+        <div className="rounded-lg border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-900/20 dark:text-emerald-300">
           {notice}
         </div>
       )}
@@ -290,7 +290,7 @@ function PlayCard({
         />
         <div className="flex shrink-0 items-center gap-2">
           {configured && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
               <Check className="h-2.5 w-2.5" /> set
             </span>
           )}

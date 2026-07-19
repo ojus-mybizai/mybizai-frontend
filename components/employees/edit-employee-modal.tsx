@@ -188,13 +188,13 @@ export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEm
         </p>
 
         {success && (
-          <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/30 dark:text-green-300">
+          <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
             {success}
           </div>
         )}
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
             <p>{error}</p>
             {error.includes('active assignments') && (
               <p className="mt-2 font-medium">Use the reassign options below, or check &quot;Force deactivation&quot; to proceed.</p>
@@ -317,7 +317,7 @@ export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEm
                 !isActive ||
                 ((reassignOpenLeads || reassignOpenWork) && reassignToUserId === '')
               }
-              className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-60 dark:bg-amber-900/30 dark:text-amber-300"
+              className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-60 dark:bg-amber-900/30 dark:text-amber-300"
             >
               {loading ? 'Processing...' : 'Deactivate employee'}
             </button>
@@ -334,7 +334,7 @@ export function EditEmployeeModal({ isOpen, employee, onClose, onSaved }: EditEm
               type="button"
               onClick={() => void handleRemove()}
               disabled={loading}
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60 dark:bg-red-900/30 dark:text-red-300"
+              className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-100 disabled:opacity-60 dark:bg-red-900/30 dark:text-red-300"
             >
               Remove employee
             </button>

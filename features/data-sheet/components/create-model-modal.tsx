@@ -301,7 +301,7 @@ export function CreateModelModal({ onClose, onSuccess }: CreateModelModalProps) 
           {step === 1 ? (
             <form onSubmit={handleSubmitStep1} className="space-y-4">
               {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+                <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
                   {error}
                 </div>
               )}
@@ -373,7 +373,7 @@ export function CreateModelModal({ onClose, onSuccess }: CreateModelModalProps) 
           ) : (
             <form onSubmit={handleSubmitFinal} className="space-y-4">
               {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+                <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
                   {error}
                 </div>
               )}

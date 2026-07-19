@@ -12,7 +12,14 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
-import type { AudienceFilter, FilterOptions, FilterPickItem } from '@/services/outbound';
+import type {
+  AudienceFilter,
+  CustomFieldFilter,
+  CustomFieldOp,
+  CustomFieldOption,
+  FilterOptions,
+  FilterPickItem,
+} from '@/services/outbound';
 import { getFilterOptions } from '@/services/outbound';
 
 interface Props {
@@ -120,6 +127,181 @@ function CheckboxList({
   );
 }
 
+/* ── Id pill list (owners, stages, ad campaigns — optional color) ─────── */
+function IdPillList({
+  items,
+  selectedIds,
+  onToggle,
+  emptyText = 'None available.',
+}: {
+  items: { id: number; name: string; color?: string; sublabel?: string }[];
+  selectedIds: number[];
+  onToggle: (id: number) => void;
+  emptyText?: string;
+}) {
+  if (items.length === 0) {
+    return <p className="text-xs text-text-secondary italic">{emptyText}</p>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+      {items.map((item) => {
+        const active = selectedIds.includes(item.id);
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onToggle(item.id)}
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs border transition-all
+              ${active
+                ? 'border-accent bg-accent/10 text-accent font-medium'
+                : 'border-border-color text-text-secondary hover:border-accent/50 hover:text-text-primary'
+              }`}
+          >
+            {item.color && <ColorDot color={item.color} />}
+            {item.name}
+            {item.sublabel && (
+              <span className="text-[10px] text-text-secondary/70">· {item.sublabel}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Custom-field filter row (dynamic input by field_type) ────────────── */
+
+const OPS_BY_TYPE: Record<string, { value: CustomFieldOp; label: string }[]> = {
+  text:         [{ value: 'contains', label: 'contains' }, { value: 'eq', label: 'equals' }, { value: 'is_set', label: 'is set' }],
+  textarea:     [{ value: 'contains', label: 'contains' }, { value: 'eq', label: 'equals' }, { value: 'is_set', label: 'is set' }],
+  url:          [{ value: 'contains', label: 'contains' }, { value: 'eq', label: 'equals' }, { value: 'is_set', label: 'is set' }],
+  phone:        [{ value: 'contains', label: 'contains' }, { value: 'eq', label: 'equals' }, { value: 'is_set', label: 'is set' }],
+  email:        [{ value: 'contains', label: 'contains' }, { value: 'eq', label: 'equals' }, { value: 'is_set', label: 'is set' }],
+  number:       [{ value: 'eq', label: 'equals' }, { value: 'gt', label: 'greater than' }, { value: 'lt', label: 'less than' }, { value: 'is_set', label: 'is set' }],
+  date:         [{ value: 'eq', label: 'on' }, { value: 'gt', label: 'after' }, { value: 'lt', label: 'before' }, { value: 'is_set', label: 'is set' }],
+  boolean:      [{ value: 'eq', label: 'is' }, { value: 'is_set', label: 'is set' }],
+  select:       [{ value: 'eq', label: 'is' }, { value: 'in', label: 'is any of' }, { value: 'is_set', label: 'is set' }],
+  multi_select: [{ value: 'contains', label: 'includes' }, { value: 'is_set', label: 'is set' }],
+};
+
+const inputCls =
+  'px-2.5 py-1.5 text-sm border border-border-color rounded-lg bg-bg-primary text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent';
+
+function CustomFieldRow({
+  field,
+  current,
+  onChange,
+  onRemove,
+}: {
+  field: CustomFieldOption;
+  current?: CustomFieldFilter;
+  onChange: (next: CustomFieldFilter) => void;
+  onRemove: () => void;
+}) {
+  const ops = OPS_BY_TYPE[field.field_type] ?? OPS_BY_TYPE.text;
+  const active = !!current;
+  const op: CustomFieldOp = current?.op ?? ops[0].value;
+
+  const typeHint =
+    field.field_type === 'number' ? 'number'
+    : field.field_type === 'date' ? 'date'
+    : undefined;
+
+  const emit = (patch: Partial<CustomFieldFilter>) =>
+    onChange({ op, value: current?.value ?? null, type: typeHint, ...patch });
+
+  const showValue = op !== 'is_set';
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 py-1.5">
+      <span className="text-xs font-medium text-text-primary min-w-[6rem]">{field.name}</span>
+
+      <select
+        value={op}
+        onChange={(e) => emit({ op: e.target.value as CustomFieldOp })}
+        className={inputCls}
+      >
+        {ops.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+
+      {showValue && field.field_type === 'boolean' && (
+        <select
+          value={String(current?.value ?? 'true')}
+          onChange={(e) => emit({ value: e.target.value })}
+          className={inputCls}
+        >
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      )}
+
+      {showValue && field.field_type === 'select' && op !== 'in' && (
+        <select
+          value={String(current?.value ?? '')}
+          onChange={(e) => emit({ value: e.target.value || null })}
+          className={inputCls}
+        >
+          <option value="">— choose —</option>
+          {(field.options ?? []).map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      )}
+
+      {showValue && (field.field_type === 'multi_select' || (field.field_type === 'select' && op === 'in')) && (
+        <select
+          value={String(current?.value ?? '')}
+          onChange={(e) => emit({ value: e.target.value || null })}
+          className={inputCls}
+        >
+          <option value="">— choose —</option>
+          {(field.options ?? []).map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      )}
+
+      {showValue && (field.field_type === 'number') && (
+        <input
+          type="number"
+          value={current?.value != null ? String(current.value) : ''}
+          onChange={(e) => emit({ value: e.target.value === '' ? null : e.target.value })}
+          placeholder="value"
+          className={`${inputCls} w-28`}
+        />
+      )}
+
+      {showValue && field.field_type === 'date' && (
+        <input
+          type="date"
+          value={current?.value != null ? String(current.value) : ''}
+          onChange={(e) => emit({ value: e.target.value || null })}
+          className={inputCls}
+        />
+      )}
+
+      {showValue &&
+        ['text', 'textarea', 'url', 'phone', 'email'].includes(field.field_type) && (
+        <input
+          type="text"
+          value={current?.value != null ? String(current.value) : ''}
+          onChange={(e) => emit({ value: e.target.value || null })}
+          placeholder="value"
+          className={`${inputCls} flex-1 min-w-[8rem]`}
+        />
+      )}
+
+      {active && (
+        <button type="button" onClick={onRemove} title="Remove filter">
+          <X className="h-3.5 w-3.5 text-text-secondary hover:text-red-500" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 /* ── Collapsible section ─────────────────────────────────────────────── */
 function Section({
   title,
@@ -195,6 +377,48 @@ function ActiveSummary({
   if (value.created_before)
     chips.push({ label: `Joined before ${value.created_before}`, clear: () => onClear({ created_before: undefined }) });
 
+  // ── Tier 2 dimensions ──────────────────────────────────────────────────
+  (value.pipeline_stage_ids ?? []).forEach((id) => {
+    const s = options?.stages?.find((x) => x.id === id);
+    if (s) chips.push({ label: `Stage: ${s.name}`, clear: () => onClear({ pipeline_stage_ids: (value.pipeline_stage_ids ?? []).filter((x) => x !== id) }) });
+  });
+  (value.exclude_pipeline_stage_ids ?? []).forEach((id) => {
+    const s = options?.stages?.find((x) => x.id === id);
+    if (s) chips.push({ label: `Not stage: ${s.name}`, clear: () => onClear({ exclude_pipeline_stage_ids: (value.exclude_pipeline_stage_ids ?? []).filter((x) => x !== id) }) });
+  });
+  (value.assigned_to_ids ?? []).forEach((id) => {
+    const o = options?.owners?.find((x) => x.id === id);
+    if (o) chips.push({ label: `Owner: ${o.name}`, clear: () => onClear({ assigned_to_ids: (value.assigned_to_ids ?? []).filter((x) => x !== id) }) });
+  });
+  (value.assigned_wa_employee_ids ?? []).forEach((id) => {
+    const w = options?.wa_employees?.find((x) => x.id === id);
+    if (w) chips.push({ label: `Owner: ${w.name}`, clear: () => onClear({ assigned_wa_employee_ids: (value.assigned_wa_employee_ids ?? []).filter((x) => x !== id) }) });
+  });
+  if (value.company_contains)
+    chips.push({ label: `Company ~ "${value.company_contains}"`, clear: () => onClear({ company_contains: undefined }) });
+  if (value.ad_platform)
+    chips.push({ label: `Ad: ${value.ad_platform}`, clear: () => onClear({ ad_platform: undefined }) });
+  (value.ad_campaign_names ?? []).forEach((n) => {
+    chips.push({ label: `Campaign: ${n}`, clear: () => onClear({ ad_campaign_names: (value.ad_campaign_names ?? []).filter((x) => x !== n) }) });
+  });
+  if (value.has_email)
+    chips.push({ label: `Has email`, clear: () => onClear({ has_email: undefined }) });
+  Object.entries(value.custom_field_filters ?? {}).forEach(([fid, spec]) => {
+    const cf = options?.custom_fields?.find((x) => String(x.id) === fid);
+    const label = cf?.name ?? `Field ${fid}`;
+    const suffix = spec.op === 'is_set' ? 'is set' : `${spec.op} ${spec.value ?? ''}`.trim();
+    chips.push({
+      label: `${label}: ${suffix}`,
+      clear: () => {
+        const next = { ...(value.custom_field_filters ?? {}) };
+        delete next[fid];
+        onClear({ custom_field_filters: Object.keys(next).length ? next : undefined });
+      },
+    });
+  });
+  if (value.exclude_contact_ids && value.exclude_contact_ids.length > 0)
+    chips.push({ label: `${value.exclude_contact_ids.length} removed`, clear: () => onClear({ exclude_contact_ids: undefined }) });
+
   if (chips.length === 0) return null;
 
   return (
@@ -220,6 +444,12 @@ function ActiveSummary({
           not_messaged_within_days: undefined,
           created_after: undefined,
           created_before: undefined,
+          pipeline_stage_ids: [], exclude_pipeline_stage_ids: [],
+          assigned_to_ids: [], assigned_wa_employee_ids: [],
+          company_contains: undefined,
+          ad_platform: undefined, ad_campaign_names: [],
+          has_email: undefined,
+          custom_field_filters: undefined,
         })}
         className="text-[11px] text-text-secondary hover:text-red-500 transition-colors ml-auto"
       >
@@ -371,7 +601,7 @@ export function FilterBuilder({ value, onChange }: Props) {
               )}
             </div>
             <p className="text-[11px] text-text-secondary mt-1">
-              Contacts updated in the last N days
+              Contacts with a conversation in the last N days
             </p>
           </div>
           <div>
@@ -398,7 +628,7 @@ export function FilterBuilder({ value, onChange }: Props) {
               )}
             </div>
             <p className="text-[11px] text-text-secondary mt-1">
-              Contacts not updated for N+ days
+              Contacts with no conversation for N+ days
             </p>
           </div>
         </div>
@@ -435,6 +665,180 @@ export function FilterBuilder({ value, onChange }: Props) {
           </div>
         </div>
       </Section>
+
+      {/* ── Pipeline stage ───────────────────────────────────────────── */}
+      <Section
+        title="Pipeline Stage"
+        badge={countActive(['pipeline_stage_ids', 'exclude_pipeline_stage_ids'])}
+        defaultOpen={
+          (value.pipeline_stage_ids?.length ?? 0) > 0 ||
+          (value.exclude_pipeline_stage_ids?.length ?? 0) > 0
+        }
+      >
+        {(options?.stages?.length ?? 0) === 0 ? (
+          <p className="text-xs text-text-secondary italic">
+            No pipeline stages yet — create a process to use stage filters.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <p className="text-[11px] font-medium text-text-secondary mb-1.5">In any of these stages</p>
+              <IdPillList
+                items={(options?.stages ?? []).map((s) => ({ id: s.id, name: s.name, color: s.color, sublabel: s.process_name }))}
+                selectedIds={value.pipeline_stage_ids ?? []}
+                onToggle={(id) => update({ pipeline_stage_ids: toggleId(value.pipeline_stage_ids, id) })}
+              />
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-text-secondary mb-1.5">Exclude these stages</p>
+              <IdPillList
+                items={(options?.stages ?? []).map((s) => ({ id: s.id, name: s.name, color: s.color, sublabel: s.process_name }))}
+                selectedIds={value.exclude_pipeline_stage_ids ?? []}
+                onToggle={(id) => update({ exclude_pipeline_stage_ids: toggleId(value.exclude_pipeline_stage_ids, id) })}
+              />
+            </div>
+          </div>
+        )}
+      </Section>
+
+      {/* ── Owner ────────────────────────────────────────────────────── */}
+      <Section
+        title="Assigned Owner"
+        badge={countActive(['assigned_to_ids', 'assigned_wa_employee_ids'])}
+        defaultOpen={
+          (value.assigned_to_ids?.length ?? 0) > 0 ||
+          (value.assigned_wa_employee_ids?.length ?? 0) > 0
+        }
+      >
+        {((options?.owners?.length ?? 0) === 0 && (options?.wa_employees?.length ?? 0) === 0) ? (
+          <p className="text-xs text-text-secondary italic">
+            No assigned owners yet — assign contacts to team members to filter by owner.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {(options?.owners?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-[11px] font-medium text-text-secondary mb-1.5">Team members</p>
+                <IdPillList
+                  items={(options?.owners ?? []).map((o) => ({ id: o.id, name: o.name }))}
+                  selectedIds={value.assigned_to_ids ?? []}
+                  onToggle={(id) => update({ assigned_to_ids: toggleId(value.assigned_to_ids, id) })}
+                />
+              </div>
+            )}
+            {(options?.wa_employees?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-[11px] font-medium text-text-secondary mb-1.5">WhatsApp employees</p>
+                <IdPillList
+                  items={(options?.wa_employees ?? []).map((w) => ({ id: w.id, name: w.name }))}
+                  selectedIds={value.assigned_wa_employee_ids ?? []}
+                  onToggle={(id) => update({ assigned_wa_employee_ids: toggleId(value.assigned_wa_employee_ids, id) })}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </Section>
+
+      {/* ── Company ──────────────────────────────────────────────────── */}
+      <Section
+        title="Company"
+        badge={countActive(['company_contains'])}
+        defaultOpen={!!value.company_contains}
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={value.company_contains ?? ''}
+            onChange={(e) => update({ company_contains: e.target.value || undefined })}
+            placeholder="Company name contains…"
+            className={`${inputCls} flex-1`}
+          />
+          {value.company_contains && (
+            <button type="button" onClick={() => update({ company_contains: undefined })}>
+              <X className="h-3.5 w-3.5 text-text-secondary hover:text-red-500" />
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-text-secondary mt-1">Case-insensitive substring match.</p>
+      </Section>
+
+      {/* ── Ad source ────────────────────────────────────────────────── */}
+      <Section
+        title="Ad Source"
+        badge={countActive(['ad_platform', 'ad_campaign_names'])}
+        defaultOpen={!!value.ad_platform || (value.ad_campaign_names?.length ?? 0) > 0}
+      >
+        <div className="space-y-3">
+          <div>
+            <p className="text-[11px] font-medium text-text-secondary mb-1.5">Platform</p>
+            <PillGroup
+              options={[{ value: 'meta', label: 'Meta (Facebook / Instagram)' }]}
+              selected={value.ad_platform ? [value.ad_platform] : []}
+              onToggle={(v) => update({ ad_platform: value.ad_platform === v ? undefined : v })}
+            />
+          </div>
+          {(options?.ad_campaigns?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[11px] font-medium text-text-secondary mb-1.5">Campaign name</p>
+              <PillGroup
+                options={options?.ad_campaigns ?? []}
+                selected={value.ad_campaign_names ?? []}
+                onToggle={(v) => update({ ad_campaign_names: toggleStr(value.ad_campaign_names, v) })}
+              />
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* ── Has email ────────────────────────────────────────────────── */}
+      <Section
+        title="Email"
+        badge={value.has_email ? 1 : 0}
+        defaultOpen={!!value.has_email}
+      >
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!value.has_email}
+            onChange={(e) => update({ has_email: e.target.checked ? true : undefined })}
+            className="accent-accent"
+          />
+          <span className="text-sm text-text-primary">Only contacts with an email address</span>
+        </label>
+      </Section>
+
+      {/* ── Custom fields ────────────────────────────────────────────── */}
+      {(options?.custom_fields?.length ?? 0) > 0 && (
+        <Section
+          title="Custom Fields"
+          badge={Object.keys(value.custom_field_filters ?? {}).length}
+          defaultOpen={Object.keys(value.custom_field_filters ?? {}).length > 0}
+        >
+          <div className="divide-y divide-border-color/50">
+            {(options?.custom_fields ?? []).map((field) => (
+              <CustomFieldRow
+                key={field.id}
+                field={field}
+                current={value.custom_field_filters?.[String(field.id)]}
+                onChange={(next) =>
+                  update({
+                    custom_field_filters: {
+                      ...(value.custom_field_filters ?? {}),
+                      [String(field.id)]: next,
+                    },
+                  })
+                }
+                onRemove={() => {
+                  const nextMap = { ...(value.custom_field_filters ?? {}) };
+                  delete nextMap[String(field.id)];
+                  update({ custom_field_filters: Object.keys(nextMap).length ? nextMap : undefined });
+                }}
+              />
+            ))}
+          </div>
+        </Section>
+      )}
 
     </div>
   );

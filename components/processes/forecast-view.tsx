@@ -70,7 +70,7 @@ export default function ForecastView({ processId, entries }: Props) {
           </div>
           <Money value={forecast.raw_total} compact size="2xl" />
         </div>
-        <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/30 p-4">
+        <div className="rounded-xl border border-emerald-300 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/30 p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Weighted forecast</p>
             <Icon.trend size={14} className="text-emerald-700 dark:text-emerald-400" />

@@ -1,0 +1,16 @@
+# Deps + build output are regenerated inside the image
+node_modules/
+.next/
+out/
+
+# Local dev TLS certs and secrets
+*.pem
+.env.local
+.env*.local
+
+# Logs / VCS / editor
+*.log
+.git/
+.gitignore
+README.md
+.vscode/

@@ -140,12 +140,12 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
                 <div className="flex flex-wrap items-center gap-2 text-sm text-text-secondary">
                   <span className="capitalize">{current.role} agent</span>
                   {chatOn && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
                       <MessageSquare className="h-3 w-3" /> Chat
                     </span>
                   )}
                   {autoOn && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                       <Zap className="h-3 w-3" /> Automation
                     </span>
                   )}
@@ -197,7 +197,7 @@ export default function AgentLayout({ children }: { children: ReactNode }) {
           <div>
             {/* If the active tab is locked on Starter plan, show upgrade overlay instead of content */}
             {isStarterPlan && activeTab && GROWTH_ONLY_TABS.has(activeTab.slug) ? (
-              <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-amber-200 bg-amber-50/50 px-6 py-16 text-center">
+              <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-amber-300 bg-amber-50/50 px-6 py-16 text-center">
                 <div className="rounded-full bg-amber-100 p-3">
                   <Lock className="h-6 w-6 text-amber-600" />
                 </div>

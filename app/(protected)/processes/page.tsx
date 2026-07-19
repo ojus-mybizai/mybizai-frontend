@@ -242,7 +242,7 @@ export default function ProcessesPage() {
 
         {/* Error */}
         {error && (
-          <div className="mb-4 rounded-md border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          <div className="mb-4 rounded-md border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/20 px-4 py-3 text-sm text-red-800 dark:text-red-300">
             {error}
             <button onClick={loadData} className="ml-2 underline">Retry</button>
           </div>

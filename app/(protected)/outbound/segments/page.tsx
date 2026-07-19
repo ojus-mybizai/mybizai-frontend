@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { Plus, Pencil, Trash2, Users, X, ChevronDown } from 'lucide-react';
 import PermissionGuard from '@/components/permission-guard';
 import { FilterBuilder } from '@/components/outbound/FilterBuilder';
+import { RecipientPreview } from '@/components/outbound/RecipientPreview';
 import {
   createSegment,
   updateSegment,
@@ -133,11 +134,16 @@ function SegmentForm({
             Filter criteria — who should be in this segment
           </p>
           <FilterBuilder value={filter} onChange={handleFilterChange} />
+          {hasFilter && (
+            <div className="mt-2">
+              <RecipientPreview filter={filter} onChange={handleFilterChange} />
+            </div>
+          )}
         </div>
 
         {/* Error */}
         {error && (
-          <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+          <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/20 border border-red-300 dark:border-red-800 rounded-lg px-3 py-2">
             {error}
           </p>
         )}
@@ -199,6 +205,16 @@ function FilterSummaryBadges({ filter }: { filter: AudienceFilter }) {
   if (filter.not_messaged_within_days) parts.push(`silent ≥${filter.not_messaged_within_days}d`);
   if (filter.created_after) parts.push(`after ${filter.created_after}`);
   if (filter.created_before) parts.push(`before ${filter.created_before}`);
+  if ((filter.pipeline_stage_ids ?? []).length) parts.push(`${filter.pipeline_stage_ids!.length} stage(s)`);
+  if ((filter.exclude_pipeline_stage_ids ?? []).length) parts.push(`exclude ${filter.exclude_pipeline_stage_ids!.length} stage(s)`);
+  if ((filter.assigned_to_ids ?? []).length || (filter.assigned_wa_employee_ids ?? []).length)
+    parts.push(`${(filter.assigned_to_ids ?? []).length + (filter.assigned_wa_employee_ids ?? []).length} owner(s)`);
+  if (filter.company_contains) parts.push(`company ~ ${filter.company_contains}`);
+  if (filter.ad_platform) parts.push(`ad: ${filter.ad_platform}`);
+  if ((filter.ad_campaign_names ?? []).length) parts.push(`${filter.ad_campaign_names!.length} campaign(s)`);
+  if (filter.has_email) parts.push('has email');
+  if (Object.keys(filter.custom_field_filters ?? {}).length)
+    parts.push(`${Object.keys(filter.custom_field_filters!).length} custom field(s)`);
 
   if (parts.length === 0)
     return <span className="text-xs text-text-secondary italic">No filters set</span>;
@@ -303,7 +319,7 @@ export default function SegmentsPage() {
 
         {/* ── Global error ──────────────────────────────────────── */}
         {error && (
-          <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          <div className="bg-red-50 dark:bg-red-950/20 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
             {error}
           </div>
         )}
@@ -369,7 +385,7 @@ export default function SegmentsPage() {
                         {seg.name}
                       </span>
                       {seg.created_by_ai && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded-full font-medium">
+                        <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-400 rounded-full font-medium">
                           AI generated
                         </span>
                       )}

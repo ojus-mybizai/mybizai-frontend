@@ -1,0 +1,89 @@
+name: Deploy Frontend (Azure Container Apps)
+
+# Repo: ojus-mybizai/mybizai-frontend
+# Builds the Next.js 16 standalone image with the production NEXT_PUBLIC_* values
+# baked in (public client-bundle constants), then rolls mybizai-frontend to the
+# new SHA-tagged image.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+permissions:
+  id-token: write      # required for azure/login OIDC
+  contents: read
+
+env:
+  RG: mybizai_resource
+  ACR: mybizaiacr01
+  IMAGE: mybizaiacr01.azurecr.io/mybizai-frontend
+  APP: mybizai-frontend
+  APP_URL: https://app.mybizai.in
+  # ---- Production NEXT_PUBLIC_* build args (public; inlined into the client bundle) ----
+  NEXT_PUBLIC_API_URL: https://api.mybizai.in/api/v1
+  NEXT_PUBLIC_WS_URL: wss://api.mybizai.in/ws
+  NEXT_PUBLIC_FACEBOOK_APP_ID: "781370637627825"
+  NEXT_PUBLIC_WHATSAPP_CONFIG_ID: "1283159033784294"
+  NEXT_PUBLIC_STREAM_INTERNAL_CHAT: "1"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure containerapp CLI extension
+        run: az extension add -n containerapp --upgrade --only-show-errors
+
+      - name: Build frontend image (ACR remote build with NEXT_PUBLIC args)
+        run: |
+          set -euo pipefail
+          az acr build \
+            --registry "$ACR" \
+            --image "mybizai-frontend:${GITHUB_SHA}" \
+            --file Dockerfile \
+            --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
+            --build-arg NEXT_PUBLIC_WS_URL="$NEXT_PUBLIC_WS_URL" \
+            --build-arg NEXT_PUBLIC_FACEBOOK_APP_ID="$NEXT_PUBLIC_FACEBOOK_APP_ID" \
+            --build-arg NEXT_PUBLIC_WHATSAPP_CONFIG_ID="$NEXT_PUBLIC_WHATSAPP_CONFIG_ID" \
+            --build-arg NEXT_PUBLIC_STREAM_INTERNAL_CHAT="$NEXT_PUBLIC_STREAM_INTERNAL_CHAT" \
+            .
+
+      - name: Roll frontend to new image
+        run: |
+          set -euo pipefail
+          az containerapp update \
+            -g "$RG" -n "$APP" \
+            --image "${IMAGE}:${GITHUB_SHA}" \
+            --only-show-errors -o none
+
+      - name: Health check (app)
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL" || echo 000)
+            echo "  [$i] $APP_URL -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 15
+          done
+          echo "::error::Frontend health check failed"; exit 1
+
+      - name: Report new revision
+        if: always()
+        run: |
+          az containerapp revision list -g "$RG" -n "$APP" \
+            --query "[?properties.active].{revision:name, image:properties.template.containers[0].image, created:properties.createdTime}" \
+            -o table --only-show-errors || true

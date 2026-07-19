@@ -217,8 +217,8 @@ function PreviewCard({ item }: CardProps) {
           <span
             className={`text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded ${
               isOk
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
             }`}
           >
             {isOk ? 'OK' : 'Needs review'}
@@ -232,7 +232,7 @@ function PreviewCard({ item }: CardProps) {
       {expanded && (
         <div className="px-4 py-3 border-t border-border-color space-y-3 bg-bg-primary">
           {item.issues.length > 0 && (
-            <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/40 px-3 py-2">
+            <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-300/60 dark:border-amber-800/40 px-3 py-2">
               <p className="text-[11px] font-semibold text-amber-900 dark:text-amber-200 mb-1">
                 Validation issues:
               </p>

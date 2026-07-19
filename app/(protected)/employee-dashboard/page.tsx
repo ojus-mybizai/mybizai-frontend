@@ -74,10 +74,10 @@ function statusLabel(s: string): string {
 
 function statusColor(s: string): string {
   switch (s) {
-    case 'completed': return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
+    case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300';
     case 'in_progress': return 'bg-accent/10 text-accent';
     case 'cancelled': return 'bg-bg-secondary text-text-secondary';
-    default: return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
+    default: return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
   }
 }
 
@@ -203,7 +203,7 @@ function WorkCard({
           </span>
         )}
         {isOverdue && (
-          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-300">
             ⚠ Overdue
           </span>
         )}
@@ -385,7 +385,7 @@ function LogWorkModal({
         ) : (
           <form onSubmit={(e) => void handleSubmit(e)} className="p-5 space-y-4">
             {err && (
-              <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              <div className="rounded-lg bg-red-50 border border-red-300 px-3 py-2 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
                 {err}
               </div>
             )}
@@ -753,7 +753,7 @@ export default function EmployeeDashboardPage() {
         </div>
 
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
             {error}
           </div>
         )}

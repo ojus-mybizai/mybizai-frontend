@@ -24,8 +24,8 @@ interface Props {
 }
 
 const ROUTING_OPTIONS = [
-  { value: 'ai',      label: 'AI Auto',  icon: Bot,        cls: 'text-green-700 bg-green-50 border-green-300' },
-  { value: 'manual',  label: 'Manual',   icon: UserCheck,  cls: 'text-amber-700 bg-amber-50 border-amber-300' },
+  { value: 'ai',      label: 'AI Auto',  icon: Bot,        cls: 'text-green-800 bg-green-50 border-green-300' },
+  { value: 'manual',  label: 'Manual',   icon: UserCheck,  cls: 'text-amber-800 bg-amber-50 border-amber-300' },
   { value: 'blocked', label: 'Blocked',  icon: UserX,      cls: 'text-red-600 bg-red-50 border-red-300' },
 ];
 
@@ -45,9 +45,9 @@ function channelIcon(type: string) {
 
 function channelTypeBadge(type: string) {
   const map: Record<string, string> = {
-    whatsapp: 'bg-green-50 text-green-700 border-green-200',
-    instagram: 'bg-pink-50 text-pink-700 border-pink-200',
-    telegram: 'bg-blue-50 text-blue-700 border-blue-200',
+    whatsapp: 'bg-green-50 text-green-800 border-green-300',
+    instagram: 'bg-pink-50 text-pink-800 border-pink-300',
+    telegram: 'bg-blue-50 text-blue-800 border-blue-300',
   };
   return map[type] ?? 'bg-bg-secondary text-text-secondary border-border-color';
 }
@@ -223,7 +223,7 @@ export function GroupRoutingPanel({ onClose, onGroupSelect, activeGroupId }: Pro
 
       {/* Success toast */}
       {successMsg && (
-        <div className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 bg-green-50 border-b border-green-200 text-xs text-green-700">
+        <div className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 bg-green-50 border-b border-green-300 text-xs text-green-800">
           <Check className="w-3.5 h-3.5 flex-shrink-0" />
           {successMsg}
         </div>
@@ -740,7 +740,7 @@ export function FieldDefsTab({ groupId, groupName }: FieldDefsTabProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-medium text-text-primary truncate">{f.name}</span>
-                      {f.required && <span className="text-[9px] px-1 py-px bg-red-50 text-red-500 border border-red-200 rounded font-semibold">req</span>}
+                      {f.required && <span className="text-[9px] px-1 py-px bg-red-50 text-red-500 border border-red-300 rounded font-semibold">req</span>}
                     </div>
                     <span className="text-[10px] text-text-secondary/60">{FIELD_TYPE_LABELS[f.field_type]}</span>
                     {f.options && f.options.length > 0 && (

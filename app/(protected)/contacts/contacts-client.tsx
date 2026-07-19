@@ -27,18 +27,18 @@ import { ManageFieldsModal } from '@/components/contacts-v2/manage-fields-modal'
 import { ManageSourcesModal } from '@/components/contacts-v2/manage-sources-modal';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
-  hot:    'text-red-500 bg-red-50 border-red-200',
-  high:   'text-orange-500 bg-orange-50 border-orange-200',
-  medium: 'text-yellow-600 bg-yellow-50 border-yellow-200',
-  low:    'text-blue-500 bg-blue-50 border-blue-200',
+  hot:    'text-red-500 bg-red-50 border-red-300',
+  high:   'text-orange-500 bg-orange-50 border-orange-300',
+  medium: 'text-yellow-600 bg-yellow-50 border-yellow-300',
+  low:    'text-blue-500 bg-blue-50 border-blue-300',
 };
 const PRIORITY_LABELS: Record<Priority, string> = {
   hot: '🔥 Hot', high: '↑ High', medium: '— Med', low: '↓ Low',
 };
 const ROUTING_COLORS: Record<RoutingMode, string> = {
-  ai:      'text-green-700 bg-green-50 border-green-200',
-  manual:  'text-amber-700 bg-amber-50 border-amber-200',
-  blocked: 'text-red-600  bg-red-50   border-red-200',
+  ai:      'text-green-800 bg-green-50 border-green-300',
+  manual:  'text-amber-800 bg-amber-50 border-amber-300',
+  blocked: 'text-red-600  bg-red-50   border-red-300',
 };
 
 // ── URL ⇄ filter-state sync ────────────────────────────────────────────────
@@ -442,7 +442,7 @@ export default function ContactsClient() {
       <div className="flex-shrink-0 border-b border-border-color bg-bg-primary">
 
         {/* Title row */}
-        <div className="flex items-center justify-between px-6 pt-4 pb-3">
+        <div className="flex items-center justify-between px-4 pt-2.5 pb-2.5">
           <div className="flex items-center gap-3">
             <Users className="w-5 h-5 text-accent" />
             <h1 className="text-lg font-semibold text-text-primary">Contacts</h1>
@@ -648,7 +648,7 @@ export default function ContactsClient() {
         </div>
 
         {/* Group chips + saved views */}
-        <div className="flex items-center gap-2 px-6 pb-2 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-2 px-4 pb-2 overflow-x-auto no-scrollbar">
           {/* All contacts chip */}
           <button
             onClick={() => applyGroupFilter(null)}
@@ -714,7 +714,7 @@ export default function ContactsClient() {
         </div>
 
         {/* Search bar */}
-        <div className="px-6 pb-3">
+        <div className="px-4 pb-2.5">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
             <input
@@ -734,7 +734,7 @@ export default function ContactsClient() {
 
       {/* ── Import feedback ──────────────────────────────────────── */}
       {importMsg && (
-        <div className="flex-shrink-0 flex items-center gap-2 px-6 py-2.5 bg-green-50 border-b border-green-200 text-sm text-green-700">
+        <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 bg-green-50 border-b border-green-300 text-sm text-green-800">
           <Check className="w-4 h-4 flex-shrink-0" />
           {importMsg}
           <button onClick={() => setImportMsg('')} className="ml-auto"><X className="w-4 h-4" /></button>
@@ -841,7 +841,7 @@ export default function ContactsClient() {
 
       {/* ── Bulk action bar ──────────────────────────────────────── */}
       {selectedIds.size > 0 && (
-        <div className="flex-shrink-0 flex items-center gap-3 px-6 py-3 bg-bg-primary border-t border-border-color shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+        <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-bg-primary border-t border-border-color shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
           <span className="text-sm font-medium text-text-primary">{selectedIds.size} selected</span>
           <div className="flex items-center gap-2 ml-2 flex-wrap">
             <span className="text-xs text-text-secondary">Priority:</span>
@@ -861,7 +861,7 @@ export default function ContactsClient() {
               <div className="relative" ref={bulkGroupRef}>
                 <button
                   onClick={() => setShowBulkGroupPicker(o => !o)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-800 bg-indigo-50 border border-indigo-300 rounded-lg hover:bg-indigo-100 transition-colors"
                 >
                   <FolderKanban className="w-3.5 h-3.5" />
                   Add to Group
@@ -893,7 +893,7 @@ export default function ContactsClient() {
             <div className="w-px h-4 bg-border-color mx-1" />
             <button
               onClick={handleBulkDelete}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 border border-red-300 rounded-lg hover:bg-red-200 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-800 bg-red-100 border border-red-300 rounded-lg hover:bg-red-200 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" /> Delete
             </button>

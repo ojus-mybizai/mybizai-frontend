@@ -41,9 +41,9 @@ function templateTypeBadge(type?: string | null): string {
 }
 
 function templateTypeBadgeClass(type?: string | null): string {
-  if (type === 'checklist') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
-  if (type === 'datasheet') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300';
-  if (type === 'calling') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+  if (type === 'checklist') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
+  if (type === 'datasheet') return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300';
+  if (type === 'calling') return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300';
   return 'bg-bg-secondary text-text-secondary';
 }
 
@@ -437,14 +437,14 @@ export function AssignWorkModal({
           >
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
                   {error}
                 </div>
               )}
 
               {/* No-template mode: work type selector */}
               {noTemplateMode && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:bg-amber-900/20 dark:border-amber-700">
+                <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:bg-amber-900/20 dark:border-amber-700">
                   <div className="mb-2 flex items-center gap-2">
                     <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
                       Manual assignment — no template

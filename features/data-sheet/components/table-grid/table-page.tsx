@@ -8,7 +8,7 @@ import { DataSheetCell } from '@/components/data-sheet/data-sheet-cell';
 import { DatasheetFieldInput } from '@/components/data-sheet/datasheet-field-input';
 import { RelationCell } from '@/components/data-sheet/relation-cell';
 import { ReverseRelationSubTable } from '@/components/data-sheet/reverse-relation-subtable';
-import { ChevronDown, ChevronRight, Layers, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Layers, Plus, ArrowUpRight } from 'lucide-react';
 import { CreateChildDatasheetModal } from '@/components/data-sheet/create-child-datasheet-modal';
 import { DataSheetFilterBuilder } from '@/components/data-sheet/data-sheet-filter-builder';
 import { useDataSheetContext } from '@/features/data-sheet/context/data-sheet-context';
@@ -574,7 +574,7 @@ export function TablePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 whitespace-pre-line dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
           {error}
         </div>
       )}
@@ -791,7 +791,7 @@ export function TablePage() {
           <table className="w-full min-w-[600px] text-left text-sm">
             <thead className="sticky top-0 z-10 bg-bg-secondary">
               <tr className="border-b border-border-color bg-bg-secondary">
-                <th className="w-11 min-w-[44px] border-r border-border-color bg-bg-secondary px-2 py-2.5">
+                <th className="w-[60px] min-w-[60px] border-r border-border-color bg-bg-secondary px-2 py-2.5">
                   <input
                     type="checkbox"
                     checked={items.length > 0 && selectedIds.size === items.length}
@@ -854,7 +854,7 @@ export function TablePage() {
                 return (
                   <React.Fragment key={recordId}>
                   <tr className="border-b border-border-color last:border-b-0 even:bg-bg-primary/50 hover:bg-bg-secondary/60">
-                    <td className="w-11 min-w-[44px] border-r border-border-color bg-inherit px-2 py-2.5">
+                    <td className="w-[60px] min-w-[60px] border-r border-border-color bg-inherit px-2 py-2.5">
                       <div className="flex items-center gap-1">
                         {hasChildren && (
                           <button
@@ -883,6 +883,17 @@ export function TablePage() {
                           onChange={() => toggleSelectOne(recordId)}
                           aria-label={`Select row ${recordId}`}
                         />
+                        {/* Always-visible open-record affordance — routing stays
+                            reachable even when the Actions column is scrolled off. */}
+                        <button
+                          type="button"
+                          onClick={() => openRecord(recordId)}
+                          className="rounded p-0.5 text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+                          title="Open record"
+                          aria-label="Open record"
+                        >
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </td>
                     {visibleFields.map((field) =>
@@ -922,7 +933,7 @@ export function TablePage() {
                         <button
                           type="button"
                           onClick={() => handleDeleteRowClick(recordId)}
-                          className="min-h-[44px] min-w-[44px] rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                          className="min-h-[44px] min-w-[44px] rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-800 dark:hover:bg-red-950/30 dark:hover:text-red-400"
                         >
                           Delete
                         </button>

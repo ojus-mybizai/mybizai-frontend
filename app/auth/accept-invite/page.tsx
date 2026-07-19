@@ -120,7 +120,7 @@ function AcceptInviteContent() {
           <p className="text-sm text-text-secondary">Validating invite...</p>
         ) : !validation?.valid ? (
           <div className="space-y-4">
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+            <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
               {error ||
                 (validation?.status
                   ? `This invite is ${validation.status}. Ask your business owner to send a new invite.`
@@ -146,7 +146,7 @@ function AcceptInviteContent() {
             </div>
 
             {error && (
-              <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
                 {error}
               </div>
             )}

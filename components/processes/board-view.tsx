@@ -97,7 +97,7 @@ function StageColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col rounded-lg overflow-hidden transition-card border bg-bg-secondary/40
+      className={`flex flex-col rounded-2xl overflow-hidden transition-card border bg-bg-secondary/40
         ${fit ? 'flex-1 min-w-[240px]' : 'w-[300px] flex-shrink-0'}
         ${isOver ? 'border-accent ring-2 ring-accent/40 bg-accent/5' : 'border-border-color'}
       `}
@@ -124,8 +124,8 @@ function StageColumn({
             )}
 
             <div className="min-w-0 flex-1">
-              <h3 className="text-[13px] font-semibold text-text-primary truncate leading-tight">{stage.name}</h3>
-              <div className="flex items-center gap-1.5 text-[10px] text-text-secondary mt-0.5">
+              <h3 className="text-[15px] font-semibold text-text-primary truncate leading-tight">{stage.name}</h3>
+              <div className="flex items-center gap-1.5 text-xs text-text-secondary mt-0.5">
                 <span className={`tabular-nums font-medium ${wipExceeded ? 'text-red-600 dark:text-red-400' : ''}`}>
                   {entries.length}{stage.wip_limit ? `/${stage.wip_limit}` : ''} {entries.length === 1 ? 'entry' : 'entries'}
                 </span>
@@ -205,7 +205,7 @@ function StageColumn({
             {entries.length === 0 && (
               <button
                 onClick={onAdd}
-                className={`w-full rounded-md border border-dashed py-5 text-center transition-card
+                className={`w-full rounded-xl border border-dashed py-6 text-center transition-card
                   ${isOver
                     ? 'border-accent bg-accent/5 text-accent'
                     : 'border-border-color/50 text-text-secondary/50 hover:border-accent/40 hover:text-accent hover:bg-accent/5'}
@@ -294,7 +294,7 @@ export default function BoardView({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className={`flex items-stretch gap-1 pb-4 ${fit ? '' : 'overflow-x-auto -mx-4 px-4 sm:-mx-6 sm:px-6'}`}>
+      <div className={`flex items-stretch gap-2 pb-4 ${fit ? '' : 'overflow-x-auto -mx-4 px-4 sm:-mx-6 sm:px-6'}`}>
         {sortedStages.map((stage, idx) => (
           <React.Fragment key={stage.id}>
             <StageColumn
@@ -321,7 +321,7 @@ export default function BoardView({
 
       <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' }}>
         {activeEntry && (
-          <div className="rounded-md ring-2 ring-accent bg-card-bg p-3 shadow-2xl w-[260px] cursor-grabbing rotate-1">
+          <div className="rounded-xl ring-2 ring-accent bg-card-bg p-3 shadow-2xl w-[260px] cursor-grabbing rotate-1">
             <p className="text-[13px] font-semibold text-text-primary truncate">
               {activeEntry.title || activeEntry.entity_name}
             </p>

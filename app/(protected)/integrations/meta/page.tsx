@@ -58,9 +58,9 @@ function CopyButton({ value }: { value: string }) {
 
 // ─── Priority badge ───────────────────────────────────────────────────────────
 const PRIORITY_COLORS: Record<string, string> = {
-  high:   'bg-red-100 text-red-700',
-  medium: 'bg-amber-100 text-amber-700',
-  low:    'bg-gray-100 text-gray-600',
+  high:   'bg-red-100 text-red-800',
+  medium: 'bg-amber-100 text-amber-800',
+  low:    'bg-gray-100 text-gray-700',
 };
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ export default function MetaAdsIntegrationPage() {
           </div>
         </div>
         {integration && (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-800 border border-green-300">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
             Connected
           </span>
@@ -602,7 +602,7 @@ function FacebookConnectFlow({
 
         {/* Error from a previous attempt */}
         {(oauthError || connectError) && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 flex items-start gap-2">
+          <div className="rounded-lg bg-red-50 border border-red-300 px-4 py-3 flex items-start gap-2">
             <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
             <p className="text-sm text-red-700">{oauthError ?? connectError}</p>
           </div>
@@ -639,7 +639,7 @@ function FacebookConnectFlow({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 flex items-center gap-2">
+      <div className="rounded-lg bg-green-50 border border-green-300 px-4 py-3 flex items-center gap-2">
         <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
         <p className="text-sm text-green-800 font-medium">
           Facebook connected! Select which page to link to MyBizAI.
@@ -711,7 +711,7 @@ function FacebookConnectFlow({
       </div>
 
       {connectError && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-lg bg-red-50 border border-red-300 px-3 py-2 text-sm text-red-800">
           {connectError}
         </div>
       )}
@@ -805,7 +805,7 @@ function FormsPanel({
 
   if (error) {
     return (
-      <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 flex items-start gap-3">
+      <div className="rounded-lg bg-red-50 border border-red-300 px-4 py-3 flex items-start gap-3">
         <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
         <div>
           <p className="text-sm font-semibold text-red-700">Could not load forms</p>
@@ -856,7 +856,7 @@ function FormsPanel({
             key={form.form_id}
             className={`rounded-xl border p-4 ${
               isConnected
-                ? 'border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-900/10'
+                ? 'border-green-300 bg-green-50/50 dark:border-green-800 dark:bg-green-900/10'
                 : 'border-gray-200 dark:border-gray-700'
             }`}
           >
@@ -867,7 +867,7 @@ function FormsPanel({
                     {form.form_name}
                   </span>
                   {isConnected && (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-800 bg-green-100 px-2 py-0.5 rounded-full">
                       <CheckCircle2 className="w-3 h-3" /> Connected
                     </span>
                   )}
@@ -898,7 +898,7 @@ function FormsPanel({
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => onOpenRouting(form)}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 font-medium"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 font-medium"
                 >
                   {isConnected ? 'Settings' : 'Connect'}
                 </button>
@@ -1131,7 +1131,7 @@ function RoutingModal({
         <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+            className="px-4 py-2 text-sm text-gray-700 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
           >
             Cancel
           </button>

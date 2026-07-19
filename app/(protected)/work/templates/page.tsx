@@ -51,9 +51,9 @@ function templateTypeIcon(t?: string | null) {
 }
 
 function templateTypeBadgeClass(t?: string | null) {
-  if (t === 'checklist') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
-  if (t === 'datasheet') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300';
-  if (t === 'calling') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+  if (t === 'checklist') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
+  if (t === 'datasheet') return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300';
+  if (t === 'calling') return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300';
   return 'bg-bg-secondary text-text-secondary';
 }
 
@@ -627,7 +627,7 @@ function TemplateEditor({
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+            <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
               {error}
             </div>
           )}
@@ -755,7 +755,7 @@ function TemplateEditor({
                             expandedStepIdx === idx
                               ? 'border-accent bg-accent/10 text-accent'
                               : step.form_schema && step.form_schema.length > 0
-                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
                               : 'border-border-color bg-bg-primary text-text-secondary hover:border-accent'
                           }`}
                         >
@@ -767,7 +767,7 @@ function TemplateEditor({
                       <button
                         type="button"
                         onClick={() => removeStep(idx)}
-                        className="shrink-0 rounded border border-red-200 px-2 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        className="shrink-0 rounded border border-red-300 px-2 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                       >
                         ✕
                       </button>
@@ -1301,12 +1301,12 @@ export default function WorkTemplatesPage() {
 
         {/* ── Alerts ── */}
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
             {error}
           </div>
         )}
         {notice && !error && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+          <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
             {notice}
           </div>
         )}

@@ -5,9 +5,9 @@ import { X, Phone, Shield, Send, UserX, UserCheck, Trash2, Users, Calendar, Chec
 import { getGroup, type WaEmployee, type WaEmployeeGroup } from '@/services/waEmployees';
 
 const STATUS_PILL: Record<string, string> = {
-  active:             'bg-green-50 text-green-700 border-green-200',
-  pending_acceptance: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  rejected:           'bg-red-50 text-red-600 border-red-200',
+  active:             'bg-green-50 text-green-800 border-green-300',
+  pending_acceptance: 'bg-yellow-50 text-yellow-800 border-yellow-300',
+  rejected:           'bg-red-50 text-red-600 border-red-300',
   inactive:           'bg-gray-100 text-gray-500 border-gray-200',
 };
 
@@ -27,14 +27,14 @@ const STATUS_DOT: Record<string, string> = {
 
 // Deterministic avatar colour from name
 const AVATAR_COLORS = [
-  'bg-violet-100 text-violet-700',
-  'bg-blue-100 text-blue-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-orange-100 text-orange-700',
-  'bg-pink-100 text-pink-700',
-  'bg-cyan-100 text-cyan-700',
-  'bg-amber-100 text-amber-700',
-  'bg-rose-100 text-rose-700',
+  'bg-violet-100 text-violet-800',
+  'bg-blue-100 text-blue-800',
+  'bg-emerald-100 text-emerald-800',
+  'bg-orange-100 text-orange-800',
+  'bg-pink-100 text-pink-800',
+  'bg-cyan-100 text-cyan-800',
+  'bg-amber-100 text-amber-800',
+  'bg-rose-100 text-rose-800',
 ];
 
 function avatarColor(name: string) {

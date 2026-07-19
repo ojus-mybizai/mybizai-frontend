@@ -191,7 +191,7 @@ export function ContactAnalytics({ onClose }: Props) {
 
 function KpiCard({ icon, label, value, warn }: { icon: React.ReactNode; label: string; value: number; warn?: boolean }) {
   return (
-    <div className={`rounded-xl border p-3 flex items-center gap-3 ${warn && value > 0 ? 'border-amber-200 bg-amber-50/50' : 'border-border-color bg-card-bg'}`}>
+    <div className={`rounded-xl border p-3 flex items-center gap-3 ${warn && value > 0 ? 'border-amber-300 bg-amber-50/50' : 'border-border-color bg-card-bg'}`}>
       <div className={`flex h-8 w-8 items-center justify-center rounded-lg flex-shrink-0 ${warn && value > 0 ? 'bg-amber-100' : 'bg-bg-secondary'}`}>
         {icon}
       </div>

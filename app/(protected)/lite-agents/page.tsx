@@ -8,9 +8,9 @@ import { useShallow } from 'zustand/react/shallow';
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    draft: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-    paused: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    active: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+    draft: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
+    paused: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   };
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.draft}`}>
@@ -119,8 +119,8 @@ export default function LiteAgentsPage() {
                 onClick={() => handleToggle(agent.id, agent.status)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   agent.status === 'active'
-                    ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
-                    : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
+                    : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
                 }`}
               >
                 {agent.status === 'active' ? 'Pause' : 'Deploy'}

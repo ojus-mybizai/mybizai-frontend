@@ -427,9 +427,9 @@ export default function WaTestGuidePage() {
           ].map(([method, path, desc]) => (
             <div key={path + method} className="flex items-start gap-2">
               <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                method === 'GET' ? 'bg-blue-100 text-blue-700' :
-                method === 'POST' ? 'bg-green-100 text-green-700' :
-                'bg-yellow-100 text-yellow-700'
+                method === 'GET' ? 'bg-blue-100 text-blue-800' :
+                method === 'POST' ? 'bg-green-100 text-green-800' :
+                'bg-yellow-100 text-yellow-800'
               }`}>
                 {method}
               </span>
@@ -518,7 +518,7 @@ export default function WaTestGuidePage() {
                             )}
 
                             {step.warn && (
-                              <div className="mt-2 flex gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                              <div className="mt-2 flex gap-2 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
                                 <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                                 <p className="text-xs text-amber-800">{step.warn}</p>
                               </div>
@@ -582,7 +582,7 @@ export default function WaTestGuidePage() {
 
       {/* All done */}
       {doneSteps === totalSteps && (
-        <div className="mt-8 bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+        <div className="mt-8 bg-green-50 border border-green-300 rounded-xl p-6 text-center">
           <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
           <h2 className="text-xl font-bold text-green-800">All {totalSteps} steps completed!</h2>
           <p className="text-green-700 mt-1 text-sm">

@@ -81,7 +81,7 @@ export function SegmentSelector({ selectedId, onChange }: Props) {
 
   if (error) {
     return (
-      <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+      <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/20 border border-red-300 dark:border-red-800 rounded-lg px-3 py-2">
         {error}
       </p>
     );
@@ -162,7 +162,7 @@ export function SegmentSelector({ selectedId, onChange }: Props) {
                       {seg.name}
                     </span>
                     {seg.created_by_ai && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded-full">
+                      <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-400 rounded-full">
                         AI generated
                       </span>
                     )}

@@ -41,12 +41,12 @@ export default function MemoryList({ items, selectedId, onSelect, renderActions,
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="truncate text-sm font-medium text-text-primary">{m.title}</span>
                 {m.kind === 'profile' && (
-                  <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                  <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
                     Profile
                   </span>
                 )}
                 {m.attach_all_agents && (
-                  <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                  <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
                     All agents
                   </span>
                 )}

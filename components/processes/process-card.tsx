@@ -67,7 +67,7 @@ export default function ProcessCard({
       role="article"
       tabIndex={0}
       aria-label={`${entry.title || entry.entity_name || 'entry'} — ${entry.current_stage_name || ''}`}
-      className={`group relative overflow-hidden rounded-md bg-card-bg shadow-sm hover:shadow-md transition-card cursor-grab active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none
+      className={`group relative overflow-hidden rounded-xl bg-card-bg shadow-sm hover:shadow-md hover:-translate-y-px transition-card cursor-grab active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none
         ${selected ? 'ring-2 ring-accent' : 'ring-1 ring-border-color hover:ring-accent/40'}
         ${emphasized ? 'shadow-[0_0_0_1px_rgba(59,130,246,0.35)]' : ''}
         ${isCompact ? 'min-h-[40px]' : 'min-h-[72px]'}
@@ -79,7 +79,7 @@ export default function ProcessCard({
       )}
 
       {/* Body */}
-      <div className={`min-w-0 ${isCompact ? 'px-2.5 py-1.5' : 'px-3 py-2'}`}>
+      <div className={`min-w-0 ${isCompact ? 'px-2.5 py-1.5' : 'px-2.5 py-2'}`}>
         {/* Header row: priority dot + title + value */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex items-center gap-1.5 flex-1">
@@ -94,7 +94,7 @@ export default function ProcessCard({
               />
             )}
             {entry.priority && <PriorityDot priority={entry.priority} />}
-            <p className={`font-semibold text-text-primary truncate ${isCompact ? 'text-xs' : 'text-[13px]'}`}>
+            <p className={`font-semibold text-text-primary truncate ${isCompact ? 'text-[13px]' : 'text-sm'}`}>
               {entry.title || entry.entity_name || `#${entry.entity_id}`}
             </p>
           </div>
@@ -105,12 +105,12 @@ export default function ProcessCard({
 
         {/* Sub line (only in standard) */}
         {!isCompact && entry.title && entry.entity_name && (
-          <p className="mt-0.5 text-[11px] text-text-secondary truncate pl-3.5">{entry.entity_name}</p>
+          <p className="mt-0.5 text-xs text-text-secondary truncate pl-3.5">{entry.entity_name}</p>
         )}
 
         {/* Meta row: assignee · close · days-in-stage */}
         {!isCompact && (
-          <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-text-secondary">
+          <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-text-secondary">
             <div className="flex items-center gap-1.5 min-w-0">
               {entry.assigned_to_name ? (
                 <>

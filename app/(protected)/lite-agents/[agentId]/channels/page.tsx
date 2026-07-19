@@ -17,11 +17,11 @@ interface ChannelInfo {
 }
 
 const CHANNEL_COLORS: Record<string, string> = {
-  whatsapp: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  instagram: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
-  messenger: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  indiamart: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-  webchat: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  whatsapp: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  instagram: 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-400',
+  messenger: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  indiamart: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+  webchat: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
 export default function LiteAgentChannelsPage() {
@@ -110,7 +110,7 @@ export default function LiteAgentChannelsPage() {
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${CHANNEL_COLORS[ch.type] || 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${CHANNEL_COLORS[ch.type] || 'bg-gray-100 text-gray-700'}`}>
                       {ch.type}
                     </span>
                     <span className="text-sm font-medium text-text-primary">{ch.name}</span>

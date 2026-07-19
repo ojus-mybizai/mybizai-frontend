@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { ArrowUpRight, Pencil } from 'lucide-react';
 import type { DynamicField } from '@/services/dynamic-data';
 import { queryRecords, searchBuiltinModel, listFields, createRecord } from '@/services/dynamic-data';
 
@@ -15,6 +17,7 @@ interface RelationCellProps {
 }
 
 export function RelationCell({ value, field, onSave, error }: RelationCellProps) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [options, setOptions] = useState<Array<{ id: number; record_key: string; label: string }>>([]);
   const [searchInput, setSearchInput] = useState('');
@@ -359,12 +362,25 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
   }
 
   // ── Display mode ──
+  // A single custom-model link routes to that record on cell click; otherwise
+  // (empty, multi-value, or builtin) the cell opens the edit picker. Editing a
+  // routable cell is still reachable via the pencil affordance.
+  const cellCanRoute = !!field.relation_model_id && !field.relation_builtin_model;
+  const routeSingle = cellCanRoute && currentIds.length === 1;
+  const handleCellActivate = () => {
+    if (routeSingle) {
+      router.push(`/data-sheet/${field.relation_model_id}/${currentIds[0]}`);
+    } else {
+      setEditing(true);
+    }
+  };
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => setEditing(true)}
-      onKeyDown={(e) => e.key === 'Enter' && setEditing(true)}
+      onClick={handleCellActivate}
+      onKeyDown={(e) => e.key === 'Enter' && handleCellActivate()}
+      title={routeSingle ? `Open ${currentLabels[0]?.label ?? 'record'}` : undefined}
       className="group min-h-[2.5rem] cursor-pointer px-4 py-3 hover:bg-bg-secondary/60"
     >
       <div className="flex flex-wrap items-center gap-1.5 max-h-[3rem] overflow-hidden relative">
@@ -377,17 +393,41 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
           </div>
         ) : currentLabels.length ? (
           <>
-            {currentLabels.slice(0, 2).map(({ id, label }) => (
-              <span
-                key={id}
-                className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20"
-              >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-white">
-                  {label.startsWith('#') ? '?' : label.charAt(0).toUpperCase()}
+            {currentLabels.slice(0, 2).map(({ id, label }) => {
+              // Custom-model relations have a record page to open; builtin
+              // relations (contacts/users/work) don't, so those stay static.
+              const canRoute = !!field.relation_model_id && !field.relation_builtin_model;
+              const pillInner = (
+                <>
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-white">
+                    {label.startsWith('#') ? '?' : label.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="truncate max-w-[80px]">{label}</span>
+                </>
+              );
+              return canRoute ? (
+                <button
+                  key={id}
+                  type="button"
+                  title={`Open ${label}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/data-sheet/${field.relation_model_id}/${id}`);
+                  }}
+                  className="group/pill inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20 hover:bg-accent/20 hover:ring-accent/40 transition-colors"
+                >
+                  {pillInner}
+                  <ArrowUpRight className="h-3 w-3 shrink-0 opacity-0 group-hover/pill:opacity-100 transition-opacity" />
+                </button>
+              ) : (
+                <span
+                  key={id}
+                  className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20"
+                >
+                  {pillInner}
                 </span>
-                <span className="truncate max-w-[80px]">{label}</span>
-              </span>
-            ))}
+              );
+            })}
             {currentLabels.length > 2 && (
               <span className="inline-flex items-center rounded-full bg-bg-secondary px-2 py-0.5 text-[10px] font-semibold text-text-secondary ring-1 ring-inset ring-border-color">
                 +{currentLabels.length - 2}
@@ -397,11 +437,20 @@ export function RelationCell({ value, field, onSave, error }: RelationCellProps)
         ) : (
           <span className="text-text-secondary">—</span>
         )}
-        <span className="opacity-0 group-hover:opacity-60 transition-opacity" aria-hidden>
-          <svg className="h-3.5 w-3.5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-        </span>
+        {/* Edit affordance — always the way to change the link. When the cell
+            click routes (single custom-model link), this is the only editor. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditing(true);
+          }}
+          title="Edit link"
+          aria-label="Edit link"
+          className="ml-auto shrink-0 rounded p-0.5 text-text-secondary opacity-0 transition-opacity hover:bg-bg-secondary hover:text-accent group-hover:opacity-70"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
       </div>
       {error && <div className="mt-1 text-xs text-red-600">{error}</div>}
 

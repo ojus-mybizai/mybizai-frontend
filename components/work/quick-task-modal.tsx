@@ -65,7 +65,7 @@ export function QuickTaskModal({ isOpen, onClose, onCreated, employees }: QuickT
         <h2 className="text-lg font-bold text-text-primary mb-4">Quick Task</h2>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300">
+          <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-800 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300">
             {error}
           </div>
         )}

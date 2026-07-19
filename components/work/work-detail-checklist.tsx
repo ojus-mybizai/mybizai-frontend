@@ -167,7 +167,7 @@ export default function WorkDetailChecklist({ work, onWorkUpdated, stepsSchema, 
 
       {/* "Start work first" callout — blocks interaction when pending */}
       {work.status === 'pending' && canAct && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/10">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-900/10">
           <div className="flex items-center gap-2.5">
             <span className="text-lg" aria-hidden>⏳</span>
             <div>
@@ -218,7 +218,7 @@ export default function WorkDetailChecklist({ work, onWorkUpdated, stepsSchema, 
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+        <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
           {error}
         </div>
       )}
@@ -250,7 +250,7 @@ export default function WorkDetailChecklist({ work, onWorkUpdated, stepsSchema, 
                 key={step.id}
                 className={`overflow-hidden rounded-xl border transition-colors ${
                   isDone
-                    ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/40 dark:bg-emerald-900/10'
+                    ? 'border-emerald-300 bg-emerald-50/50 dark:border-emerald-800/40 dark:bg-emerald-900/10'
                     : 'border-border-color bg-card-bg shadow-sm'
                 }`}
               >

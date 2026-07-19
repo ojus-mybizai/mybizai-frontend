@@ -117,7 +117,7 @@ export function CreateProjectModal({
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           {/* Error */}
           {error && (
-            <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+            <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 px-4 py-3 text-sm text-red-800 dark:text-red-300">
               {error}
             </div>
           )}
