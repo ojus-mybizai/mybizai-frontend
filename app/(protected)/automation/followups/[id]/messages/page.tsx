@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import PermissionGuard from '@/components/permission-guard';
+import { formatDateTime } from '@/lib/format-date';
 import {
   listRuleMessages,
   listFollowupRules,
@@ -194,10 +195,10 @@ export default function RuleMessagesPage() {
                        <span className="text-emerald-600">free</span>}
                     </td>
                     <td className="px-4 py-3 text-text-secondary text-xs">
-                      {new Date(m.scheduled_at).toLocaleString()}
+                      {formatDateTime(m.scheduled_at)}
                     </td>
                     <td className="px-4 py-3 text-text-secondary text-xs">
-                      {m.sent_at ? new Date(m.sent_at).toLocaleString() : '—'}
+                      {m.sent_at ? formatDateTime(m.sent_at) : '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {(m.status === 'scheduled' || m.status === 'pending_manual') && (

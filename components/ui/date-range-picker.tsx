@@ -7,6 +7,8 @@ import {
   computePresetRange,
   type DatePreset,
 } from '@/lib/stores/date-range-store';
+import { formatDate } from '@/lib/format-date';
+import { DateField } from '@/components/ui/date-field';
 
 interface Preset {
   id: DatePreset;
@@ -41,10 +43,7 @@ function formatDisplay(start: string, end: string, preset: DatePreset): string {
   };
   if (preset !== 'custom' && labelMap[preset]) return labelMap[preset]!;
   // custom or fallback — show date range
-  const fmt = (s: string) => {
-    const d = new Date(s + 'T00:00:00');
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
-  };
+  const fmt = (s: string) => formatDate(s);
   return start === end ? fmt(start) : `${fmt(start)} – ${fmt(end)}`;
 }
 
@@ -186,12 +185,11 @@ export function DateRangePicker({ value, onChange, className = '' }: DateRangePi
 
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-text-secondary">From</span>
-                <input
-                  type="date"
+                <DateField
                   value={pendingPreset === 'custom' ? customStart : current.startDate}
-                  onChange={(e) => {
+                  onChange={(iso) => {
                     setPendingPreset('custom');
-                    setCustomStart(e.target.value);
+                    setCustomStart(iso);
                   }}
                   max={customEnd || undefined}
                   className="w-full rounded-md border border-border-color bg-bg-secondary px-2.5 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
@@ -200,12 +198,11 @@ export function DateRangePicker({ value, onChange, className = '' }: DateRangePi
 
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-text-secondary">To</span>
-                <input
-                  type="date"
+                <DateField
                   value={pendingPreset === 'custom' ? customEnd : current.endDate}
-                  onChange={(e) => {
+                  onChange={(iso) => {
                     setPendingPreset('custom');
-                    setCustomEnd(e.target.value);
+                    setCustomEnd(iso);
                   }}
                   min={customStart || undefined}
                   className="w-full rounded-md border border-border-color bg-bg-secondary px-2.5 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"

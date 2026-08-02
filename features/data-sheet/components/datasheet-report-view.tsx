@@ -17,6 +17,7 @@ import {
 import type { DatasheetReport, ReportLayout, ReportLayoutSection } from '@/services/reports';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { useDateRangeStore } from '@/lib/stores/date-range-store';
+import { formatDate } from '@/lib/format-date';
 
 const CHART_COLORS = [
   '#8884d8',
@@ -109,7 +110,7 @@ export function DatasheetReportView({
                         />
                         <YAxis tick={{ fontSize: 11 }} />
                         <Tooltip
-                          labelFormatter={(v) => new Date(v).toLocaleDateString()}
+                          labelFormatter={(v) => formatDate(v)}
                           formatter={(value: number | undefined) => [value ?? 0, 'Records']}
                         />
                         <Line
@@ -192,7 +193,7 @@ function ReportSection({
               />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip
-                labelFormatter={(v) => new Date(v).toLocaleDateString()}
+                labelFormatter={(v) => formatDate(v)}
                 formatter={(value: number | undefined) => [value ?? 0, 'Records']}
               />
               <Line

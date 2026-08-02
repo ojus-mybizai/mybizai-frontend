@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { listModels, deleteModel, type DynamicModel } from '@/features/data-sheet/api';
+import { formatDate } from '@/lib/format-date';
 import { normalizeApiError } from '@/features/data-sheet/api/normalize-error';
 import dynamic from 'next/dynamic';
 import { DeleteModelModal } from '@/features/data-sheet/components/delete-model-modal';
@@ -177,7 +178,7 @@ export function ModelDirectoryPage() {
                   )}
                   {model.created_at && (
                     <p className="mt-2 text-xs text-text-secondary">
-                      Created {new Date(model.created_at).toLocaleDateString()}
+                      Created {formatDate(model.created_at)}
                     </p>
                   )}
                 </div>

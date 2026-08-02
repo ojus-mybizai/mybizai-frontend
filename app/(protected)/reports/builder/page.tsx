@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { DateField } from '@/components/ui/date-field';
 import {
   buildReport,
   getReportBuilderContext,
@@ -138,17 +139,16 @@ export default function ReportBuilderPage() {
       {/* Date range */}
       <div className="flex items-center gap-3 text-sm">
         <span className="text-text-secondary">Date range:</span>
-        <input
-          type="date"
+        <DateField
           value={dateStart}
-          onChange={(e) => setDateStart(e.target.value)}
+          onChange={setDateStart}
           className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
         />
         <span className="text-text-secondary">to</span>
-        <input
-          type="date"
+        <DateField
           value={dateEnd}
-          onChange={(e) => setDateEnd(e.target.value)}
+          onChange={setDateEnd}
+          align="right"
           className="rounded-lg border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
         />
         {(dateStart || dateEnd) && (

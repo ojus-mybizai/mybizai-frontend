@@ -1,6 +1,7 @@
 'use client';
 
 import type { DynamicField } from '@/services/dynamic-data';
+import { DateField } from '@/components/ui/date-field';
 
 /**
  * Single source of truth for rendering an editable input for a datasheet
@@ -130,12 +131,10 @@ export function DatasheetFieldInput({
 
   if (type === 'date') {
     return (
-      <input
-        type="date"
+      <DateField
         className={cls}
         value={typeof value === 'string' ? value : ''}
-        onChange={(e) => onChange(e.target.value || null)}
-        autoFocus={autoFocus}
+        onChange={(iso) => onChange(iso || null)}
       />
     );
   }

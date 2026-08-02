@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
+import { formatDayMonth } from '@/lib/format-date';
 import {
   listWork, updateWork, startWork, getWorkTemplate, submitWorkForm,
   getAssignedLeads, updateLeadAssignmentStatus,
@@ -75,7 +76,7 @@ function isOverdue(w: Work) {
 }
 
 function formatShortDate(d: string) {
-  return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return formatDayMonth(d);
 }
 
 /* ── chevron icon ───────────────────────────────────────── */

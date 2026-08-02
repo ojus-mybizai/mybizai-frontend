@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { createQuickTask } from '@/services/work';
+import { DateField } from '@/components/ui/date-field';
 
 export interface QuickTaskModalProps {
   isOpen: boolean;
@@ -124,10 +125,9 @@ export function QuickTaskModal({ isOpen, onClose, onCreated, employees }: QuickT
           {/* Due date */}
           <div>
             <label className="mb-1 block text-sm font-medium text-text-secondary">Due date</label>
-            <input
-              type="date"
+            <DateField
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={setDueDate}
               className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>

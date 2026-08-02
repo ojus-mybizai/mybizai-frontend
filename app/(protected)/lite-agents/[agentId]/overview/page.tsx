@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Save, CheckCircle } from 'lucide-react';
 import { useLiteAgentStore } from '@/lib/lite-agent-store';
 import { useShallow } from 'zustand/react/shallow';
+import { formatDate } from '@/lib/format-date';
 
 const TONE_OPTIONS = ['friendly', 'professional', 'casual', 'formal'];
 const LANGUAGE_OPTIONS = [
@@ -213,7 +214,7 @@ export default function LiteAgentOverviewPage() {
             <div className="flex justify-between">
               <dt className="text-text-secondary">Created</dt>
               <dd className="font-medium text-text-primary">
-                {current.createdAt ? new Date(current.createdAt).toLocaleDateString() : '—'}
+                {current.createdAt ? formatDate(current.createdAt) : '—'}
               </dd>
             </div>
           </dl>

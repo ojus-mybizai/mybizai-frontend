@@ -7,6 +7,7 @@ import {
   RefreshCw, Clock, StickyNote, Trash2, Plus, Bell,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { formatDayMonth as fmtDayMonth, formatDateTime as fmtDateTime } from '@/lib/format-date';
 import {
   contactsService,
   type Contact,
@@ -101,7 +102,7 @@ function formatRelativeTime(iso?: string | null): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return fmtDayMonth(d);
 }
 
 const ACTIVITY_ICONS: Record<string, string> = {
@@ -633,7 +634,7 @@ export function ContactDrawer({ contact, agents, onClose, onContactUpdated }: Pr
                                 {fu.status.replace('_', ' ')}
                               </span>
                               <span className="text-xs text-secondary-text/70">
-                                {new Date(fu.scheduled_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                {fmtDateTime(fu.scheduled_at)}
                               </span>
                               {fu.channel_type && (
                                 <span className="text-xs text-secondary-text/60 capitalize">{fu.channel_type}</span>

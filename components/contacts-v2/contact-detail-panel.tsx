@@ -10,6 +10,7 @@ import {
   Lock, Hash, Link, AlignLeft, Type,
 } from 'lucide-react';
 import { useContactV2Store } from '@/lib/contact-v2-store';
+import { formatDate as fmtDate } from '@/lib/format-date';
 import type {
   Contact, ContactActivity, ContactNote, ContactProcessEntry,
   ContactChannel, RoutingMode,
@@ -69,8 +70,7 @@ function timeAgo(iso: string) {
 }
 
 function formatDate(iso: string | null) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return fmtDate(iso);
 }
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
@@ -895,7 +895,7 @@ function FieldsTab({ contact, contactId }: { contact: Contact; contactId: number
       );
     }
     if (f.field_type === 'date') {
-      return <span className="text-xs text-text-primary">{new Date(String(v)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>;
+      return <span className="text-xs text-text-primary">{fmtDate(String(v))}</span>;
     }
     return <span className="text-xs text-text-primary break-words">{String(v)}</span>;
   }

@@ -638,6 +638,41 @@ export async function createLinkedRecord(
   );
 }
 
+// ── Contact Profile "Data" tab ────────────────────────────────────
+
+export interface ContactDataSection {
+  model_id: number;
+  model_name: string;
+  model_display_name: string;
+  relation_field_id: number;
+  relation_field_name: string;
+  relation_field_display_name: string;
+  relation_kind: string;
+  fields: DynamicField[];
+  title_field: string | null;
+  records: LinkedRecordItem[];
+}
+
+export interface ContactDataResponse {
+  sections: ContactDataSection[];
+  total: number;
+}
+
+/**
+ * All datasheet sections that can hold records linked to a contact — one per
+ * (datasheet × contact-relation field), each carrying the sheet's full field
+ * schema and its linked records (including empty sheets). Powers the contact
+ * profile "Data" tab.
+ */
+export async function getContactData(
+  contactId: number | string,
+): Promise<ContactDataResponse> {
+  return apiFetch<ContactDataResponse>(
+    `/dynamic-data/contact-data/${contactId}`,
+    { method: 'GET' },
+  );
+}
+
 // ── Child Datasheets ──────────────────────────────────────────────
 
 export interface ChildModelCreatePayload {

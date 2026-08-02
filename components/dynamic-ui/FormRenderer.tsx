@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
+import { DateField } from '@/components/ui/date-field';
 import type { UIForm } from '@/types/ui-protocol';
 
 interface FormRendererProps {
@@ -76,10 +77,9 @@ export default function FormRenderer({ block }: FormRendererProps) {
                   className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
                 />
               ) : field.type === 'date' ? (
-                <input
-                  type="date"
+                <DateField
                   value={String(values[field.name] ?? '')}
-                  onChange={(e) => handleChange(field.name, e.target.value)}
+                  onChange={(iso) => handleChange(field.name, iso)}
                   className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-text-primary"
                 />
               ) : field.type === 'file' ? (

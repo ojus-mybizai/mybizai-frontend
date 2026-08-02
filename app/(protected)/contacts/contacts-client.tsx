@@ -7,10 +7,12 @@ import {
   FileSpreadsheet, Loader2, Users, Phone, Mail, Building2,
   Tag, Bot, UserCheck, UserX, Trash2, X, Check, ChevronDown,
   Bookmark, BookmarkPlus, FolderKanban, Lock, RefreshCw, LayoutList, MessageSquare, Tags,
+  Settings2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { useContactV2Store } from '@/lib/contact-v2-store';
+import { formatDate } from '@/lib/format-date';
 import { contactsV2Service } from '@/services/contacts-v2';
 import type { Contact, ContactFilters, Priority, RoutingMode, ContactGroup } from '@/services/contacts-v2';
 import { CreateContactModal } from '@/components/contacts-v2/create-contact-modal';
@@ -25,6 +27,7 @@ import { listSourceDefs, type ContactSourceDef } from '@/services/contact-source
 import { listFieldDefs, type ContactFieldDef } from '@/services/contact-field-defs';
 import { ManageFieldsModal } from '@/components/contacts-v2/manage-fields-modal';
 import { ManageSourcesModal } from '@/components/contacts-v2/manage-sources-modal';
+import PinToSystemButton from '@/components/system-builder/PinToSystemButton';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   hot:    'text-red-500 bg-red-50 border-red-300',
@@ -45,12 +48,22 @@ const ROUTING_COLORS: Record<RoutingMode, string> = {
 // Contact filters are reflected in the URL query so views are shareable/bookmarkable
 // and dashboard widgets can deep-link to a pre-filtered list (e.g. /contacts?source=whatsapp).
 const FILTER_STR_KEYS = ['priority', 'routing_mode', 'source', 'engagement', 'created_within', 'attention'] as const;
-const FILTER_NUM_KEYS = ['assigned_to_id', 'tag_id', 'channel_id'] as const;
+const FILTER_NUM_KEYS = ['assigned_to_id', 'channel_id'] as const;
 const DEFAULT_SORT_BY = 'created_at';
 const DEFAULT_SORT_DIR: 'asc' | 'desc' = 'desc';
 
+// Read repeated numeric params (?tag_id=1&tag_id=2) into a de-duped id array.
+function readIdArray(params: URLSearchParams, key: string): number[] {
+  const out: number[] = [];
+  for (const v of params.getAll(key)) {
+    const n = Number(v);
+    if (v !== '' && !Number.isNaN(n) && !out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
 function paramsToFilterState(params: URLSearchParams): {
-  filters: ContactFilters; groupId: number | null; search: string;
+  filters: ContactFilters; search: string;
 } {
   const filters: ContactFilters = { sort_by: DEFAULT_SORT_BY, sort_dir: DEFAULT_SORT_DIR };
   for (const k of FILTER_STR_KEYS) {
@@ -63,6 +76,13 @@ function paramsToFilterState(params: URLSearchParams): {
       (filters as Record<string, unknown>)[k] = Number(v);
     }
   }
+  // Multi-select tags (OR) / groups (AND) — repeated params. Legacy singular
+  // ?tag_id=5 / ?group_id=3 parse via getAll() into a one-element array too.
+  const tagIds = readIdArray(params, 'tag_id');
+  if (tagIds.length) filters.tag_ids = tagIds;
+  const groupIds = readIdArray(params, 'group_id');
+  if (groupIds.length) filters.group_ids = groupIds;
+
   const sortBy = params.get('sort_by');
   if (sortBy) filters.sort_by = sortBy;
   const sortDir = params.get('sort_dir');
@@ -70,15 +90,11 @@ function paramsToFilterState(params: URLSearchParams): {
   const cf = params.get('custom_filters');
   if (cf) { try { filters.custom_filters = JSON.parse(cf); } catch { /* ignore malformed */ } }
 
-  const g = params.get('group_id');
-  const groupId = g != null && g !== '' && !Number.isNaN(Number(g)) ? Number(g) : null;
   const search = params.get('search') ?? '';
-  return { filters, groupId, search };
+  return { filters, search };
 }
 
-function filterStateToParams(
-  filters: ContactFilters, groupId: number | null, search: string,
-): URLSearchParams {
+function filterStateToParams(filters: ContactFilters, search: string): URLSearchParams {
   const p = new URLSearchParams();
   for (const k of FILTER_STR_KEYS) {
     const v = (filters as Record<string, unknown>)[k];
@@ -88,10 +104,11 @@ function filterStateToParams(
     const v = (filters as Record<string, unknown>)[k];
     if (v != null) p.set(k, String(v));
   }
+  for (const id of filters.tag_ids ?? []) p.append('tag_id', String(id));
+  for (const id of filters.group_ids ?? []) p.append('group_id', String(id));
   if (filters.custom_filters?.length) p.set('custom_filters', JSON.stringify(filters.custom_filters));
   if (filters.sort_by && filters.sort_by !== DEFAULT_SORT_BY) p.set('sort_by', filters.sort_by);
   if (filters.sort_dir && filters.sort_dir !== DEFAULT_SORT_DIR) p.set('sort_dir', filters.sort_dir);
-  if (groupId != null) p.set('group_id', String(groupId));
   if (search) p.set('search', search);
   return p;
 }
@@ -132,8 +149,7 @@ export default function ContactsClient() {
   const [showSaveView, setShowSaveView] = useState(false);
   const [saveViewName, setSaveViewName] = useState('');
   const [savingView, setSavingView] = useState(false);
-  const [activeGroupId, setActiveGroupId] = useState<number | null>(initial.groupId);
-  const [showGroups, setShowGroups] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);   // group management modal
   const [showTagManager, setShowTagManager] = useState(false);
   const [importMsg, setImportMsg] = useState('');
   const [showImport, setShowImport] = useState(false);
@@ -144,6 +160,7 @@ export default function ContactsClient() {
   const [fieldDefs, setFieldDefs] = useState<ContactFieldDef[]>([]);
   const [showFields, setShowFields] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  const [showManage, setShowManage] = useState(false);   // consolidated Manage dropdown
   const searchParams = useSearchParams();
   const router = useRouter();
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
@@ -152,6 +169,7 @@ export default function ContactsClient() {
   const bulkGroupRef = useRef<HTMLDivElement>(null);
   const xlsxRef = useRef<HTMLInputElement>(null);
   const importMenuRef = useRef<HTMLDivElement>(null);
+  const manageMenuRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -160,20 +178,21 @@ export default function ContactsClient() {
     filters.priority,
     filters.assigned_to_id,
     filters.routing_mode,
-    filters.tag_id,
     filters.source,
     filters.channel_id,
     filters.engagement,
     filters.created_within,
     filters.attention,
-    activeGroupId,
-  ].filter(v => v != null).length + (filters.custom_filters?.length ?? 0);
+  ].filter(v => v != null).length
+    + (filters.custom_filters?.length ?? 0)
+    + (filters.tag_ids?.length ?? 0)
+    + (filters.group_ids?.length ?? 0);
 
-  // Filter-count context — depends only on the active group + search, not on the
-  // segment filters themselves (counts show "how many if I applied this").
+  // Filter-count context — whole business (RBAC-scoped), independent of the active
+  // segment filters, so counts show "how many if I applied this". Only search narrows.
   const reloadCounts = useCallback(() => {
-    void loadFilterCounts({ group_id: activeGroupId, search: search || undefined });
-  }, [activeGroupId, search, loadFilterCounts]);
+    void loadFilterCounts({ search: search || undefined });
+  }, [search, loadFilterCounts]);
 
   // Load reference data once
   useEffect(() => {
@@ -186,11 +205,13 @@ export default function ContactsClient() {
   }, []);
 
   // Load the custom-field defs applicable to the current context: global fields
-  // always, plus the active group's scoped fields. Prune any custom filters that
-  // reference fields no longer in scope so the filter set stays consistent.
+  // always, plus the union of scoped fields for every group selected in the rail.
+  // Prune any custom filters that reference fields no longer in scope so the
+  // filter set stays consistent.
+  const selectedGroupKey = (filters.group_ids ?? []).join(',');
   const loadFieldDefs = useCallback(() => {
-    const calls = [listFieldDefs(0)];                       // global only
-    if (activeGroupId != null) calls.push(listFieldDefs(activeGroupId));
+    const gids = selectedGroupKey ? selectedGroupKey.split(',').map(Number) : [];
+    const calls = [listFieldDefs(0), ...gids.map(id => listFieldDefs(id))];  // global + each selected group
     Promise.all(calls)
       .then(results => {
         const seen = new Set<number>();
@@ -203,7 +224,7 @@ export default function ContactsClient() {
         });
       })
       .catch(() => setFieldDefs([]));
-  }, [activeGroupId]);
+  }, [selectedGroupKey]);
 
   useEffect(() => { loadFieldDefs(); }, [loadFieldDefs]);
 
@@ -224,27 +245,44 @@ export default function ContactsClient() {
   // Initial + filter-driven load
   useEffect(() => {
     const merged: ContactFilters = { ...filters };
-    if (activeGroupId !== null) merged.group_id = activeGroupId;
     if (search) merged.search = search;
     void list(merged);
-  }, [filters, activeGroupId]);
+  }, [filters]);
 
-  // Reflect the active filters/group/search in the URL query so the view is
+  // Reflect the active filters/search in the URL query so the view is
   // shareable and dashboard widgets can deep-link to a pre-filtered list.
   // Uses replaceState (not the router) to avoid a navigation / re-render loop.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const qs = filterStateToParams(filters, activeGroupId, search).toString();
+    const qs = filterStateToParams(filters, search).toString();
     const next = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
     if (next !== window.location.pathname + window.location.search) {
       window.history.replaceState({}, '', next);
     }
-  }, [filters, activeGroupId, search]);
+  }, [filters, search]);
 
-  // Reload segment counts when the context (group) changes
+  // Re-derive filter state whenever the URL query changes via router navigation
+  // — e.g. a sidebar "Pin to system" scoped link pushing /contacts?group_id=42
+  // while this component is already mounted. Without this the filters stay stale
+  // (and the state→URL effect above would clobber the new query back). The
+  // state→URL sync uses history.replaceState, which does NOT update
+  // useSearchParams, so this fires only on real navigations and never loops; the
+  // "already in sync" guard also skips the redundant reload on first mount.
+  useEffect(() => {
+    const parsed = paramsToFilterState(new URLSearchParams(searchParams.toString()));
+    const nextQs = filterStateToParams(parsed.filters, parsed.search).toString();
+    const curQs = filterStateToParams(filters, search).toString();
+    if (nextQs === curQs) return;
+    setFilters(parsed.filters);
+    setSearch(parsed.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Load segment counts once on mount (whole-business; search reloads them below).
   useEffect(() => {
     reloadCounts();
-  }, [activeGroupId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Debounced search — drives both the list and the count badges
   const handleSearch = (val: string) => {
@@ -252,10 +290,9 @@ export default function ContactsClient() {
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       const merged: ContactFilters = { ...filters };
-      if (activeGroupId !== null) merged.group_id = activeGroupId;
       if (val) merged.search = val;
       void list(merged);
-      void loadFilterCounts({ group_id: activeGroupId, search: val || undefined });
+      void loadFilterCounts({ search: val || undefined });
     }, 300);
   };
 
@@ -276,6 +313,9 @@ export default function ContactsClient() {
       if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) {
         setShowImport(false);
       }
+      if (manageMenuRef.current && !manageMenuRef.current.contains(e.target as Node)) {
+        setShowManage(false);
+      }
       if (bulkGroupRef.current && !bulkGroupRef.current.contains(e.target as Node)) {
         setShowBulkGroupPicker(false);
       }
@@ -290,10 +330,6 @@ export default function ContactsClient() {
 
   const handleResetFilters = () => {
     setFilters({ sort_by: filters.sort_by, sort_dir: filters.sort_dir });
-  };
-
-  const applyGroupFilter = (groupId: number | null) => {
-    setActiveGroupId(groupId);
   };
 
   // Open the contact's conversation in the inbox. If they already have one,
@@ -312,7 +348,6 @@ export default function ContactsClient() {
 
   const handleApplySavedView = (view: { filters: ContactFilters }) => {
     setFilters(view.filters);
-    setActiveGroupId(null);
   };
 
   const handleSaveView = async () => {
@@ -430,7 +465,9 @@ export default function ContactsClient() {
   };
 
   const allSelected = selectedIds.size === contacts.length && contacts.length > 0;
-  const activeGroup = activeGroupId != null ? groups.find(g => g.id === activeGroupId) ?? null : null;
+  const selectedGroups = (filters.group_ids ?? [])
+    .map(id => groups.find(g => g.id === id))
+    .filter((g): g is ContactGroup => g != null);
 
   return (
     <div className="flex flex-col h-full bg-main-bg overflow-hidden">
@@ -451,25 +488,31 @@ export default function ContactsClient() {
                 ? <Loader2 className="w-3 h-3 animate-spin text-accent" />
                 : total.toLocaleString()}
             </span>
-            {activeGroup && (
+            {selectedGroups.map(g => (
               <span
+                key={g.id}
                 className="flex items-center gap-1.5 text-xs font-medium text-white px-2.5 py-1 rounded-full"
-                style={{ backgroundColor: activeGroup.color ?? '#6366f1' }}
+                style={{ backgroundColor: g.color ?? '#6366f1' }}
               >
-                {activeGroup.is_system ? <Lock className="w-3 h-3" /> : <FolderKanban className="w-3 h-3" />}
-                {activeGroup.name}
+                {g.is_system ? <Lock className="w-3 h-3" /> : <FolderKanban className="w-3 h-3" />}
+                {g.name}
                 <button
-                  onClick={() => applyGroupFilter(null)}
+                  onClick={() => handleFilterPatch({ group_ids: (filters.group_ids ?? []).filter(id => id !== g.id) })}
                   className="ml-0.5 rounded-full hover:bg-white/20 p-0.5 transition-colors"
-                  title="Clear group filter"
+                  title="Remove group filter"
                 >
                   <X className="w-3 h-3" />
                 </button>
               </span>
-            )}
+            ))}
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Pin current filtered view to a system (hidden unless a filter is active) */}
+            <PinToSystemButton
+              labelHint={selectedGroups.length === 1 ? `Contacts · ${selectedGroups[0].name}` : undefined}
+            />
+
             {/* Analytics toggle */}
             <button
               onClick={() => setShowAnalytics(o => !o)}
@@ -477,20 +520,6 @@ export default function ContactsClient() {
             >
               <BarChart2 className="w-4 h-4" />
               Analytics
-            </button>
-
-            {/* Groups */}
-            <button
-              onClick={() => setShowGroups(o => !o)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${showGroups ? 'bg-accent text-white border-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}
-            >
-              <FolderKanban className="w-4 h-4" />
-              Groups
-              {groups.length > 0 && (
-                <span className={`text-[10px] font-bold px-1.5 rounded-full ${showGroups ? 'bg-white/20 text-white' : 'bg-bg-secondary text-text-secondary'}`}>
-                  {groups.length}
-                </span>
-              )}
             </button>
 
             {/* Import / Export */}
@@ -525,7 +554,7 @@ export default function ContactsClient() {
                       <span className="flex-1">Sync Google Contacts</span>
                       {gmailStatus.lastSyncAt && (
                         <span className="text-[10px] text-text-secondary/60">
-                          {new Date(gmailStatus.lastSyncAt).toLocaleDateString()}
+                          {formatDate(gmailStatus.lastSyncAt)}
                         </span>
                       )}
                     </button>
@@ -579,32 +608,53 @@ export default function ContactsClient() {
               )}
             </button>
 
-            {/* Tags */}
-            <button
-              onClick={() => setShowTagManager(v => !v)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${showTagManager ? 'bg-accent/10 border-accent/30 text-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}
-            >
-              <Tag className="w-4 h-4" />
-              Tags
-            </button>
-
-            {/* Custom fields */}
-            <button
-              onClick={() => setShowFields(true)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${showFields ? 'bg-accent/10 border-accent/30 text-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}
-            >
-              <LayoutList className="w-4 h-4" />
-              Fields
-            </button>
-
-            {/* Sources */}
-            <button
-              onClick={() => setShowSources(true)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${showSources ? 'bg-accent/10 border-accent/30 text-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}
-            >
-              <Tags className="w-4 h-4" />
-              Sources
-            </button>
+            {/* Manage — consolidated schema/config menu (Groups · Tags · Fields · Sources) */}
+            <div className="relative" ref={manageMenuRef}>
+              <button
+                onClick={() => setShowManage(o => !o)}
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${showManage || showGroups || showTagManager || showFields || showSources ? 'bg-accent/10 border-accent/30 text-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}
+              >
+                <Settings2 className="w-4 h-4" />
+                Manage
+                <ChevronDown className="w-3.5 h-3.5 text-text-secondary" />
+              </button>
+              {showManage && (
+                <div className="absolute right-0 top-full mt-1 z-30 bg-card-bg border border-border-color rounded-xl shadow-lg py-1.5 w-52">
+                  <p className="px-4 pt-1 pb-1.5 text-[10px] font-semibold text-text-secondary uppercase tracking-wide">Manage contacts</p>
+                  <button
+                    onClick={() => { setShowManage(false); setShowGroups(true); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-bg-secondary text-left"
+                  >
+                    <FolderKanban className="w-4 h-4 text-accent flex-shrink-0" />
+                    <span className="flex-1">Groups</span>
+                    {groups.length > 0 && (
+                      <span className="text-[10px] font-bold px-1.5 rounded-full bg-bg-secondary text-text-secondary">{groups.length}</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => { setShowManage(false); setShowTagManager(true); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-bg-secondary text-left"
+                  >
+                    <Tag className="w-4 h-4 text-accent flex-shrink-0" />
+                    <span className="flex-1">Tags</span>
+                  </button>
+                  <button
+                    onClick={() => { setShowManage(false); setShowFields(true); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-bg-secondary text-left"
+                  >
+                    <LayoutList className="w-4 h-4 text-accent flex-shrink-0" />
+                    <span className="flex-1">Fields</span>
+                  </button>
+                  <button
+                    onClick={() => { setShowManage(false); setShowSources(true); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-bg-secondary text-left"
+                  >
+                    <Tags className="w-4 h-4 text-accent flex-shrink-0" />
+                    <span className="flex-1">Sources</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Save view */}
             <div className="relative">
@@ -647,52 +697,9 @@ export default function ContactsClient() {
           </div>
         </div>
 
-        {/* Group chips + saved views */}
+        {/* Saved views (group filtering now lives in the filter rail) */}
+        {savedViews.length > 0 && (
         <div className="flex items-center gap-2 px-4 pb-2 overflow-x-auto no-scrollbar">
-          {/* All contacts chip */}
-          <button
-            onClick={() => applyGroupFilter(null)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-              activeGroupId === null
-                ? 'bg-accent text-white border-transparent'
-                : 'border-border-color text-text-secondary hover:border-accent hover:text-accent'
-            }`}
-          >
-            <span className="flex items-center gap-1.5">
-              {activeGroupId === null && loading && <Loader2 className="w-3 h-3 animate-spin" />}
-              All
-            </span>
-          </button>
-
-          {/* Group chips */}
-          {groups.length > 0 && (
-            <>
-              {groups.map(g => (
-                <button
-                  key={g.id}
-                  onClick={() => applyGroupFilter(activeGroupId === g.id ? null : g.id)}
-                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    activeGroupId === g.id
-                      ? 'border-transparent text-white'
-                      : 'border-border-color text-text-secondary hover:border-accent hover:text-accent'
-                  }`}
-                  style={activeGroupId === g.id ? { backgroundColor: g.color ?? '#6366f1' } : {}}
-                >
-                  {activeGroupId === g.id && loading
-                    ? <Loader2 className="w-3 h-3 animate-spin" />
-                    : g.is_system ? <Lock className="w-2.5 h-2.5" /> : <FolderKanban className="w-3 h-3" />}
-                  {g.name}
-                  <span className={`text-[9px] font-bold ${activeGroupId === g.id ? 'text-white/70' : 'text-text-secondary/60'}`}>
-                    {g.member_count}
-                  </span>
-                </button>
-              ))}
-            </>
-          )}
-
-          {/* Saved view divider */}
-          {savedViews.length > 0 && <div className="w-px h-4 bg-border-color flex-shrink-0 mx-1" />}
-
           {/* Saved view chips */}
           {savedViews.map(view => (
             <div key={view.id} className="flex-shrink-0 flex items-center gap-0.5">
@@ -712,6 +719,7 @@ export default function ContactsClient() {
             </div>
           ))}
         </div>
+        )}
 
         {/* Search bar */}
         <div className="px-4 pb-2.5">
@@ -750,12 +758,14 @@ export default function ContactsClient() {
             counts={filterCounts}
             loadingCounts={loadingFilterCounts}
             tags={tags}
+            groups={groups}
             channelInstances={channelInstances}
             sourceDefs={sourceDefs}
             fieldDefs={fieldDefs}
             onChange={handleFilterPatch}
             onReset={handleResetFilters}
             onCollapse={() => setShowFilterRail(false)}
+            onManageGroups={() => setShowGroups(true)}
           />
         )}
 
@@ -768,7 +778,7 @@ export default function ContactsClient() {
             <EmptyState
               onAdd={() => setShowCreate(true)}
               hasFilters={activeFilterCount > 0 || !!search}
-              groupName={activeFilterCount === 1 && !search ? activeGroup?.name : undefined}
+              groupName={selectedGroups.length === 1 && activeFilterCount === 1 && !search ? selectedGroups[0].name : undefined}
             />
           ) : (
             <>
@@ -830,8 +840,7 @@ export default function ContactsClient() {
         {showTagManager && (
           <div className="w-72 border-l border-border-color bg-bg-primary flex flex-col overflow-hidden shrink-0 animate-in slide-in-from-right duration-200">
             <TagManagerPanel
-              groupId={activeGroupId}
-              groupName={activeGroupId != null ? groups.find(g => g.id === activeGroupId)?.name : undefined}
+              groupId={null}
               onClose={() => setShowTagManager(false)}
             />
           </div>
@@ -905,12 +914,11 @@ export default function ContactsClient() {
       )}
 
       {/* ── Modals / Drawers ─────────────────────────────────────── */}
-      {/* Groups panel (fixed overlay) */}
+      {/* Group management panel (create / edit / delete / intake routing).
+          Group *filtering* now lives in the filter rail — this is management-only. */}
       {showGroups && (
         <GroupRoutingPanel
           onClose={() => setShowGroups(false)}
-          onGroupSelect={id => { applyGroupFilter(id); }}
-          activeGroupId={activeGroupId}
         />
       )}
 

@@ -14,6 +14,7 @@
  */
 
 import React from 'react';
+import { formatDate as fmtDate, formatDayMonth as fmtDayMonth } from '@/lib/format-date';
 
 // ─── Tokens (consumed in CSS class names) ─────────────────────────────────────
 
@@ -71,13 +72,11 @@ export function formatPercent(v: number, digits = 0): string {
 }
 
 export function formatDate(iso?: string | null): string {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtDate(iso, '');
 }
 
 export function formatDateShort(iso?: string | null): string {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return fmtDayMonth(iso, '');
 }
 
 export function relativeTime(iso?: string | null): string {

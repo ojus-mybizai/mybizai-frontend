@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { listAttachments, uploadAttachment, deleteAttachment, type WorkAttachment } from '@/services/work';
+import { formatDate as fmtDate } from '@/lib/format-date';
 
 interface WorkAttachmentsProps {
   workId: number;
@@ -18,9 +19,7 @@ function formatFileSize(bytes: number | null): string {
 }
 
 function formatDate(iso: string | undefined | null): string {
-  if (!iso) return '\u2014';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '\u2014' : d.toLocaleDateString(undefined, { dateStyle: 'medium' });
+  return fmtDate(iso);
 }
 
 function fileIcon(mimeType: string | null): string {

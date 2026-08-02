@@ -6,6 +6,7 @@ import {
   RefreshCw, X, Calendar, MessageSquare, Users,
   AlertTriangle, ChevronRight, Search,
 } from 'lucide-react';
+import { formatTime, formatDateTime } from '@/lib/format-date';
 import {
   listWorkItems, deleteWorkItem, dispatchWorkItem,
   updateAssignmentStatus, getWorkStats, getWorkItem, resendAssignment,
@@ -64,11 +65,11 @@ function avatarColor(name: string) {
 
 function fmtTime(iso: string | null | undefined) {
   if (!iso) return '';
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return formatTime(iso);
 }
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return formatDateTime(iso);
 }
 
 /* ─── skeleton ───────────────────────────────────────────── */

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { formatDate as fmtDate, formatDateTime as fmtDateTime } from '@/lib/format-date';
 import ModuleGuard from '@/components/module-guard';
 import { EditEmployeeModal } from '@/components/employees/edit-employee-modal';
 import { useAuthStore } from '@/lib/auth-store';
@@ -95,17 +96,11 @@ const EVENT_ICONS: Record<string, string> = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(value?: string | null): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(undefined, { dateStyle: 'medium' });
+  return fmtDate(value);
 }
 
 function formatDateTime(value?: string | null): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return fmtDateTime(value);
 }
 
 function statusLabel(status: string): string {
@@ -1202,12 +1197,7 @@ export default function EmployeeDetailPage() {
                                   )}
                                 </p>
                                 <p className="shrink-0 text-xs text-text-secondary">
-                                  {item.created_at
-                                    ? new Date(item.created_at).toLocaleString(undefined, {
-                                        dateStyle: 'medium',
-                                        timeStyle: 'short',
-                                      })
-                                    : ''}
+                                  {item.created_at ? fmtDateTime(item.created_at) : ''}
                                 </p>
                               </div>
                               {item.metadata && Object.keys(item.metadata).length > 0 && (

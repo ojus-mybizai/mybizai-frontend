@@ -1,7 +1,7 @@
+import { formatDate as fmtDate } from '@/lib/format-date';
+
 export function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtDate(dateStr);
 }
 
 export function isOverdue(dueDateStr: string | null | undefined, status: string): boolean {

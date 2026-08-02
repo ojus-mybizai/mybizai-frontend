@@ -2,15 +2,15 @@
 
 import React, { useState } from 'react';
 import type { ProcessStage } from '@/services/processes';
-import type { Employee } from '@/services/employees';
+import type { WaEmployee } from '@/services/waEmployees';
 import { Icon, Button } from './design-system';
 
 interface Props {
   selectedCount: number;
   stages: ProcessStage[];
-  employees: Employee[];
+  employees: WaEmployee[];
   onMove: (stageId: number) => void;
-  onAssign: (userId: number | null) => void;
+  onAssign: (waEmployeeId: number | null) => void;
   onSetPriority: (p: 'high' | 'medium' | 'low') => void;
   onDrop: () => void;
   onClear: () => void;
@@ -43,6 +43,7 @@ export default function BulkActionBar({
 
       <Dropdown label="Assign…" open={open === 'assign'} onToggle={() => setOpen(open === 'assign' ? null : 'assign')}>
         <button onClick={() => { onAssign(null); setOpen(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-bg-secondary text-text-secondary">Unassigned</button>
+        {/* onAssign sets ProcessEntry.assigned_wa_employee_id — use the WaEmployee id. */}
         {employees.map(e => (
           <button key={e.id} onClick={() => { onAssign(e.id); setOpen(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-bg-secondary">{e.name}</button>
         ))}

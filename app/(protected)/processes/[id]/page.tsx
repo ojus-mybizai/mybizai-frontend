@@ -9,7 +9,7 @@ import {
   bulkMoveEntries, bulkAssignEntries, bulkUpdateEntries,
   type BusinessProcess, type ProcessEntry, type ProcessStage,
 } from '@/services/processes';
-import { listEmployees, type Employee } from '@/services/employees';
+import { listEmployees as listWaEmployees, type WaEmployee } from '@/services/waEmployees';
 import BoardView from '@/components/processes/board-view';
 import ListView from '@/components/processes/list-view';
 import SettingsView from '@/components/processes/settings-view';
@@ -23,6 +23,7 @@ import type { CardDensity } from '@/components/processes/process-card';
 import {
   Money, Pill, Button, Icon, ToastHost, pushToast, formatNumber, formatCurrency,
 } from '@/components/processes/design-system';
+import PinToSystemButton from '@/components/system-builder/PinToSystemButton';
 
 type Tab = 'pipeline' | 'forecast' | 'insights' | 'settings';
 type PipelineLayout = 'board' | 'list';
@@ -186,7 +187,8 @@ export default function ProcessDetailPage() {
 
   const [process, setProcess] = useState<BusinessProcess | null>(null);
   const [entries, setEntries] = useState<ProcessEntry[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  // Deals are owned by WhatsApp employees — this backs the assignee picker/filter.
+  const [waEmployees, setWaEmployees] = useState<WaEmployee[]>([]);
   const [tab, setTab] = useState<Tab>('pipeline');
   const [layout, setLayout] = useState<PipelineLayout>('board');
   const [fit, setFit] = useState(false);
@@ -208,14 +210,14 @@ export default function ProcessDetailPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [proc, ents, emps] = await Promise.all([
+      const [proc, ents, waEmps] = await Promise.all([
         getProcess(processId),
         listEntries(processId),
-        listEmployees().catch(() => []),
+        listWaEmployees({ status: 'active' }).catch(() => []),
       ]);
       setProcess(proc);
       setEntries(ents);
-      setEmployees(emps.filter(e => e.is_active));
+      setWaEmployees(waEmps);
       setError('');
     } catch (err: any) {
       setError(err?.message || 'Failed to load process');
@@ -259,9 +261,9 @@ export default function ProcessDetailPage() {
       if (!hay.includes(q)) return false;
     }
     if (filters.assigneeId === 'unassigned') {
-      if (e.assigned_to_id !== null) return false;
+      if (e.assigned_wa_employee_id !== null) return false;
     } else if (filters.assigneeId !== 'all') {
-      if (e.assigned_to_id !== filters.assigneeId) return false;
+      if (e.assigned_wa_employee_id !== filters.assigneeId) return false;
     }
     if (filters.priority !== 'all' && e.priority !== filters.priority) return false;
     if (filters.stuckOnly && e.sla_status !== 'warn' && e.sla_status !== 'breach') return false;
@@ -279,7 +281,11 @@ export default function ProcessDetailPage() {
     try {
       await moveEntry(processId, entryId, stageId);
       pushToast('success', `Moved to ${stages.find(s => s.id === stageId)?.name}`);
-    } catch { pushToast('danger', 'Move failed'); loadData(); }
+    } catch (e: any) {
+      // Surface the server reason (required fields, WIP limit, …) and revert.
+      pushToast('danger', e?.message || 'Move failed');
+      loadData();
+    }
   }
 
   async function handleRemoveEntry(entryId: number) {
@@ -320,12 +326,22 @@ export default function ProcessDetailPage() {
   function clearSelection() { setSelectedIds(new Set()); }
 
   async function handleBulkMove(stageId: number) {
-    try { await bulkMoveEntries(processId, Array.from(selectedIds), stageId); pushToast('success', `Moved ${selectedIds.size} entries`); }
-    catch { pushToast('danger', 'Bulk move failed'); }
+    try {
+      const res = await bulkMoveEntries(processId, Array.from(selectedIds), stageId);
+      const skipped = res.skipped ?? 0;
+      if (skipped > 0) {
+        // Some entries were blocked by required-field / WIP guardrails.
+        pushToast('info', `Moved ${res.updated}, skipped ${skipped} (required fields or WIP)`);
+      } else {
+        pushToast('success', `Moved ${res.updated} ${res.updated === 1 ? 'entry' : 'entries'}`);
+      }
+    } catch (e: any) {
+      pushToast('danger', e?.message || 'Bulk move failed');
+    }
     clearSelection(); loadData();
   }
-  async function handleBulkAssign(userId: number | null) {
-    try { await bulkAssignEntries(processId, Array.from(selectedIds), userId); pushToast('success', 'Reassigned'); }
+  async function handleBulkAssign(waEmployeeId: number | null) {
+    try { await bulkAssignEntries(processId, Array.from(selectedIds), { assigned_wa_employee_id: waEmployeeId }); pushToast('success', 'Reassigned'); }
     catch { pushToast('danger', 'Failed'); }
     clearSelection(); loadData();
   }
@@ -383,6 +399,10 @@ export default function ProcessDetailPage() {
                     <span className="text-lg font-semibold tabular-nums text-amber-600 dark:text-amber-400">{stuckCount}</span>
                   } />
                 )}
+              </div>
+
+              <div className="flex-shrink-0">
+                <PinToSystemButton labelHint={process.name} />
               </div>
             </div>
 
@@ -502,7 +522,7 @@ export default function ProcessDetailPage() {
                 <FilterBar
                   filters={filters}
                   onChange={setFilters}
-                  employees={employees}
+                  employees={waEmployees}
                   density={density}
                   onDensityChange={setDensity}
                   selectionMode={selectionMode}
@@ -558,7 +578,7 @@ export default function ProcessDetailPage() {
         <BulkActionBar
           selectedCount={selectedIds.size}
           stages={stages}
-          employees={employees}
+          employees={waEmployees}
           onMove={handleBulkMove}
           onAssign={handleBulkAssign}
           onSetPriority={handleBulkPriority}
@@ -583,8 +603,8 @@ export default function ProcessDetailPage() {
       {detailEntry && (
         <EntryDetailDrawer
           entry={detailEntry}
+          process={process}
           stages={stages}
-          employees={employees}
           onClose={() => setDetailEntry(null)}
           onUpdated={handleEntryUpdated}
         />

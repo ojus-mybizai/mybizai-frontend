@@ -22,6 +22,7 @@ import {
   Filter,
   Repeat,
   Workflow,
+  Boxes,
   Briefcase,
   Send,
   ChevronDown,
@@ -30,6 +31,8 @@ import {
   MousePointer2,
   Database,
   GraduationCap,
+  SlidersHorizontal,
+  Plug,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -38,6 +41,7 @@ import { useThemeStore } from '@/lib/theme-store';
 import { useTourStore } from '@/lib/tour-store';
 import { useUIStore } from '@/lib/ui-store';
 import { DataSheetNav } from '@/components/data-sheet-nav';
+import { SystemNav } from '@/components/system-nav';
 import NotificationBell from '@/components/notifications/notification-bell';
 import { GlobalSearch } from '@/components/global-search';
 import { TourOverlay } from '@/components/tour/tour-overlay';
@@ -68,18 +72,40 @@ interface NavGroup {
   module?: string;
 }
 
+/**
+ * ConfigGroup — the collapsible "Configure" tier. Behaves like a NavGroup but
+ * its open/closed state is persisted app-wide via ui-store (not the transient
+ * per-render openGroups set), so setup-time surfaces stay folded away for
+ * veterans and expanded for new users on demand. `href` is only used as the
+ * collapsed-rail degrade target.
+ */
+interface ConfigGroup {
+  kind: 'configgroup';
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  children: NavItem[];
+}
+
 type NavSection    = { kind: 'section'; label: string };
 type DataSheetSlot = { kind: 'datasheet' };
-type NavEntry      = NavItem | NavGroup | NavSection | DataSheetSlot;
+type SystemsSlot   = { kind: 'systems' };
+type NavEntry      = NavItem | NavGroup | ConfigGroup | NavSection | DataSheetSlot | SystemsSlot;
 
 function isNavGroup(e: NavEntry): e is NavGroup {
   return (e as NavGroup).kind === 'group';
+}
+function isConfigGroup(e: NavEntry): e is ConfigGroup {
+  return (e as ConfigGroup).kind === 'configgroup';
 }
 function isSection(e: NavEntry): e is NavSection {
   return (e as NavSection).kind === 'section';
 }
 function isDataSheetSlot(e: NavEntry): e is DataSheetSlot {
   return (e as DataSheetSlot).kind === 'datasheet';
+}
+function isSystemsSlot(e: NavEntry): e is SystemsSlot {
+  return (e as SystemsSlot).kind === 'systems';
 }
 
 /**
@@ -95,12 +121,19 @@ function filterNavByModules(entries: NavEntry[], activeModules: string[]): NavEn
   if (!activeModules || activeModules.length === 0) return entries;
   const has = (m?: string) => !m || activeModules.includes(m);
 
-  // First pass: drop hidden items
-  const kept: NavEntry[] = entries.filter((e) => {
-    if (isSection(e) || isDataSheetSlot(e)) return true;
-    if (isNavGroup(e)) return has(e.module);
-    return has(e.module);
-  });
+  // First pass: drop hidden items. Config-group children are filtered in place;
+  // a group left with no children is dropped entirely.
+  const kept: NavEntry[] = [];
+  for (const e of entries) {
+    if (isSection(e) || isDataSheetSlot(e) || isSystemsSlot(e)) { kept.push(e); continue; }
+    if (isConfigGroup(e)) {
+      const children = e.children.filter((c) => has(c.module));
+      if (children.length) kept.push({ ...e, children });
+      continue;
+    }
+    if (isNavGroup(e)) { if (has(e.module)) kept.push(e); continue; }
+    if (has(e.module)) kept.push(e);
+  }
 
   // Second pass: drop section headers with no item between them and the next section
   const out: NavEntry[] = [];
@@ -122,43 +155,53 @@ function filterNavByModules(entries: NavEntry[], activeModules: string[]): NavEn
 
 /* ─── Nav definitions ────────────────────────────────────────────────────── */
 
-/** Full nav for business owners. `module` field hides item if not in active_modules. */
+/**
+ * Owner nav — three intent tiers instead of six feature buckets:
+ *
+ *   1. Workspace    — the handful of screens opened every day.
+ *   2. Your Systems — one expandable group per business System (its datasheets,
+ *                     pipeline, agent, dashboard together); driven by <SystemNav>.
+ *   3. Configure    — setup-time surfaces (channels, templates, agents, memory,
+ *                     automation, work config, account) folded behind one
+ *                     collapsible group so they stop competing for attention.
+ *
+ * `module` still hides an item when its module isn't active.
+ */
 const OWNER_NAV: NavEntry[] = [
+  { kind: 'section', label: 'Workspace' },
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Inbox',     href: '/inbox',     icon: MessageSquare },
+  { label: 'Contacts',  href: '/contacts',  icon: UserCheck, module: 'crm' },
+  { label: 'Tasks',     href: '/wa-work',    icon: Send,      module: 'work_tasks' },
 
-  { kind: 'section', label: 'CRM' },
-  { label: 'Inbox',    href: '/inbox',    icon: MessageSquare },
-  { label: 'Contacts', href: '/contacts', icon: UserCheck, module: 'crm' },
-  { label: 'Campaigns', href: '/campaigns', icon: Megaphone, module: 'campaigns' },
+  { kind: 'section', label: 'Your Systems' },
+  { kind: 'systems' },
 
-  { kind: 'section', label: 'Data Sheets' },
-  { kind: 'datasheet' },
-
-  { kind: 'section', label: 'Messaging' },
-  { label: 'Channels',      href: '/channels',          icon: Radio },
-  { label: 'Msg Templates', href: '/message-templates', icon: MessageCircle },
-
-  { kind: 'section', label: 'AI & Automation' },
-  { label: 'Agents',        href: '/agents',        icon: Bot,           module: 'chat_agent' },
-  { label: 'Internal Chat', href: '/internal-chat', icon: MessagesSquare, module: 'chat_agent' },
-  { label: 'Memory',        href: '/memory',        icon: Database,      module: 'chat_agent' },
-  { label: 'Automation',    href: '/automation',    icon: Zap,           module: 'follow_up' },
-
-  // ── Work management (WA team + internal) ─────────────────────────────────
-  { kind: 'section', label: 'Work' },
-  { label: 'Employees',       href: '/wa-employees', icon: UsersRound, module: 'wa_employees' },
-  { label: 'Tasks',           href: '/wa-work',      icon: Send,       module: 'work_tasks' },
-  { label: 'Work Templates',  href: '/wa-templates', icon: FileText,   module: 'work_tasks' },
-  { label: 'Work Board',      href: '/work',         icon: Briefcase,  module: 'work_tasks' },
-  { label: 'Processes',       href: '/processes',    icon: Workflow,   module: 'work_tasks' },
-
-  { kind: 'section', label: 'Account' },
-  // /employees manages who can log into the dashboard (platform RBAC),
-  // not the WhatsApp team — so it lives in Account, not Team.
-  { label: 'Team Access', href: '/employees',          icon: Users },
-  { label: 'Settings',    href: '/settings',            icon: Settings },
-  { label: 'Billing',     href: '/settings/billing',    icon: CreditCard },
-  { label: 'AI Credits',  href: '/settings/credits',    icon: Coins },
+  // ── Setup & configuration — collapsed by default (persisted) ─────────────
+  {
+    kind: 'configgroup',
+    label: 'Configure',
+    href: '/settings',            // collapsed-rail degrade target
+    icon: SlidersHorizontal,
+    children: [
+      { label: 'Campaigns',       href: '/campaigns',         icon: Megaphone,      module: 'campaigns' },
+      { label: 'Channels',        href: '/channels',          icon: Radio },
+      { label: 'Integrations',    href: '/integrations/meta', icon: Plug },
+      { label: 'Msg Templates',   href: '/message-templates', icon: MessageCircle },
+      { label: 'Agents',          href: '/agents',            icon: Bot,            module: 'chat_agent' },
+      { label: 'Internal Chat',   href: '/internal-chat',     icon: MessagesSquare, module: 'chat_agent' },
+      { label: 'Memory',          href: '/memory',            icon: Database,       module: 'chat_agent' },
+      { label: 'Automation',      href: '/automation',        icon: Zap,            module: 'follow_up' },
+      { label: 'Work Templates',  href: '/wa-templates',      icon: FileText,       module: 'work_tasks' },
+      { label: 'Work Board',      href: '/work',              icon: Briefcase,      module: 'work_tasks' },
+      { label: 'Processes',       href: '/processes',         icon: Workflow,       module: 'work_tasks' },
+      { label: 'Employees',       href: '/wa-employees',      icon: UsersRound,     module: 'wa_employees' },
+      { label: 'Team Access',     href: '/employees',         icon: Users },
+      { label: 'Settings',        href: '/settings',          icon: Settings },
+      { label: 'Billing',         href: '/settings/billing',  icon: CreditCard },
+      { label: 'AI Credits',      href: '/settings/credits',  icon: Coins },
+    ],
+  },
 ];
 
 /** Simplified nav for team members / employees */
@@ -192,6 +235,8 @@ const TITLE_MAP: Record<string, string> = {
   '/wa-templates':        'Work Templates',
   '/wa-templates/new':    'New Work Template',
   '/channels':            'Channels',
+  '/systems':             'Systems',
+  '/systems/builder':     'System Builder',
   '/agents':              'Agents',
   '/internal-chat':       'Internal Chat',
   '/memory':              'Memory',
@@ -251,6 +296,8 @@ export default function AppShell({ children }: AppShellProps) {
   const setSidebarMode     = useUIStore((s) => s.setSidebarMode);
   const setHoverExpandPref = useUIStore((s) => s.setHoverExpandEnabled);
   const uiHydrated         = useUIStore((s) => s.hydrated);
+  const configOpen         = useUIStore((s) => s.configOpen);
+  const toggleConfig       = useUIStore((s) => s.toggleConfig);
 
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -440,6 +487,62 @@ export default function AppShell({ children }: AppShellProps) {
     );
   };
 
+  /* ── Configure group (persisted open state via ui-store) ─────────────── */
+  const renderConfigGroup = (group: ConfigGroup, expanded: boolean) => {
+    const childMatch = group.children.some((c) => isActive(c.href));
+
+    // Collapsed rail: degrade to a single icon that routes to the group's
+    // representative page; highlight when the current page lives inside it.
+    if (!expanded) {
+      const active = childMatch;
+      return (
+        <button
+          key="configgroup"
+          type="button"
+          onClick={() => handleNavigate(group.href)}
+          title={group.label}
+          aria-label={group.label}
+          className={`group flex h-9 w-full items-center justify-center rounded-lg transition-all
+            ${active ? 'bg-accent/10 text-accent' : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'}`}
+        >
+          <group.icon className={`h-4 w-4 shrink-0 ${active ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'}`} aria-hidden />
+        </button>
+      );
+    }
+
+    return (
+      <div key="configgroup">
+        <button
+          type="button"
+          onClick={toggleConfig}
+          aria-expanded={configOpen}
+          className={`group flex w-full items-center rounded-lg px-2.5 py-2 text-sm text-left transition-all
+            ${childMatch && !configOpen
+              ? 'text-accent font-medium'
+              : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'}`}
+        >
+          <group.icon
+            className={`h-4 w-4 shrink-0 mr-2.5 transition-colors
+              ${childMatch && !configOpen ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary'}`}
+            aria-hidden
+          />
+          <span className="flex-1 truncate">{group.label}</span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-text-secondary
+              ${configOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+
+        {configOpen && (
+          <div className="mt-0.5 ml-[11px] border-l border-border-color pl-3 pb-0.5 space-y-0.5">
+            {group.children.map((child) => renderNavItem(child, true, true))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   /* ── Section header / divider ────────────────────────────────────────── */
   const renderSection = (label: string, key: string, expanded: boolean) => {
     if (expanded) {
@@ -505,7 +608,19 @@ export default function AppShell({ children }: AppShellProps) {
               false,
             );
           }
+          if (isSystemsSlot(entry)) {
+            if (expanded) {
+              return <SystemNav key="systems" onNavigate={() => setSidebarOpen(false)} />;
+            }
+            // Collapsed: degrade to a single icon button → the systems overview.
+            return renderNavItem(
+              { label: 'Your Systems', href: '/systems', icon: Boxes } as NavItem,
+              false,
+              false,
+            );
+          }
           if (isSection(entry))         return renderSection(entry.label, `section-${idx}`, expanded);
+          if (isConfigGroup(entry))     return renderConfigGroup(entry, expanded);
           if (isNavGroup(entry))        return renderNavGroup(entry, expanded);
           return renderNavItem(entry, false, expanded);
         })}

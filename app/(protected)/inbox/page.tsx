@@ -4,11 +4,14 @@ import { FormEvent, KeyboardEvent, memo, useCallback, useEffect, useLayoutEffect
 import Link from 'next/link';
 import { FileText, Search, RefreshCw, ArrowLeft, ExternalLink, MessageCircle, Bot, ChevronDown, BookmarkCheck, SlidersHorizontal, X, Send, Lock, MessageSquarePlus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { formatDateTime as fmtDateTime, formatDayMonth as fmtDayMonth } from '@/lib/format-date';
 import { AIStatusBadge } from '@/components/customers/ai-status-badge';
 import { MessageBubble } from '@/components/customers/message-bubble';
 import { ConversationRowSkeleton } from '@/components/conversations/ConversationRowSkeleton';
 import { TemplatePickerModal } from '@/components/conversations/TemplatePickerModal';
 import { SavedViewsPanel } from '@/components/conversations/SavedViewsPanel';
+import PinToSystemButton from '@/components/system-builder/PinToSystemButton';
+import type { ParsedScope } from '@/lib/system-scoped-links';
 import { NewConversationModal } from '@/components/conversations/NewConversationModal';
 import { ContactRail, ContactRailOverlay } from '@/components/inbox/contact-rail';
 import { useUIStore } from '@/lib/ui-store';
@@ -43,10 +46,7 @@ import { listSourceDefs, type ContactSourceDef } from '@/services/contact-source
 import { listFieldDefs, type ContactFieldDef } from '@/services/contact-field-defs';
 
 function formatTime(dateStr: string | undefined): string {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+  return fmtDateTime(dateStr);
 }
 
 function formatRelativeTime(dateStr: string | undefined): string {
@@ -63,7 +63,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays === 1) return 'Yesterday';
   if (diffDays < 7) return `${diffDays}d ago`;
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric' });
+  return fmtDayMonth(d);
 }
 
 /**
@@ -856,6 +856,30 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
     window.history.replaceState({}, '', url.toString());
   }, [activeViewId]);
 
+  // Scope for "Pin to system": the inbox reflects its active filter via
+  // history.replaceState (not the router), so we build the scope explicitly from
+  // the active saved-view / agent filter rather than parsing searchParams.
+  const inboxPinScope: ParsedScope | null = useMemo(() => {
+    if (activeViewId) {
+      const v = savedViews.find((x) => x.id === activeViewId);
+      const params: Record<string, string | number> = { view: activeViewId };
+      return {
+        descriptor: { module: 'inbox', params },
+        icon: 'MessageSquare',
+        autoLabel: v ? `Inbox · ${v.name}` : 'Inbox · Saved view',
+      };
+    }
+    if (agentFilter) {
+      const params: Record<string, string | number> = { agent: agentFilter };
+      return {
+        descriptor: { module: 'inbox', params },
+        icon: 'MessageSquare',
+        autoLabel: `Inbox · ${agentFilter}`,
+      };
+    }
+    return null;
+  }, [activeViewId, savedViews, agentFilter]);
+
   const selected = selectedId ? conversations.find((c) => c.id === selectedId) : null;
 
   const fetchConversations = useCallback(
@@ -1193,6 +1217,11 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                   })()}
                 </div>
                 <div className="flex items-center gap-1">
+                  <PinToSystemButton
+                    override={inboxPinScope}
+                    compact
+                    className="p-1.5 rounded-lg text-text-secondary hover:bg-bg-secondary transition-colors"
+                  />
                   <button
                     type="button"
                     onClick={() => setShowNewConvo(true)}
@@ -1588,7 +1617,7 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
                                   : msgDate === yesterday
                                   ? 'Yesterday'
                                   : msgDate
-                                    ? new Date(m.timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+                                    ? fmtDayMonth(m.timestamp)
                                     : null;
 
                                 // Group consecutive same-sender messages sent close in time

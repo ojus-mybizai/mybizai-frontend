@@ -6,6 +6,7 @@ import { getWorkSteps, completeWorkStep, revertWorkStep, startWork, getWork, sub
 import { useAuthStore } from '@/lib/auth-store';
 import { WorkDetailHeader } from '@/components/work/work-detail-header';
 import { DynamicWorkForm } from '@/components/work/dynamic-work-form';
+import { formatDateTime } from '@/lib/format-date';
 
 interface StepSchema {
   order: number;
@@ -21,9 +22,7 @@ interface WorkDetailChecklistProps {
 }
 
 function formatDate(d: string | null | undefined): string {
-  if (!d) return '—';
-  const x = new Date(d);
-  return Number.isNaN(x.getTime()) ? '—' : x.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return formatDateTime(d);
 }
 
 export default function WorkDetailChecklist({ work, onWorkUpdated, stepsSchema, globalFormSchema }: WorkDetailChecklistProps) {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAgentStore } from '@/lib/agent-store';
+import { formatDateTime } from '@/lib/format-date';
 import {
   listAgentRuns,
   runAgentManually,
@@ -318,7 +319,7 @@ function RunRow({ run }: { run: AgentRun }) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-text-secondary">{run.created_at ? new Date(run.created_at).toLocaleString() : ''}</span>
+          <span className="text-[10px] text-text-secondary">{run.created_at ? formatDateTime(run.created_at) : ''}</span>
           {open ? <ChevronUp className="w-3.5 h-3.5 text-text-secondary" /> : <ChevronDown className="w-3.5 h-3.5 text-text-secondary" />}
         </div>
       </button>

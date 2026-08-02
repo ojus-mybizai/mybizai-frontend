@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, FormEvent, useCallback } from 'react';
 import { Bot, Send, MessageSquare, User, Loader2, ChevronLeft } from 'lucide-react';
+import { formatTime as fmtTime } from '@/lib/format-date';
 import {
   listAgents,
   sendMessage,
@@ -42,9 +43,7 @@ function roleBadge(role: AgentRole) {
 
 function formatTime(iso: string | null): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return fmtTime(iso, '');
 }
 
 // ---------------------------------------------------------------------------

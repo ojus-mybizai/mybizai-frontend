@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { getSubtasks, createSubtask, updateWork, type Work } from '@/services/work';
+import { formatDayMonth as fmtDayMonth } from '@/lib/format-date';
 
 export interface SubtaskListProps {
   workId: number;
@@ -109,7 +110,7 @@ export function SubtaskList({ workId, workTypeId, canEdit, employees }: SubtaskL
   function formatDate(d: string | null | undefined): string {
     if (!d) return '';
     try {
-      return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      return fmtDayMonth(d);
     } catch {
       return d;
     }

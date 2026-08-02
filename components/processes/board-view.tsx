@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor,
   useSensor, useSensors, useDroppable, closestCenter,
@@ -223,6 +223,30 @@ function StageColumn({
   );
 }
 
+/** Round overlay button used to scroll the board left/right */
+function ScrollButton({
+  direction, visible, onClick,
+}: { direction: 'left' | 'right'; visible: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={direction === 'left' ? 'Scroll stages left' : 'Scroll stages right'}
+      tabIndex={visible ? 0 : -1}
+      className={`absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center
+        h-9 w-9 rounded-full border border-border-color bg-card-bg text-text-secondary shadow-lg
+        hover:text-text-primary hover:border-accent hover:bg-bg-secondary transition-quick
+        ${direction === 'left' ? 'left-1' : 'right-1'}
+        ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+      `}
+    >
+      <svg width="16" height="16" viewBox="0 0 12 14" fill="none" className={direction === 'left' ? 'rotate-180' : ''}>
+        <path d="M2 2 L8 7 L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
 /** Tiny chevron between stages to imply flow direction */
 function FlowArrow() {
   return (
@@ -240,6 +264,45 @@ export default function BoardView({
   onMoveEntry, onOpenEntry, onQuickWhatsApp, onQuickCall, onRemoveEntry, onAddEntry,
 }: Props) {
   const [activeEntry, setActiveEntry] = useState<ProcessEntry | null>(null);
+
+  // Horizontal scroll affordance (only relevant when not fit-to-screen)
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollLeft(scrollLeft > 1);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (fit) return;
+    updateScrollState();
+  }, [fit, stages, entries, updateScrollState]);
+
+  useEffect(() => {
+    if (fit) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    updateScrollState();
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    window.addEventListener('resize', updateScrollState);
+    return () => {
+      el.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
+    };
+  }, [fit, updateScrollState]);
+
+  const scrollByColumn = useCallback((dir: 'left' | 'right') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Scroll by ~one column width + gap so a full stage snaps into view
+    const amount = Math.max(280, Math.round(el.clientWidth * 0.8));
+    el.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -294,29 +357,40 @@ export default function BoardView({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className={`flex items-stretch gap-2 pb-4 ${fit ? '' : 'overflow-x-auto -mx-4 px-4 sm:-mx-6 sm:px-6'}`}>
-        {sortedStages.map((stage, idx) => (
-          <React.Fragment key={stage.id}>
-            <StageColumn
-              stage={stage}
-              entries={entriesByStage[stage.id] || []}
-              density={density}
-              selectionMode={selectionMode}
-              selectedIds={selectedIds}
-              valueP75={valueP75}
-              totalProcessValue={totalProcessValue}
-              fit={fit}
-              onToggleSelect={onToggleSelect}
-              onSelectAllInStage={onSelectAllInStage}
-              onOpen={onOpenEntry}
-              onQuickWhatsApp={onQuickWhatsApp}
-              onQuickCall={onQuickCall}
-              onRemove={onRemoveEntry}
-              onAdd={() => onAddEntry(stage.id)}
-            />
-            {idx < sortedStages.length - 1 && <FlowArrow />}
-          </React.Fragment>
-        ))}
+      <div className="relative">
+        {!fit && (
+          <>
+            <ScrollButton direction="left" visible={canScrollLeft} onClick={() => scrollByColumn('left')} />
+            <ScrollButton direction="right" visible={canScrollRight} onClick={() => scrollByColumn('right')} />
+          </>
+        )}
+        <div
+          ref={scrollRef}
+          className={`flex items-stretch gap-2 pb-4 ${fit ? '' : 'overflow-x-auto -mx-4 px-4 sm:-mx-6 sm:px-6 scroll-smooth'}`}
+        >
+          {sortedStages.map((stage, idx) => (
+            <React.Fragment key={stage.id}>
+              <StageColumn
+                stage={stage}
+                entries={entriesByStage[stage.id] || []}
+                density={density}
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                valueP75={valueP75}
+                totalProcessValue={totalProcessValue}
+                fit={fit}
+                onToggleSelect={onToggleSelect}
+                onSelectAllInStage={onSelectAllInStage}
+                onOpen={onOpenEntry}
+                onQuickWhatsApp={onQuickWhatsApp}
+                onQuickCall={onQuickCall}
+                onRemove={onRemoveEntry}
+                onAdd={() => onAddEntry(stage.id)}
+              />
+              {idx < sortedStages.length - 1 && <FlowArrow />}
+            </React.Fragment>
+          ))}
+        </div>
       </div>
 
       <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' }}>

@@ -112,10 +112,10 @@ export default function ProcessCard({
         {!isCompact && (
           <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-text-secondary">
             <div className="flex items-center gap-1.5 min-w-0">
-              {entry.assigned_to_name ? (
+              {entry.assigned_wa_employee_name ? (
                 <>
-                  <Avatar name={entry.assigned_to_name} size="xs" />
-                  <span className="truncate max-w-[110px]">{entry.assigned_to_name}</span>
+                  <Avatar name={entry.assigned_wa_employee_name} size="xs" />
+                  <span className="truncate max-w-[110px]">{entry.assigned_wa_employee_name}</span>
                 </>
               ) : (
                 <span className="text-text-secondary/60 italic">Unassigned</span>

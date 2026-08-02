@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { DynamicField, ReverseRelationMeta } from '@/services/dynamic-data';
 import { RelationRecordPicker } from './relation-record-picker';
+import { DateField } from '@/components/ui/date-field';
 
 export interface QueryFilter {
   field: string;
@@ -121,7 +122,7 @@ function FilterValueInput({ field, op, value, onChange }: { field: DynamicField;
     );
   }
   if (field.field_type === 'date' || field.field_type === 'datetime') {
-    return <input type="date" value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value || undefined)} className={base} />;
+    return <DateField value={typeof value === 'string' ? value : ''} onChange={(iso) => onChange(iso || undefined)} className={base} />;
   }
   if (field.field_type === 'enum') {
     const options = (field.config?.options as string[]) ?? [];

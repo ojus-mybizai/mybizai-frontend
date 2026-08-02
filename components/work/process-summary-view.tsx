@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { formatDayMonth as fmtDayMonth } from '@/lib/format-date';
 import {
   type Work,
   type WorkTemplate,
@@ -45,9 +46,7 @@ function formatDuration(hours: number | null | undefined): string {
 }
 
 function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return fmtDayMonth(iso);
 }
 
 function isOverdue(work: Work): boolean {

@@ -9,6 +9,7 @@ import {
   type WaEmployee, type WaEmployeeGroupDetail,
 } from '@/services/waEmployees';
 import type { ToastType } from '@/components/ui/toast';
+import { formatDate } from '@/lib/format-date';
 
 /* ─── Avatar helpers ─────────────────────────────────────────────────────── */
 
@@ -311,7 +312,7 @@ export function GroupDetailPanel({ group, allEmployees, onClose, onChanged, onRe
                   />
                 </div>
                 <p className="text-xs text-text-secondary">
-                  Created {new Date(group.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                  Created {formatDate(group.created_at)}
                 </p>
               </div>
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { UserPlus, ChevronUp, ChevronDown, ChevronsUpDown, MoreVertical, Send, UserX, UserCheck, Trash2, Shield, Search, X, MessageCircle, Lock } from 'lucide-react';
 import type { WaEmployee, WaEmployeeGroup } from '@/services/waEmployees';
+import { formatDate, formatDateTime } from '@/lib/format-date';
 
 const STATUS_LABELS: Record<string, string> = {
   active:             'Active',
@@ -291,7 +292,7 @@ export function EmployeeTable({ employees, groups, onRowClick, onResendInvite, o
                           return (
                             <span
                               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-800 border-emerald-300"
-                              title={`Free-form messages allowed for ${remaining} (until ${new Date(emp.session_window_expires_at!).toLocaleString()})`}
+                              title={`Free-form messages allowed for ${remaining} (until ${formatDateTime(emp.session_window_expires_at!)})`}
                             >
                               <MessageCircle className="w-3 h-3" />
                               Open · {remaining}
@@ -303,7 +304,7 @@ export function EmployeeTable({ employees, groups, onRowClick, onResendInvite, o
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-gray-100 text-gray-500 border-gray-200"
                             title={
                               emp.session_window_expires_at
-                                ? `Window closed at ${new Date(emp.session_window_expires_at).toLocaleString()}. Only approved templates can be sent.`
+                                ? `Window closed at ${formatDateTime(emp.session_window_expires_at)}. Only approved templates can be sent.`
                                 : 'Employee has never sent an inbound message. Only approved templates can be sent.'
                             }
                           >
@@ -316,7 +317,7 @@ export function EmployeeTable({ employees, groups, onRowClick, onResendInvite, o
 
                     {/* Verified date */}
                     <td className="px-4 py-3 text-text-secondary text-xs hidden md:table-cell">
-                      {emp.verified_at ? new Date(emp.verified_at).toLocaleDateString() : '—'}
+                      {emp.verified_at ? formatDate(emp.verified_at) : '—'}
                     </td>
 
                     {/* Context menu */}

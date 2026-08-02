@@ -12,6 +12,7 @@ import {
   Money, Delta, Avatar, Pill, Icon, EmptyState, SectionHeader,
   formatNumber, formatPercent, formatCurrency, relativeTime,
 } from './design-system';
+import { formatDayMonth } from '@/lib/format-date';
 
 interface Props { processId: number; }
 
@@ -160,7 +161,7 @@ function buildInsights(m: ProcessMetrics, v: Velocity | null): React.ReactNode[]
 
 function Overview({ metrics, velocity }: { metrics: ProcessMetrics; velocity: Velocity | null }) {
   const velocityData = (velocity?.series || []).map(p => ({
-    date: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    date: formatDayMonth(p.date),
     added: p.added, completed: p.completed, dropped: p.dropped,
   }));
   return (
@@ -244,7 +245,7 @@ function Funnel({ metrics }: { metrics: ProcessMetrics }) {
 
 function VelocityChart({ velocity, period }: { velocity: Velocity | null; period: number }) {
   const data = (velocity?.series || []).map(p => ({
-    date: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    date: formatDayMonth(p.date),
     added: p.added, completed: p.completed, dropped: p.dropped,
   }));
   if (data.every(d => d.added === 0 && d.completed === 0 && d.dropped === 0)) {
@@ -331,7 +332,7 @@ function StuckPanel({ stuck }: { stuck: Stuck | null }) {
             <div className="min-w-0">
               <p className="font-medium text-text-primary truncate">{s.entry.title || s.entry.entity_name}</p>
               <p className="text-xs text-text-secondary truncate">
-                {s.entry.current_stage_name} · {s.entry.assigned_to_name || 'Unassigned'}
+                {s.entry.current_stage_name} · {s.entry.assigned_wa_employee_name || 'Unassigned'}
               </p>
             </div>
             <Pill tone={s.sla_status === 'breach' ? 'danger' : 'warn'} size="sm">
@@ -367,7 +368,7 @@ function ActivityRail({ events }: { events: ActivityEvent[] }) {
       {Object.entries(groups).map(([day, items]) => (
         <div key={day} className="mb-3 last:mb-0">
           <p className="text-[10px] uppercase tracking-wide text-text-secondary/70 mb-1.5">
-            {new Date(day).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+            {formatDayMonth(day)}
           </p>
           <div className="space-y-1.5">
             {items.map(ev => (

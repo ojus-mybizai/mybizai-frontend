@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { formatDateTime } from '@/lib/format-date';
 import {
   getAIDatasheetReport,
   generateAIDatasheetReport,
@@ -93,12 +94,7 @@ export default function DatasheetAIReportPage() {
     );
   }
 
-  const generatedDate = data.generated_at
-    ? new Date(data.generated_at).toLocaleString(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      })
-    : '';
+  const generatedDate = data.generated_at ? formatDateTime(data.generated_at) : '';
 
   return (
     <div className="space-y-6">

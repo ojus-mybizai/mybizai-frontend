@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { listComments, createComment, deleteComment, type WorkComment } from '@/services/work';
+import { formatDate } from '@/lib/format-date';
 
 interface WorkCommentsProps {
   workId: number;
@@ -21,7 +22,7 @@ function relativeTime(iso: string | undefined | null): string {
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+  return formatDate(iso);
 }
 
 const AVATAR_COLORS = [

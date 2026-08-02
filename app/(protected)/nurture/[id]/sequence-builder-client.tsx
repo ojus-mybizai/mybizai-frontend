@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { formatDateTime } from '@/lib/format-date';
 import {
   getSequence, updateSequence, addStep, updateStep, deleteStep, previewStep,
   listEnrollments, enrollLeads, pauseEnrollment, resumeEnrollment, cancelEnrollment,
@@ -623,7 +624,7 @@ function EnrollmentsTab({ sequence }: { sequence: NurtureSequence }) {
     try { await cancelEnrollment(id); load(); } finally { setActing(null); }
   };
 
-  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+  const fmtDate = (d: string | null) => formatDateTime(d);
 
   return (
     <div className="py-4">

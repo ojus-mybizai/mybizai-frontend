@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { FileText, ChevronDown, ChevronRight } from 'lucide-react';
+import { formatDate, formatTime } from '@/lib/format-date';
 import type { WaWorkItem } from '@/services/waWork';
 import type { WaTemplate } from '@/services/waTemplates';
 import { TaskComposer } from './task-composer';
@@ -20,11 +21,11 @@ function initials(name: string) {
   return name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatDate(iso);
 }
 function fmtTime(iso: string | null | undefined) {
   if (!iso) return null;
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return formatTime(iso);
 }
 
 /* ── Status config ──────────────────────────────────────────────────────────── */

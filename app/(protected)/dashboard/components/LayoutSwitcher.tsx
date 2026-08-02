@@ -22,10 +22,12 @@ export function LayoutSwitcher({
   layouts,
   activeId,
   onChange,
+  onSelect,
 }: {
   layouts: Layout[];
   activeId: number | null;
   onChange: () => void;       // called after any mutation that should re-fetch layouts/widgets
+  onSelect?: (id: number) => void;   // called when the user picks a layout to view
 }) {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -73,6 +75,7 @@ export function LayoutSwitcher({
     setBusy(true);
     try {
       await apiFetch(`/widgets/layouts/${id}/activate`, { method: 'POST' });
+      onSelect?.(id);   // view the picked layout (overrides any URL selection)
       onChange();
       setOpen(false);
     } finally {

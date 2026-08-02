@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, ImageOff } from 'lucide-react';
 import type { DynamicField } from '@/services/dynamic-data';
 import { listAttachments } from '@/services/dynamic-data';
+import { formatDate } from '@/lib/format-date';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { CardViewConfig } from '@/features/data-sheet/state/view-state';
 import { FieldLabelValue } from '@/components/data-sheet/field-display';
@@ -238,9 +239,9 @@ export function CardView({
             <div className="flex items-center justify-between border-t border-border-color px-4 py-2">
               <span className="text-[10px] text-text-secondary">
                 {row.updated_at
-                  ? new Date(String(row.updated_at)).toLocaleDateString()
+                  ? formatDate(String(row.updated_at))
                   : row.created_at
-                    ? new Date(String(row.created_at)).toLocaleDateString()
+                    ? formatDate(String(row.created_at))
                     : ''}
               </span>
               <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">

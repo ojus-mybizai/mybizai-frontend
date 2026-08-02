@@ -10,6 +10,11 @@ import type { WaWorkItem } from '@/services/waWork';
  *                      keep firing until the owner removes them. */
 export type StageWorkDispatchKind = 'wa_work' | 'internal_work';
 
+/** How a WA task picks recipient(s) from its pool (group members / employees):
+ *  all = everyone · random = one at random · round_robin = rotate through the
+ *  group · least_loaded = fewest open task assignments. */
+export type WaAssignmentStrategy = 'all' | 'random' | 'round_robin' | 'least_loaded';
+
 export interface ProcessStageWork {
   id: number;
   stage_id: number;
@@ -32,6 +37,7 @@ export interface ProcessStageWork {
   wa_assigned_group_name: string | null;
   wa_dispatch_mode: 'individual' | 'broadcast' | null;
   wa_auto_dispatch: boolean;
+  wa_assignment_strategy: WaAssignmentStrategy | null;
 
   // ── shared ───────────────────────────────────────────────────────────
   title: string | null;
@@ -108,6 +114,8 @@ export interface ProcessEntry {
   entity_phone: string | null;
   assigned_to_id: number | null;
   assigned_to_name: string | null;
+  assigned_wa_employee_id: number | null;
+  assigned_wa_employee_name: string | null;
   status: string;
   entered_at?: string;
   stage_entered_at?: string;
@@ -240,6 +248,7 @@ export interface AddStageWorkPayload {
   wa_assigned_group_id?: number | null;
   wa_dispatch_mode?: 'individual' | 'broadcast';
   wa_auto_dispatch?: boolean;
+  wa_assignment_strategy?: WaAssignmentStrategy;
 
   // Shared
   title?: string;
@@ -315,6 +324,7 @@ export async function removeEntry(processId: number, entryId: number): Promise<v
 export async function updateEntry(entryId: number, payload: {
   notes?: string | null;
   assigned_to_id?: number | null;
+  assigned_wa_employee_id?: number | null;
   status?: 'active' | 'completed' | 'dropped';
   title?: string | null;
   priority?: EntryPriority | null;
@@ -331,7 +341,13 @@ export async function updateEntry(entryId: number, payload: {
 
 // ---------- Bulk Operations ----------
 
-export async function bulkMoveEntries(processId: number, entry_ids: number[], stage_id: number): Promise<{ updated: number }> {
+export interface BulkMoveResult {
+  updated: number;
+  skipped?: number;
+  skipped_details?: Array<{ entry_id: number; reason: string }>;
+}
+
+export async function bulkMoveEntries(processId: number, entry_ids: number[], stage_id: number): Promise<BulkMoveResult> {
   return apiFetch(`/processes/${processId}/entries/bulk-move`, {
     method: 'POST', auth: true,
     body: JSON.stringify({ entry_ids, stage_id }),
@@ -339,10 +355,14 @@ export async function bulkMoveEntries(processId: number, entry_ids: number[], st
   });
 }
 
-export async function bulkAssignEntries(processId: number, entry_ids: number[], assigned_to_id: number | null): Promise<{ updated: number }> {
+export async function bulkAssignEntries(
+  processId: number,
+  entry_ids: number[],
+  assignee: { assigned_wa_employee_id: number | null } | { assigned_to_id: number | null },
+): Promise<{ updated: number }> {
   return apiFetch(`/processes/${processId}/entries/bulk-assign`, {
     method: 'POST', auth: true,
-    body: JSON.stringify({ entry_ids, assigned_to_id }),
+    body: JSON.stringify({ entry_ids, ...assignee }),
     headers: { 'Content-Type': 'application/json' },
   });
 }
@@ -503,6 +523,61 @@ export async function addEntryComment(entryId: number, body: string): Promise<En
 
 export async function deleteEntryComment(entryId: number, commentId: number): Promise<void> {
   await apiFetch(`/processes/entries/${entryId}/comments/${commentId}`, { method: 'DELETE', auth: true });
+}
+
+// ---------- Required-field options ----------
+
+export interface ProcessFieldOption { key: string; label: string; }
+/** A {{token}} that is valid to insert into a WhatsApp task message body for
+ *  this pipeline (entity-aware — only tokens that will actually fill). */
+export interface ProcessMessageToken { token: string; label: string; group: string; }
+export interface ProcessFieldOptions {
+  entity_type: string;
+  entity_label: string;
+  deal_fields: ProcessFieldOption[];
+  entity_fields: ProcessFieldOption[];
+  message_tokens?: ProcessMessageToken[];
+}
+
+/** Fields a stage can require-before-exit for this pipeline: deal fields plus
+ *  the entity's own fields (contact custom fields or datasheet columns). */
+export async function getProcessFieldOptions(processId: number): Promise<ProcessFieldOptions> {
+  return apiFetch<ProcessFieldOptions>(`/processes/${processId}/field-options`, { method: 'GET', auth: true });
+}
+
+// ---------- Entity form (edit underlying contact / datasheet record) ----------
+
+export interface EntityFormFieldDef {
+  key: string;            // core:<attr> | contact:<field_def_id> | record:<field_name>
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'date' | 'boolean' | 'select' | 'multi_select' | 'email' | 'phone' | 'url';
+  value: any;
+  options: string[] | null;
+  required: boolean;
+  readonly: boolean;
+  group: string;
+}
+export interface EntityForm {
+  entity_type: string;
+  entity_id: number;
+  entity_label: string | null;
+  fields: EntityFormFieldDef[];
+}
+
+/** The underlying entity's editable fields + values for a pipeline entry. */
+export async function getEntityForm(processId: number, entryId: number): Promise<EntityForm> {
+  return apiFetch<EntityForm>(`/processes/${processId}/entries/${entryId}/entity-form`, { method: 'GET', auth: true });
+}
+
+/** Persist edited entity fields back to the contact / datasheet record. */
+export async function saveEntityForm(
+  processId: number, entryId: number, values: Record<string, any>,
+): Promise<EntityForm> {
+  return apiFetch<EntityForm>(`/processes/${processId}/entries/${entryId}/entity-form`, {
+    method: 'PATCH', auth: true,
+    body: JSON.stringify({ values }),
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 // ---------- Templates / Starters ----------

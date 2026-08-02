@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAgentStore } from '@/lib/agent-store';
 import { useKnowledgeFileStore } from '@/lib/knowledge-file-store';
+import { formatDate } from '@/lib/format-date';
 import { useShallow } from 'zustand/react/shallow';
 import {
   MessageSquare, MessagesSquare, Zap, Puzzle, BookOpen, Radio,
@@ -295,8 +296,8 @@ export default function AgentOverviewClient() {
         </div>
 
         <div className="px-1 text-xs text-text-secondary">
-          Created {current.createdAt ? new Date(current.createdAt).toLocaleDateString() : '—'}
-          {current.updatedAt && <> · Updated {new Date(current.updatedAt).toLocaleDateString()}</>}
+          Created {current.createdAt ? formatDate(current.createdAt) : '—'}
+          {current.updatedAt && <> · Updated {formatDate(current.updatedAt)}</>}
         </div>
       </div>
     </div>
@@ -315,7 +316,7 @@ function relativeTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 function StatCard({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { ChevronDown } from 'lucide-react';
+import { formatDateTime } from '@/lib/format-date';
 
 /* ─── Toggle Switch ──────────────────────────────────────────────────────── */
 
@@ -160,5 +161,5 @@ export function formatDate(d: string | null | undefined): string {
   if (diff < 60) return 'Just now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return x.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return formatDateTime(x);
 }

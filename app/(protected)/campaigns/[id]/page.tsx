@@ -14,6 +14,8 @@ import {
   type Campaign, type Sequence, type CampaignRecipient, type Enrollment,
   type SequenceAnalytics,
 } from '@/services/campaigns';
+import { formatDateTime } from '@/lib/format-date';
+import PinToSystemButton from '@/components/system-builder/PinToSystemButton';
 
 type Tab = 'overview' | 'steps' | 'recipients' | 'analytics';
 
@@ -129,6 +131,7 @@ export default function CampaignDetailPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <PinToSystemButton labelHint={entityName || undefined} />
           <button onClick={load} className="p-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-secondary">
             <RefreshCcw className="w-4 h-4" />
           </button>
@@ -218,9 +221,9 @@ export default function CampaignDetailPage() {
               <Row label="Category" value={campaign.category} />
               <Row label="Schedule" value={campaign.schedule_type} />
               <Row label="Credits used" value={String(campaign.sent_count)} />
-              {campaign.launched_at && <Row label="Launched" value={new Date(campaign.launched_at).toLocaleString()} />}
-              {campaign.completed_at && <Row label="Completed" value={new Date(campaign.completed_at).toLocaleString()} />}
-              <Row label="Created" value={new Date(campaign.created_at).toLocaleString()} />
+              {campaign.launched_at && <Row label="Launched" value={formatDateTime(campaign.launched_at)} />}
+              {campaign.completed_at && <Row label="Completed" value={formatDateTime(campaign.completed_at)} />}
+              <Row label="Created" value={formatDateTime(campaign.created_at)} />
             </>
           )}
           {isSequenceView && sequence && (
@@ -229,7 +232,7 @@ export default function CampaignDetailPage() {
               <Row label="On reply" value={sequence.on_reply} />
               <Row label="Timezone" value={sequence.timezone} />
               <Row label="Steps" value={String(sequence.steps.length)} />
-              {sequence.created_at && <Row label="Created" value={new Date(sequence.created_at).toLocaleString()} />}
+              {sequence.created_at && <Row label="Created" value={formatDateTime(sequence.created_at)} />}
 
               {/* Auto-enroll settings card */}
               <div className="mt-4 bg-surface-secondary rounded-2xl p-4">
@@ -354,7 +357,7 @@ export default function CampaignDetailPage() {
                   </td>
                   <td className="px-4 py-2.5"><Badge status={r.status} /></td>
                   <td className="px-4 py-2.5 text-xs text-text-secondary">
-                    {r.sent_at ? new Date(r.sent_at).toLocaleString() : '—'}
+                    {r.sent_at ? formatDateTime(r.sent_at) : '—'}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-red-500 max-w-xs truncate">
                     {r.error_message || '—'}
@@ -391,7 +394,7 @@ export default function CampaignDetailPage() {
                   <td className="px-4 py-2.5"><Badge status={e.status} /></td>
                   <td className="px-4 py-2.5 text-xs">{e.current_step} / {e.total_steps}</td>
                   <td className="px-4 py-2.5 text-xs text-text-secondary">
-                    {e.next_send_at ? new Date(e.next_send_at).toLocaleString() : '—'}
+                    {e.next_send_at ? formatDateTime(e.next_send_at) : '—'}
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1">

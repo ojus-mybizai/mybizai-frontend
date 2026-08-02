@@ -64,14 +64,14 @@ export function ContactFiltersDrawer({ open, onClose, filters, onApply, teamMemb
     onClose();
   }
 
+  const tagIds = local.tag_ids ?? [];
   const activeCount = [
     local.priority,
     local.assigned_to_id,
     local.routing_mode,
-    local.tag_id,
     local.source,
     local.channel_id,
-  ].filter(Boolean).length;
+  ].filter(Boolean).length + tagIds.length;
 
   return (
     <>
@@ -136,20 +136,23 @@ export function ContactFiltersDrawer({ open, onClose, filters, onApply, teamMemb
                 Tag
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {tags.map(t => (
+                {tags.map(t => {
+                  const on = tagIds.includes(t.id);
+                  return (
                   <button
                     key={t.id}
-                    onClick={() => set('tag_id', local.tag_id === t.id ? null : t.id)}
+                    onClick={() => set('tag_ids', on ? tagIds.filter(x => x !== t.id) : [...tagIds, t.id])}
                     className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                      local.tag_id === t.id
+                      on
                         ? 'border-transparent text-white'
                         : 'border-border-color text-text-secondary hover:border-accent hover:text-accent'
                     }`}
-                    style={local.tag_id === t.id ? { backgroundColor: t.color ?? '#6366f1' } : {}}
+                    style={on ? { backgroundColor: t.color ?? '#6366f1' } : {}}
                   >
                     {t.name}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

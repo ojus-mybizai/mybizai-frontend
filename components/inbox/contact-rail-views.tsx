@@ -27,6 +27,7 @@ import {
   type RoutingMode,
 } from '@/services/contacts-v2';
 import { listEmployees, type WaEmployee } from '@/services/waEmployees';
+import { formatDate, formatDateTime, formatDayMonth } from '@/lib/format-date';
 import { AddToPipelineModal } from '@/components/contacts/add-to-pipeline-modal';
 import { moveEntry, type ProcessEntryWithProcess } from '@/services/processes';
 import { getTemplateDatasheetSources, type DatasheetSource } from '@/services/message-templates';
@@ -481,7 +482,7 @@ export function SummaryView({
             )}
             {primaryProc.expected_close_date && (
               <span className="text-[11px] text-text-secondary">
-                · close {new Date(primaryProc.expected_close_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                · close {formatDayMonth(primaryProc.expected_close_date)}
               </span>
             )}
           </div>
@@ -824,9 +825,7 @@ export function FollowupsView({ contact, setView }: ViewProps) {
                       {overdue ? 'Overdue' : 'Scheduled'}
                     </span>
                     <span className="text-[10px] text-text-secondary">
-                      {new Date(fu.scheduled_at).toLocaleString(undefined, {
-                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-                      })}
+                      {formatDateTime(fu.scheduled_at)}
                     </span>
                     {fu.channel_type && (
                       <span className="text-[10px] text-text-secondary capitalize">· {fu.channel_type}</span>
@@ -1083,7 +1082,7 @@ export function PipelineView({ contact, setView }: ViewProps) {
                     <span className="font-semibold text-text-primary">{formatCurrency(e.expected_value)}</span>
                   )}
                   {e.expected_close_date && (
-                    <span>· close {new Date(e.expected_close_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    <span>· close {formatDayMonth(e.expected_close_date)}</span>
                   )}
                   {e.priority && (
                     <span className="capitalize">· {e.priority}</span>
@@ -1318,7 +1317,7 @@ export function InsightsView({
                         <span className="text-[10px] text-text-secondary capitalize">{s.status}</span>
                       </div>
                       <p className="mt-0.5 text-[11px] text-text-secondary">
-                        {new Date(s.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} ·{' '}
+                        {formatDateTime(s.startedAt)} ·{' '}
                         {formatDuration(s.durationSeconds)} · {s.messagesCount} msgs
                       </p>
                       {s.summary && <p className="mt-0.5 text-[11px] text-text-secondary line-clamp-2">{s.summary}</p>}
@@ -1398,11 +1397,11 @@ function formatFieldValue(value: unknown, ftype: string): string {
   if (ftype === 'currency' && typeof value === 'number') return formatCurrency(value);
   if (ftype === 'date' && typeof value === 'string') {
     const d = new Date(value);
-    if (!Number.isNaN(d.getTime())) return d.toLocaleDateString();
+    if (!Number.isNaN(d.getTime())) return formatDate(d);
   }
   if (ftype === 'datetime' && typeof value === 'string') {
     const d = new Date(value);
-    if (!Number.isNaN(d.getTime())) return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    if (!Number.isNaN(d.getTime())) return formatDateTime(d);
   }
   return String(value);
 }

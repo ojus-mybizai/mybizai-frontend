@@ -7,11 +7,11 @@ import { listFields, queryRecords, updateRecord, uploadFileForAttachment, bindAt
 import { useAuthStore } from '@/lib/auth-store';
 import { WorkDetailHeader } from '@/components/work/work-detail-header';
 import { DynamicWorkForm } from '@/components/work/dynamic-work-form';
+import { formatDateTime, formatDate as fmtDate } from '@/lib/format-date';
+import { DateField } from '@/components/ui/date-field';
 
 function formatDate(d: string | null | undefined): string {
-  if (!d) return '—';
-  const x = new Date(d);
-  return Number.isNaN(x.getTime()) ? '—' : x.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return formatDateTime(d);
 }
 
 interface WorkDetailDatasheetProps {
@@ -372,11 +372,9 @@ function CreateRecordsView({
 
       case 'date':
         return (
-          <input
-            type="date"
+          <DateField
             value={String(value ?? '')}
-            onChange={(e) => onChange(e.target.value)}
-            required={field.is_required}
+            onChange={(iso) => onChange(iso)}
             className={inputCls}
           />
         );
@@ -476,7 +474,7 @@ function CreateRecordsView({
       return `${code} ${Number(value).toLocaleString()}`;
     }
     if (field.field_type === 'date' && value) {
-      return new Date(String(value)).toLocaleDateString();
+      return fmtDate(String(value));
     }
     if (field.field_type === 'relation') {
       const opts = field.relation_model_id ? (relationOptions[field.relation_model_id] ?? []) : [];

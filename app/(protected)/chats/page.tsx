@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, FormEvent } from 'react';
+import { formatDayMonth, formatTime } from '@/lib/format-date';
 import {
   listChats,
   createChat,
@@ -134,8 +135,8 @@ function ChatListItem({
   onClick: () => void;
 }) {
   const timeLabel = chat.last_message_at
-    ? new Date(chat.last_message_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-    : new Date(chat.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    ? formatDayMonth(chat.last_message_at)
+    : formatDayMonth(chat.created_at);
 
   return (
     <button
@@ -186,7 +187,7 @@ function MessageBubble({
   onDelete?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
-  const time = new Date(msg.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const time = formatTime(msg.created_at);
   const senderName = msg.sender?.name || `User ${msg.sender_id}`;
 
   return (

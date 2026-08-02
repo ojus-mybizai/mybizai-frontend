@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { formatDate as fmtDate } from '@/lib/format-date';
 import {
   ChevronDown,
   ChevronRight,
@@ -616,11 +617,7 @@ function formatCellValue(value: unknown, field: DynamicField): string {
   if (field.field_type === 'boolean') return value ? 'Yes' : 'No';
   if (field.field_type === 'date') {
     try {
-      return new Date(String(value)).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
+      return fmtDate(String(value), String(value));
     } catch {
       return String(value);
     }

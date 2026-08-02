@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { Users, AlertTriangle, Search, MessageSquare, ClipboardList } from 'lucide-react';
+import { formatTime, formatDayMonth } from '@/lib/format-date';
 import type { WaEmployee, WaEmployeeGroup, WaSettings } from '@/services/waEmployees';
 import type { WaWorkItem, WaWorkAssignment } from '@/services/waWork';
 import type { WaTemplate } from '@/services/waTemplates';
@@ -35,10 +36,10 @@ function initials(name: string) {
 }
 function fmtTime(iso: string | null | undefined) {
   if (!iso) return null;
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return formatTime(iso);
 }
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return formatDayMonth(iso);
 }
 
 /* ── Types ──────────────────────────────────────────────────────────────────── */

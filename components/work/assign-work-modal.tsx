@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
+import { DateField } from '@/components/ui/date-field';
 import {
   createWork,
   createWorkFromTemplate,
@@ -545,10 +546,9 @@ export function AssignWorkModal({
                       </button>
                     ))}
                   </div>
-                  <input
-                    type="date"
+                  <DateField
                     value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
+                    onChange={setDueDate}
                     className="rounded-lg border border-border-color bg-bg-primary px-3 py-1.5 text-sm text-text-primary focus:border-accent focus:outline-none"
                   />
                   {dueDate && (

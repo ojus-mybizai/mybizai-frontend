@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { formatDateTime } from '@/lib/format-date';
 import {
   CheckCircle2, XCircle, Loader2, Copy, Check,
   ExternalLink, ChevronRight, Megaphone, Settings,
@@ -390,7 +391,7 @@ function SetupPanel({
             <InfoRow
               label="Last Webhook"
               value={integration.last_webhook_at
-                ? new Date(integration.last_webhook_at).toLocaleString()
+                ? formatDateTime(integration.last_webhook_at)
                 : 'Never received'}
             />
           </div>

@@ -6,6 +6,7 @@
  */
 
 import { apiFetch } from '@/lib/api-client';
+import { formatDayMonth } from '@/lib/format-date';
 import type { LucideIcon } from 'lucide-react';
 import type {
   Contact as ContactV2,
@@ -133,7 +134,7 @@ export function formatRelativeTime(iso?: string | null): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return formatDayMonth(d);
 }
 
 export function formatDuration(seconds: number | null | undefined): string {

@@ -676,18 +676,22 @@ export default function WaTemplatesPage() {
               {formType === 'simple_task' && (
                 <>
                   <div>
-                    <label className={`${labelCls} flex items-center justify-between`}>
-                      Message Body
-                      <span className="text-xs font-normal text-text-secondary">
-                        Variables: {'{{task_title}}'}, {'{{due_date}}'}, {'{{employee_name}}'}
-                      </span>
-                    </label>
+                    <label className={labelCls}>Message Body</label>
                     <textarea
                       value={formBody}
                       onChange={(e) => setFormBody(e.target.value)}
                       rows={4}
                       className={`${inputCls} mt-1 font-mono`}
                     />
+                    <div className="mt-1.5 text-xs text-text-secondary space-y-0.5">
+                      <p>
+                        Insert variables — filled automatically from the deal &amp; contact this task is
+                        sent for (no need to pick a contact here):
+                      </p>
+                      <p><b>Task:</b> {'{{task_title}}'} · {'{{due_date}}'} · {'{{employee_name}}'}</p>
+                      <p><b>Contact:</b> {'{{contact.name}}'} · {'{{contact.phone}}'} · {'{{contact.email}}'} · {'{{contact.company}}'}</p>
+                      <p><b>Deal:</b> {'{{deal.title}}'} · {'{{deal.value}}'} · {'{{deal.stage}}'}</p>
+                    </div>
                   </div>
 
                   <div>

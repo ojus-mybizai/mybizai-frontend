@@ -8,6 +8,7 @@
  */
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { formatDateTime } from '@/lib/format-date';
 import { ArrowLeft, Check, Pencil, Plus, Trash2, X, Zap } from 'lucide-react';
 import type { AgentSummary, Block, CommandOut, CommandSave, SavedViewOut } from '@/lib/agent-blocks';
 import { queryKeys } from '@/lib/query-client';
@@ -125,7 +126,7 @@ export default function SessionModal({ open, onClose, agent, activeSessionId, on
                   <button type="button" onClick={() => setViewing(sv)} className="min-w-0 flex-1 text-left">
                     <p className="truncate text-sm font-medium text-text-primary">{sv.title || 'Saved result'}</p>
                     {sv.created_at && (
-                      <p className="text-[11px] text-text-secondary">{new Date(sv.created_at).toLocaleString()}</p>
+                      <p className="text-[11px] text-text-secondary">{formatDateTime(sv.created_at)}</p>
                     )}
                   </button>
                   <button

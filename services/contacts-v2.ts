@@ -149,11 +149,11 @@ export interface CustomFilter {
 
 export interface ContactFilters {
   search?: string;
-  group_id?: number | null;
+  group_ids?: number[] | null;   // AND — contact must be in every selected group
   priority?: Priority | null;
   assigned_to_id?: number | null;
   routing_mode?: RoutingMode | null;
-  tag_id?: number | null;
+  tag_ids?: number[] | null;     // OR — contact has any of the selected tags
   source?: string | null;
   channel_id?: number | null;
   engagement?: Engagement | null;
@@ -177,6 +177,7 @@ export interface ContactFilterCounts {
   attention: Partial<Record<Attention, number>>;
   engagement: Partial<Record<Engagement, number>>;
   tags: Record<string, number>;   // keyed by tag id (as string)
+  groups: Record<string, number>; // keyed by group id (as string)
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -280,10 +281,19 @@ export interface BulkActionResult {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildQs(params: Record<string, string | number | boolean | null | undefined>): string {
+function buildQs(
+  params: Record<string, string | number | boolean | null | undefined | Array<string | number>>,
+): string {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
-    if (v != null && v !== '') qs.set(k, String(v));
+    if (Array.isArray(v)) {
+      // Repeated param: ?k=1&k=2
+      for (const item of v) {
+        if (item != null && item !== '') qs.append(k, String(item));
+      }
+    } else if (v != null && v !== '') {
+      qs.set(k, String(v));
+    }
   }
   return qs.toString();
 }
@@ -349,11 +359,12 @@ export const contactsV2Service = {
     const page    = Math.floor(offset / perPage) + 1;
     const qs = buildQs({
       search:          filters.search,
-      group_id:        filters.group_id,
+      // Repeated params: ?group_id=1&group_id=2 / ?tag_id=3&tag_id=4
+      group_id:        filters.group_ids ?? undefined,
       priority:        filters.priority,
       assigned_to_id:  filters.assigned_to_id,
       routing_mode:    filters.routing_mode,
-      tag_id:          filters.tag_id,
+      tag_id:          filters.tag_ids ?? undefined,
       source:          filters.source,
       channel_id:      filters.channel_id,
       engagement:      filters.engagement,

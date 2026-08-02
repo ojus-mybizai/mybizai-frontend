@@ -2,6 +2,8 @@
 
 import { Clock, Send, LogIn, LogOut, Download } from 'lucide-react';
 import type { AttendanceRecord } from '@/services/waEmployees';
+import { formatTime, formatDate } from '@/lib/format-date';
+import { DateField } from '@/components/ui/date-field';
 
 /* ── Avatar helpers ────────────────────────────────────────────────────────── */
 
@@ -27,7 +29,7 @@ function initials(name: string) {
 
 function fmtTime(iso: string | null) {
   if (!iso) return null;
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return formatTime(iso);
 }
 
 /* ── Constants ──────────────────────────────────────────────────────────────  */
@@ -60,12 +62,7 @@ export function AttendanceDayTable({
   onExportDateToChange,
 }: Props) {
   /* Friendly date label */
-  const displayDate = new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const displayDate = formatDate(date);
 
   /* Summary stats */
   const checkedIn  = records.filter((r) => r.check_in_at).length;
@@ -102,18 +99,17 @@ export function AttendanceDayTable({
           {/* Export range */}
           <div className="flex items-center gap-1.5 bg-bg-secondary border border-border-color rounded-lg px-2.5 py-1.5 text-xs text-text-secondary">
             <Download className="w-3 h-3 shrink-0" />
-            <input
-              type="date"
+            <DateField
               value={exportDateFrom}
-              onChange={(e) => onExportDateFromChange(e.target.value)}
-              className="border-0 bg-transparent text-xs text-text-primary focus:outline-none w-[6.5rem]"
+              onChange={onExportDateFromChange}
+              className="border-0 bg-transparent text-xs text-text-primary focus:outline-none w-[7.5rem]"
             />
             <span className="select-none">→</span>
-            <input
-              type="date"
+            <DateField
               value={exportDateTo}
-              onChange={(e) => onExportDateToChange(e.target.value)}
-              className="border-0 bg-transparent text-xs text-text-primary focus:outline-none w-[6.5rem]"
+              onChange={onExportDateToChange}
+              align="right"
+              className="border-0 bg-transparent text-xs text-text-primary focus:outline-none w-[7.5rem]"
             />
             <a
               href={`/api/v1/wa/employees/attendance/export?date_from=${exportDateFrom}&date_to=${exportDateTo}`}

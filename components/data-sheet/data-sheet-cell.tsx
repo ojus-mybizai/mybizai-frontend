@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect, forwardRef } from 'react';
 import type { DynamicField } from '@/services/dynamic-data';
 import { listAttachments, uploadFileForAttachment, bindAttachment, deleteAttachment } from '@/services/dynamic-data';
+import { formatDate as fmtDate } from '@/lib/format-date';
+import { DateField } from '@/components/ui/date-field';
 
 function toDateInputValue(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -291,7 +293,7 @@ function formatDisplay(value: unknown, fieldType: string): string {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (fieldType === 'date' && typeof value === 'string') {
     try {
-      return new Date(value).toLocaleDateString();
+      return fmtDate(value, String(value));
     } catch {
       return String(value);
     }
@@ -475,14 +477,21 @@ export function DataSheetCell({
             className={inputClass}
           />
         ) : field.field_type === 'date' ? (
-          <input
-            ref={inputRef as React.RefObject<HTMLInputElement>}
-            type="date"
+          <DateField
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            disabled={saving}
+            onChange={async (iso) => {
+              setDraft(iso);
+              if (iso === currentCompare) { setEditing(false); return; }
+              setSaving(true);
+              try {
+                await onSave(iso === '' ? null : iso);
+                setEditing(false);
+              } catch {
+                // keep editing
+              } finally {
+                setSaving(false);
+              }
+            }}
             className={inputClass}
           />
         ) : field.field_type === 'enum' ? (

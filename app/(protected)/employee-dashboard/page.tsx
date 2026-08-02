@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ModuleGuard from '@/components/module-guard';
 import { useAuthStore } from '@/lib/auth-store';
+import { formatDate as fmtDate } from '@/lib/format-date';
+import { DateField } from '@/components/ui/date-field';
 import {
   listWork,
   listWorkTemplates,
@@ -28,12 +30,7 @@ function greeting(): string {
 }
 
 function todayLabel(): string {
-  return new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  return fmtDate(new Date());
 }
 
 function formatDate(d: string | null | undefined, short = false): string {
@@ -52,7 +49,7 @@ function formatDate(d: string | null | undefined, short = false): string {
     if (diff > 1 && diff <= 7) return `In ${diff}d`;
     if (diff < 0) return `${Math.abs(diff)}d ago`;
   }
-  return x.toLocaleDateString(undefined, { dateStyle: 'medium' });
+  return fmtDate(x);
 }
 
 function formatRelative(d: string | null | undefined): string {
@@ -64,7 +61,7 @@ function formatRelative(d: string | null | undefined): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`;
-  return x.toLocaleDateString(undefined, { dateStyle: 'short' });
+  return fmtDate(x);
 }
 
 function statusLabel(s: string): string {
@@ -404,10 +401,9 @@ function LogWorkModal({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-text-secondary mb-1">Due date</label>
-                <input
-                  type="date"
+                <DateField
                   value={form.due_date ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value || null }))}
+                  onChange={(iso) => setForm((f) => ({ ...f, due_date: iso || null }))}
                   className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
                 />
               </div>

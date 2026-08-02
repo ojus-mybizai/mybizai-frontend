@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import { formatDateTime as fmtDateTime } from '@/lib/format-date';
 import ModuleGuard from '@/components/module-guard';
 import { EditEmployeeModal } from '@/components/employees/edit-employee-modal';
 import { useAuthStore } from '@/lib/auth-store';
@@ -242,10 +243,7 @@ export default function EmployeesPage() {
   }, [loadTeam, loadInvites]);
 
   const formatDateTime = (value?: string | null): string => {
-    if (!value) return '—';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleString();
+    return fmtDateTime(value);
   };
 
   return (

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PermissionGuard from '@/components/permission-guard';
+import { formatTime } from '@/lib/format-date';
 import { listAgents } from '@/services/agents';
 import { useDatasheetSources } from '@/lib/use-datasheet-sources';
 import {
@@ -369,7 +370,7 @@ function WhatsAppPreview({
                 {/* Timestamp */}
                 <div className="px-2.5 pb-1.5 text-right">
                   <span className="text-[10px] text-white/40">
-                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {formatTime(new Date())}
                   </span>
                 </div>
               </div>

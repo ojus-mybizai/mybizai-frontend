@@ -27,7 +27,13 @@ export interface DateRangeState {
 }
 
 function fmt(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Local calendar date (YYYY-MM-DD) — NOT toISOString(), which is UTC and
+  // rolls a day backward for positive-offset zones (e.g. IST +05:30). Using
+  // UTC made "Last 30 days" end yesterday for IST users, hiding today's rows.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function startOfWeek(d: Date): Date {

@@ -117,7 +117,7 @@ export default function ChannelsPage() {
                       <span className={`w-1.5 h-1.5 rounded-full ${ch.isConnected ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                     </div>
                     <div className="text-[10px] text-text-secondary mt-0.5">
-                      {linkedToOther ? `Linked to another agent (ID: ${ch.agentId})` : `${ch.leadCount ?? 0} leads`}
+                      {linkedToOther ? `Linked to another agent (ID: ${ch.agentId})` : `${ch.leadCount ?? 0} contacts`}
                     </div>
                   </div>
                   <button

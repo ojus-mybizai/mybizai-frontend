@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { formatDate, formatDateTime } from '@/lib/format-date';
 import {
   Coins, AlertCircle, ChevronRight, Loader2, ShoppingCart, TrendingUp,
   History, Bot, Cpu,
@@ -245,7 +246,7 @@ export default function CreditsPage() {
             </div>
             {credits?.expires_at && (
               <div className="mt-1 text-xs text-text-secondary">
-                On {new Date(credits.expires_at).toLocaleDateString()}
+                On {formatDate(credits.expires_at)}
               </div>
             )}
             <div className="mt-2 text-xs text-text-secondary">
@@ -359,7 +360,7 @@ export default function CreditsPage() {
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip
                       contentStyle={{ borderRadius: 8, fontSize: 12 }}
-                      labelFormatter={(d) => new Date(d).toLocaleDateString()}
+                      labelFormatter={(d) => formatDate(d)}
                       formatter={(v, name) => [
                         Number(v ?? 0).toLocaleString(),
                         String(name) === 'credits' ? 'Credits' : String(name ?? ''),
@@ -472,7 +473,7 @@ export default function CreditsPage() {
                 {filteredLedger.map((entry) => (
                   <tr key={entry.id} className="border-t border-border-color">
                     <td className="px-4 py-2.5 text-text-secondary whitespace-nowrap">
-                      {entry.created_at ? new Date(entry.created_at).toLocaleString() : '—'}
+                      {entry.created_at ? formatDateTime(entry.created_at) : '—'}
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${

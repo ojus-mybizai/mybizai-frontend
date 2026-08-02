@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { formatDateTime, formatTime } from '@/lib/format-date';
 import PermissionGuard from '@/components/permission-guard';
 import {
   cancelCampaign,
@@ -48,11 +49,10 @@ function formatMoney(value: string | number): string {
 
 function formatTs(ts: string | null, opts?: { dateTime?: boolean }): string {
   if (!ts) return '—';
-  const d = new Date(ts);
   if (opts?.dateTime) {
-    return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return formatDateTime(ts);
   }
-  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return formatTime(ts);
 }
 
 function relativeTime(ts: string | null): string {
@@ -195,7 +195,7 @@ function RecipientRow({ r }: { r: CampaignRecipient }) {
         {/* Sent */}
         <td className="px-3 py-2.5 text-[11px] text-text-secondary whitespace-nowrap">
           {r.sent_at ? (
-            <span title={new Date(r.sent_at).toLocaleString()}>
+            <span title={formatDateTime(r.sent_at)}>
               {formatTs(r.sent_at)}
               <br />
               <span className="text-[10px] opacity-60">{relativeTime(r.sent_at)}</span>
@@ -206,7 +206,7 @@ function RecipientRow({ r }: { r: CampaignRecipient }) {
         {/* Delivered */}
         <td className="px-3 py-2.5 text-[11px] text-text-secondary whitespace-nowrap">
           {r.delivered_at ? (
-            <span className="text-teal-400" title={new Date(r.delivered_at).toLocaleString()}>
+            <span className="text-teal-400" title={formatDateTime(r.delivered_at)}>
               {formatTs(r.delivered_at)}
             </span>
           ) : '—'}
@@ -215,7 +215,7 @@ function RecipientRow({ r }: { r: CampaignRecipient }) {
         {/* Read */}
         <td className="px-3 py-2.5 text-[11px] text-text-secondary whitespace-nowrap">
           {r.read_at ? (
-            <span className="text-green-400" title={new Date(r.read_at).toLocaleString()}>
+            <span className="text-green-400" title={formatDateTime(r.read_at)}>
               {formatTs(r.read_at)}
             </span>
           ) : '—'}
@@ -224,7 +224,7 @@ function RecipientRow({ r }: { r: CampaignRecipient }) {
         {/* Replied */}
         <td className="px-3 py-2.5 text-[11px] whitespace-nowrap">
           {r.replied_at ? (
-            <span className="text-emerald-400 font-medium" title={new Date(r.replied_at).toLocaleString()}>
+            <span className="text-emerald-400 font-medium" title={formatDateTime(r.replied_at)}>
               {formatTs(r.replied_at)} ↩
             </span>
           ) : '—'}

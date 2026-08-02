@@ -10,9 +10,12 @@ import {
   AlertCircle, Megaphone, Calendar, DollarSign, FolderKanban,
   LayoutList, ChevronRight, Pencil, Save, X, Hash, Shield,
   Bell, Send, CalendarClock, CheckCircle2, XCircle, AlertTriangle,
-  Table2, ExternalLink,
+  Table2,
+  Type, AlignLeft, ToggleLeft, ChevronDown, ListChecks, Link2, Check,
 } from 'lucide-react';
 import ModuleGuard from '@/components/module-guard';
+import { formatDate as fmtDate, formatDateTime as fmtDateTime } from '@/lib/format-date';
+import { DateField } from '@/components/ui/date-field';
 import { useContactV2Store, type ContactV2State } from '@/lib/contact-v2-store';
 import { useAuthStore } from '@/lib/auth-store';
 import { useAgentList, useWaEmployeeList } from '@/lib/hooks/use-reference-data';
@@ -27,7 +30,7 @@ import {
   type NoteCategory,
 } from '@/services/contacts-v2';
 import {
-  listFieldDefs, setContactCustomFields, type ContactFieldDef,
+  listFieldDefs, setContactCustomFields, type ContactFieldDef, type FieldType,
 } from '@/services/contact-field-defs';
 import {
   listFollowups, createFollowup, sendFollowupNow, cancelFollowup,
@@ -37,26 +40,22 @@ import {
   listMessages, listConversationSessions,
   type Message, type ConversationSession,
 } from '@/services/customers';
-import {
-  getRecordsLinkedToContact,
-  type LinkedRecordGroup,
-} from '@/services/dynamic-data';
+import { DataTab } from '@/components/contacts-v2/data-tab/data-tab';
 
 // ────────────────────────────────────────────────────────────────
 // Constants
 // ────────────────────────────────────────────────────────────────
 
-type TabId = 'overview' | 'details' | 'conversation' | 'activity' | 'notes' | 'followups' | 'pipeline' | 'datasheets' | 'channels' | 'groups';
+type TabId = 'overview' | 'details' | 'conversation' | 'activity' | 'pipeline' | 'data' | 'channels' | 'groups';
+type ActivitySub = 'timeline' | 'notes' | 'followups';
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'overview',     label: 'Overview',     Icon: User },
   { id: 'details',      label: 'Details',      Icon: LayoutList },
   { id: 'conversation', label: 'Conversation', Icon: MessageSquare },
   { id: 'activity',     label: 'Activity',     Icon: Activity },
-  { id: 'notes',        label: 'Notes',        Icon: FileText },
-  { id: 'followups',    label: 'Follow-ups',   Icon: Bell },
   { id: 'pipeline',     label: 'Pipeline',     Icon: Layers },
-  { id: 'datasheets',   label: 'Datasheets',   Icon: Table2 },
+  { id: 'data',         label: 'Data',         Icon: Table2 },
   { id: 'channels',     label: 'Channels',     Icon: Wifi },
   { id: 'groups',       label: 'Groups',       Icon: FolderKanban },
 ];
@@ -118,17 +117,15 @@ function timeAgo(iso: string | null): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return fmtDate(iso);
 }
 
 function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return fmtDateTime(iso);
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return fmtDate(iso);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -196,6 +193,7 @@ function ContactDetailInner() {
   const { data: agents = [] } = useAgentList({ enabled: agentsEnabled });
 
   const [tab, setTab] = useState<TabId>('overview');
+  const [activitySub, setActivitySub] = useState<ActivitySub>('timeline');
   const [channels, setChannels] = useState<ContactChannel[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -353,8 +351,7 @@ function ContactDetailInner() {
           <div className="flex w-max gap-1 rounded-xl border border-border-color bg-card-bg p-1 shadow-sm">
             {TABS.map(t => {
               const badge =
-                t.id === 'notes' ? notes.length :
-                t.id === 'followups' ? c.overdue_followup_count :
+                t.id === 'activity' ? c.overdue_followup_count :
                 0;
               const isActive = tab === t.id;
               return (
@@ -372,7 +369,7 @@ function ContactDetailInner() {
                     <span className={`ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
                       isActive
                         ? 'bg-white/20 text-white'
-                        : t.id === 'followups'
+                        : t.id === 'activity'
                           ? 'bg-amber-500/15 text-amber-600'
                           : 'bg-bg-primary text-text-secondary'
                     }`}>
@@ -388,21 +385,23 @@ function ContactDetailInner() {
         {/* ── Content grid ──────────────────────────────────────── */}
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
           <div className="min-w-0">
-            {tab === 'overview' && <OverviewTab contact={c} deals={activeDeals} onGoToFollowups={() => setTab('followups')} />}
+            {tab === 'overview' && <OverviewTab contact={c} deals={activeDeals} onGoToFollowups={() => { setTab('activity'); setActivitySub('followups'); }} />}
             {tab === 'details' && <DetailsTab contact={c} />}
             {tab === 'conversation' && <ConversationTab contact={c} />}
-            {tab === 'activity' && <ActivityTab activities={activities} loading={loadingActivities} />}
-            {tab === 'notes' && (
-              <NotesTab
+            {tab === 'activity' && (
+              <ActivityTab
+                sub={activitySub}
+                onSubChange={setActivitySub}
+                activities={activities}
+                loadingActivities={loadingActivities}
                 contact={c}
                 notes={notes}
-                loading={loadingNotes}
-                onAdd={(content, category) => addNote(c.id, content, category)}
-                onDelete={(noteId) => deleteNote(c.id, noteId)}
+                loadingNotes={loadingNotes}
+                onAddNote={(content, category) => addNote(c.id, content, category)}
+                onDeleteNote={(noteId) => deleteNote(c.id, noteId)}
+                canManage={canManage}
+                overdueCount={c.overdue_followup_count}
               />
-            )}
-            {tab === 'followups' && (
-              <FollowupsTab contact={c} canManage={canManage} />
             )}
             {tab === 'pipeline' && (
               <PipelineTab
@@ -412,7 +411,7 @@ function ContactDetailInner() {
                 onMoveStage={(entryId, stageId) => moveProcessStage(c.id, entryId, stageId)}
               />
             )}
-            {tab === 'datasheets' && <DatasheetsTab contactId={c.id} />}
+            {tab === 'data' && <DataTab contactId={c.id} />}
             {tab === 'channels' && (
               <ChannelsTab
                 channels={channels}
@@ -762,75 +761,149 @@ function ChipDropdown({
 // Overview tab
 // ────────────────────────────────────────────────────────────────
 
-function OverviewTab({ contact: c, deals, onGoToFollowups }: { contact: Contact; deals: ContactV2State['processes']; onGoToFollowups: () => void }) {
+/** Datasheet-style panel: icon-badge header + optional count badge / action. */
+function Panel({
+  icon: Icon, iconClass, title, badge, action, children, bodyClass,
+}: {
+  icon: React.ElementType;
+  iconClass: string;
+  title: string;
+  badge?: React.ReactNode;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  bodyClass?: string;
+}) {
   return (
-    <div className="space-y-4">
-      {/* Last message preview */}
-      {c.last_message_preview && (
-        <SectionCard title="Latest message" icon={MessageSquare}>
-          <p className="text-sm text-text-primary line-clamp-3">{c.last_message_preview}</p>
-          <p className="mt-1 text-xs text-text-secondary">{timeAgo(c.last_message_at)}</p>
-          {c.latest_conversation_id && (
-            <Link
-              href={`/inbox?c=${c.latest_conversation_id}`}
-              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
-            >
-              View conversation <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
-          )}
-        </SectionCard>
-      )}
+    <section className="overflow-hidden rounded-2xl border border-border-color bg-card-bg shadow-sm">
+      <header className="flex items-center gap-2.5 border-b border-border-color px-5 py-3.5">
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${iconClass}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <h2 className="flex-1 truncate text-sm font-bold text-text-primary">{title}</h2>
+        {badge}
+        {action}
+      </header>
+      <div className={bodyClass ?? 'p-5'}>{children}</div>
+    </section>
+  );
+}
 
-      {/* Summary — the contact.notes field, inline-editable */}
-      <SummaryCard contact={c} />
+function OverviewTab({ contact: c, deals, onGoToFollowups }: { contact: Contact; deals: ContactV2State['processes']; onGoToFollowups: () => void }) {
+  const totalDealValue = deals.reduce((sum, p) => sum + (p.expected_value ?? 0), 0);
 
-      {/* Active deals — sourced from the loaded pipeline entries */}
-      <SectionCard title={`Active deals (${deals.length})`} icon={FolderKanban}>
-        {deals.length === 0 ? (
-          <p className="text-sm text-text-secondary">Not in any active pipeline.</p>
-        ) : (
-          <ul className="space-y-2">
-            {deals.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-border-color bg-bg-primary px-3 py-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: p.current_stage_color ?? p.process_color ?? '#888' }} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-text-primary">{p.title || p.process_name}</p>
-                    <p className="truncate text-xs text-text-secondary">{p.process_name}</p>
-                  </div>
+  return (
+    <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1fr_320px]">
+      {/* LEFT */}
+      <div className="flex min-w-0 flex-col gap-5">
+        {/* Summary — the contact.notes field, inline-editable */}
+        <SummaryCard contact={c} />
+
+        {/* Latest message */}
+        {c.last_message_preview && (
+          <Panel
+            icon={MessageSquare}
+            iconClass="bg-teal-500/10 text-teal-600 dark:text-teal-400"
+            title="Latest message"
+            badge={<span className="rounded-full bg-bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-text-muted">{timeAgo(c.last_message_at)}</span>}
+          >
+            <div className="rounded-xl border-l-2 border-teal-500/50 bg-bg-secondary/40 px-4 py-3">
+              <p className="text-sm leading-relaxed text-text-primary line-clamp-4">{c.last_message_preview}</p>
+            </div>
+            {c.latest_conversation_id && (
+              <Link
+                href={`/inbox?c=${c.latest_conversation_id}`}
+                className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+              >
+                View conversation <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
+          </Panel>
+        )}
+
+        {/* Active deals — sourced from the loaded pipeline entries */}
+        <Panel
+          icon={FolderKanban}
+          iconClass="bg-purple-500/10 text-purple-600 dark:text-purple-400"
+          title="Active deals"
+          badge={
+            <div className="flex items-center gap-2">
+              {totalDealValue > 0 && (
+                <span className="text-xs font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
+                  ₹{totalDealValue.toLocaleString()}
+                </span>
+              )}
+              <span className="rounded-full bg-bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-text-muted">
+                {deals.length}
+              </span>
+            </div>
+          }
+          bodyClass={deals.length === 0 ? 'p-5' : 'space-y-2 p-3'}
+        >
+          {deals.length === 0 ? (
+            <p className="py-2 text-center text-sm text-text-secondary">Not in any active pipeline.</p>
+          ) : (
+            deals.map((p) => (
+              <div
+                key={p.id}
+                className="group flex items-center gap-3 rounded-xl border border-border-color bg-bg-secondary/40 px-3.5 py-3 transition-colors hover:border-accent/40 hover:bg-bg-secondary"
+              >
+                <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: p.current_stage_color ?? p.process_color ?? '#888' }} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-text-primary">{p.title || p.process_name}</p>
+                  <p className="truncate text-xs text-text-secondary">{p.process_name}</p>
                 </div>
-                <div className="flex shrink-0 flex-col items-end">
-                  <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-[11px] font-medium text-text-secondary">
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-text-secondary">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: p.current_stage_color ?? p.process_color ?? '#888' }} />
                     {p.current_stage_name}
                   </span>
                   {p.expected_value != null && (
-                    <span className="mt-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                    <span className="text-xs font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
                       ₹{p.expected_value.toLocaleString()}
                     </span>
                   )}
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </SectionCard>
+              </div>
+            ))
+          )}
+        </Panel>
+      </div>
 
-      {/* Followups */}
-      <SectionCard title="Follow-ups" icon={Bell}>
-        {c.overdue_followup_count > 0 ? (
-          <p className="text-sm text-amber-600">
-            ⚠ {c.overdue_followup_count} overdue follow-up{c.overdue_followup_count === 1 ? '' : 's'} for this contact.
-          </p>
-        ) : (
-          <p className="text-sm text-text-secondary">No overdue follow-ups.</p>
-        )}
-        <button
-          onClick={onGoToFollowups}
-          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+      {/* SIDEBAR */}
+      <aside className="flex flex-col gap-5 lg:sticky lg:top-2">
+        {/* Follow-ups */}
+        <Panel
+          icon={Bell}
+          iconClass={c.overdue_followup_count > 0 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}
+          title="Follow-ups"
         >
-          Manage follow-ups <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      </SectionCard>
+          {c.overdue_followup_count > 0 ? (
+            <div className="flex flex-col items-center gap-2 py-1 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/10 text-2xl font-bold text-amber-600 dark:text-amber-400">
+                {c.overdue_followup_count}
+              </span>
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                {c.overdue_followup_count} overdue
+              </p>
+              <p className="text-xs text-text-secondary">Needs your attention</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-1 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="h-7 w-7" />
+              </span>
+              <p className="text-sm font-semibold text-text-primary">All caught up</p>
+              <p className="text-xs text-text-secondary">No overdue follow-ups</p>
+            </div>
+          )}
+          <button
+            onClick={onGoToFollowups}
+            className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-border-color py-2 text-xs font-semibold text-text-secondary transition-colors hover:border-accent hover:text-accent"
+          >
+            Manage follow-ups <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </Panel>
+      </aside>
     </div>
   );
 }
@@ -853,9 +926,10 @@ function SummaryCard({ contact: c }: { contact: Contact }) {
   };
 
   return (
-    <SectionCard
-      title="Summary"
+    <Panel
       icon={FileText}
+      iconClass="bg-accent-soft text-accent"
+      title="Summary"
       action={!editing && canManage ? (
         <button
           onClick={() => setEditing(true)}
@@ -873,7 +947,7 @@ function SummaryCard({ contact: c }: { contact: Contact }) {
             autoFocus
             rows={4}
             placeholder="Write a short summary of this contact — who they are, what they want, key context…"
-            className="w-full resize-none rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
+            className="w-full resize-none rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
           />
           <div className="flex justify-end gap-2">
             <button
@@ -885,20 +959,20 @@ function SummaryCard({ contact: c }: { contact: Contact }) {
             <button
               onClick={save}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
             </button>
           </div>
         </div>
       ) : c.notes ? (
-        <p className="whitespace-pre-wrap text-sm text-text-primary">{c.notes}</p>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-primary">{c.notes}</p>
       ) : (
         <p className="text-sm text-text-secondary">
           No summary yet.{canManage && ' Click Add to write one.'}
         </p>
       )}
-    </SectionCard>
+    </Panel>
   );
 }
 
@@ -910,8 +984,9 @@ function DetailsTab({ contact: c }: { contact: Contact }) {
   const [defs, setDefs] = useState<ContactFieldDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [values, setValues] = useState<Record<string, unknown>>(c.custom_fields ?? {});
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<unknown>('');
+  const [savingId, setSavingId] = useState<number | null>(null);
 
   // Match the modal's Fields tab semantics: only show field defs that are
   // global (group_id === null) OR scoped to a group this contact belongs to.
@@ -933,72 +1008,210 @@ function DetailsTab({ contact: c }: { contact: Contact }) {
       .finally(() => setLoading(false));
   }, [c.id, (c.group_ids ?? []).join(',')]);
 
-  useEffect(() => { setValues(c.custom_fields ?? {}); setDirty(false); }, [c.id, c.custom_fields]);
+  useEffect(() => { setValues(c.custom_fields ?? {}); setEditingId(null); }, [c.id, c.custom_fields]);
 
-  const setField = (id: number, val: unknown) => {
-    setValues(v => ({ ...v, [String(id)]: val }));
-    setDirty(true);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
+  // Custom fields save as a whole map; merge the edited field and PUT.
+  const saveField = async (def: ContactFieldDef, val: unknown) => {
+    setSavingId(def.id);
+    const next = { ...values, [String(def.id)]: val };
     try {
-      await setContactCustomFields(c.id, values);
-      setDirty(false);
-    } finally { setSaving(false); }
+      await setContactCustomFields(c.id, next);
+      setValues(next);
+      setEditingId(null);
+    } finally { setSavingId(null); }
   };
 
   if (loading) return <SkeletonCard />;
 
   return (
-    <div className="space-y-4">
-      <SectionCard title="Custom fields" icon={LayoutList}>
+    <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1fr_320px]">
+      {/* Custom fields */}
+      <section className="overflow-hidden rounded-2xl border border-border-color bg-card-bg shadow-sm">
+        <header className="flex items-center gap-2.5 border-b border-border-color px-5 py-3.5">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft text-accent">
+            <LayoutList className="h-4 w-4" />
+          </span>
+          <h2 className="flex-1 text-sm font-bold text-text-primary">Custom fields</h2>
+          {defs.length > 0 && (
+            <span className="rounded-full bg-bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-text-muted">
+              {defs.length} field{defs.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </header>
         {defs.length === 0 ? (
-          <p className="text-sm text-text-secondary">No custom fields defined yet.</p>
+          <p className="px-5 py-10 text-center text-sm text-text-secondary">No custom fields defined yet.</p>
         ) : (
-          <div className="space-y-3">
-            {defs.map(def => (
-              <FieldEditor key={def.id} def={def} value={values[String(def.id)]} onChange={(v) => setField(def.id, v)} />
-            ))}
-            {dirty && (
-              <div className="flex justify-end pt-2 border-t border-border-color">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 disabled:opacity-50"
+          <div className="grid grid-cols-1 gap-1 p-3 sm:grid-cols-2">
+            {defs.map((def) => {
+              const value = values[String(def.id)];
+              const isEditing = editingId === def.id;
+              const isFullWidth = def.field_type === 'textarea' || def.field_type === 'multi_select';
+              return (
+                <div
+                  key={def.id}
+                  className={`group relative rounded-xl px-3.5 py-3 transition-colors ${isFullWidth ? 'sm:col-span-2' : ''} ${isEditing ? 'bg-bg-secondary ring-1 ring-accent/30' : 'cursor-pointer hover:bg-bg-secondary'}`}
+                  onClick={() => { if (!isEditing) { setEditingId(def.id); setEditDraft(value ?? ''); } }}
                 >
-                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save changes
-                </button>
-              </div>
-            )}
+                  <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-text-muted">
+                    <ContactFieldIcon type={def.field_type} />
+                    <span>{def.name}</span>
+                    {def.required && <span className="text-red-500">*</span>}
+                  </div>
+
+                  {isEditing ? (
+                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                      <FieldEditor def={def} value={editDraft} onChange={setEditDraft} autoFocus />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-primary"
+                        >
+                          <X className="h-3.5 w-3.5" /> Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingId === def.id}
+                          onClick={() => void saveField(def, editDraft)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                        >
+                          {savingId === def.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          {savingId === def.id ? 'Saving…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="min-h-[22px] text-sm text-text-primary">
+                      <ContactFieldValue def={def} value={value} />
+                    </div>
+                  )}
+
+                  {!isEditing && (
+                    <Pencil className="absolute right-3 top-3 h-3.5 w-3.5 text-text-muted opacity-0 transition-opacity group-hover:opacity-60" />
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
-      </SectionCard>
+      </section>
 
-      {/* System fields */}
-      <SectionCard title="System info" icon={Shield}>
-        <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
-          <DLRow label="Source" value={c.source ?? '—'} />
-          <DLRow label="Contact source" value={c.contact_source ?? '—'} />
-          <DLRow label="Public ID" value={c.public_id ?? '—'} />
-          <DLRow label="Created" value={formatDateTime(c.created_at)} />
-          <DLRow label="Updated" value={formatDateTime(c.updated_at)} />
-        </dl>
-      </SectionCard>
+      {/* System info */}
+      <aside className="lg:sticky lg:top-2">
+        <section className="overflow-hidden rounded-2xl border border-border-color bg-card-bg shadow-sm">
+          <header className="flex items-center gap-2.5 border-b border-border-color px-5 py-3.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <Shield className="h-4 w-4" />
+            </span>
+            <h2 className="text-sm font-bold text-text-primary">System info</h2>
+          </header>
+          <dl className="text-sm">
+            <SysRow k="Source" v={c.source ?? '—'} />
+            <SysRow k="Contact source" v={c.contact_source ?? '—'} />
+            <SysRow k="Public ID" v={<span className="font-mono">{c.public_id ?? '—'}</span>} />
+            <SysRow k="Created" v={formatDateTime(c.created_at)} />
+            <SysRow k="Updated" v={formatDateTime(c.updated_at)} />
+          </dl>
+        </section>
+      </aside>
     </div>
   );
 }
 
-function FieldEditor({ def, value, onChange }: { def: ContactFieldDef; value: unknown; onChange: (v: unknown) => void }) {
+/** lucide icon for a contact field-type. */
+function ContactFieldIcon({ type, className }: { type: FieldType; className?: string }) {
+  const cls = className ?? 'h-3.5 w-3.5';
+  switch (type) {
+    case 'textarea': return <AlignLeft className={cls} />;
+    case 'number': return <Hash className={cls} />;
+    case 'boolean': return <ToggleLeft className={cls} />;
+    case 'date': return <Calendar className={cls} />;
+    case 'select': return <ChevronDown className={cls} />;
+    case 'multi_select': return <ListChecks className={cls} />;
+    case 'phone': return <Phone className={cls} />;
+    case 'email': return <Mail className={cls} />;
+    case 'url': return <Link2 className={cls} />;
+    default: return <Type className={cls} />;
+  }
+}
+
+/** Read-only display of a contact custom-field value, styled per type. */
+function ContactFieldValue({ def, value }: { def: ContactFieldDef; value: unknown }) {
+  const empty = value == null || value === '' || (Array.isArray(value) && value.length === 0);
+  if (empty) return <span className="text-text-muted">—</span>;
+
+  switch (def.field_type) {
+    case 'boolean':
+      return value ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-400">
+          <Check className="h-3 w-3" /> Yes
+        </span>
+      ) : (
+        <span className="inline-flex items-center rounded-full bg-bg-secondary px-2.5 py-1 text-xs font-semibold text-text-muted ring-1 ring-inset ring-border-color">
+          No
+        </span>
+      );
+    case 'select':
+      return (
+        <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent ring-1 ring-inset ring-accent/20">
+          {String(value)}
+        </span>
+      );
+    case 'multi_select':
+      return (
+        <div className="flex flex-wrap gap-1.5">
+          {(value as unknown[]).map((o) => (
+            <span key={String(o)} className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent ring-1 ring-inset ring-accent/20">
+              {String(o)}
+            </span>
+          ))}
+        </div>
+      );
+    case 'date':
+      return <span>{formatDate(String(value))}</span>;
+    case 'url':
+      return (
+        <a href={String(value)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="break-all text-accent hover:underline">
+          {String(value)}
+        </a>
+      );
+    case 'email':
+      return (
+        <a href={`mailto:${value}`} onClick={(e) => e.stopPropagation()} className="break-all text-accent hover:underline">
+          {String(value)}
+        </a>
+      );
+    case 'phone':
+      return (
+        <a href={`tel:${value}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">
+          {String(value)}
+        </a>
+      );
+    case 'number':
+      return <span className="font-semibold tabular-nums">{String(value)}</span>;
+    case 'textarea':
+      return <span className="whitespace-pre-wrap">{String(value)}</span>;
+    default:
+      return <span>{String(value)}</span>;
+  }
+}
+
+function SysRow({ k, v }: { k: string; v: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-border-color px-5 py-3 first:border-t-0">
+      <dt className="text-text-secondary">{k}</dt>
+      <dd className="min-w-0 truncate text-right font-semibold text-text-primary">{v}</dd>
+    </div>
+  );
+}
+
+function FieldEditor({ def, value, onChange, autoFocus }: { def: ContactFieldDef; value: unknown; onChange: (v: unknown) => void; autoFocus?: boolean }) {
   const v = value;
-  const baseInput = "w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none";
+  const baseInput = "w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30";
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-text-secondary">
-        {def.name}{def.required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
       {def.field_type === 'textarea' ? (
-        <textarea value={String(v ?? '')} onChange={e => onChange(e.target.value)} rows={3} className={`${baseInput} resize-none`} />
+        <textarea autoFocus={autoFocus} value={String(v ?? '')} onChange={e => onChange(e.target.value)} rows={3} className={`${baseInput} resize-none`} />
       ) : def.field_type === 'boolean' ? (
         <label className="inline-flex items-center gap-2 text-sm text-text-primary">
           <input type="checkbox" checked={Boolean(v)} onChange={e => onChange(e.target.checked)} className="h-4 w-4" /> Yes
@@ -1028,9 +1241,10 @@ function FieldEditor({ def, value, onChange }: { def: ContactFieldDef; value: un
       ) : def.field_type === 'number' ? (
         <input type="number" value={String(v ?? '')} onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))} className={baseInput} />
       ) : def.field_type === 'date' ? (
-        <input type="date" value={String(v ?? '')} onChange={e => onChange(e.target.value)} className={baseInput} />
+        <DateField value={String(v ?? '')} onChange={onChange} className={baseInput} />
       ) : (
         <input
+          autoFocus={autoFocus}
           type={def.field_type === 'email' ? 'email' : def.field_type === 'url' ? 'url' : def.field_type === 'phone' ? 'tel' : 'text'}
           value={String(v ?? '')}
           onChange={e => onChange(e.target.value)}
@@ -1235,7 +1449,77 @@ function SessionCard({ s }: { s: ConversationSession }) {
 // Activity tab
 // ────────────────────────────────────────────────────────────────
 
-function ActivityTab({ activities, loading }: { activities: ContactV2State['activities']; loading: boolean }) {
+function ActivityTab({
+  sub, onSubChange,
+  activities, loadingActivities,
+  contact, notes, loadingNotes, onAddNote, onDeleteNote,
+  canManage, overdueCount,
+}: {
+  sub: ActivitySub;
+  onSubChange: (s: ActivitySub) => void;
+  activities: ContactV2State['activities'];
+  loadingActivities: boolean;
+  contact: Contact;
+  notes: ContactV2State['notes'];
+  loadingNotes: boolean;
+  onAddNote: (content: string, category?: string) => Promise<void>;
+  onDeleteNote: (noteId: number) => Promise<void>;
+  canManage: boolean;
+  overdueCount: number;
+}) {
+  const subTabs: { id: ActivitySub; label: string; Icon: React.ElementType; badge: number }[] = [
+    { id: 'timeline',  label: 'Timeline',   Icon: Activity, badge: 0 },
+    { id: 'notes',     label: 'Notes',      Icon: FileText, badge: notes.length },
+    { id: 'followups', label: 'Follow-ups', Icon: Bell,     badge: overdueCount },
+  ];
+  return (
+    <div className="space-y-3">
+      <div className="flex w-max gap-1 rounded-lg border border-border-color bg-card-bg p-1">
+        {subTabs.map((st) => {
+          const isActive = sub === st.id;
+          return (
+            <button
+              key={st.id}
+              onClick={() => onSubChange(st.id)}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                isActive
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-text-secondary hover:bg-bg-primary hover:text-text-primary'
+              }`}
+            >
+              <st.Icon className="h-3.5 w-3.5" /> {st.label}
+              {st.badge > 0 && (
+                <span className={`ml-0.5 inline-flex min-w-[1.1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                  isActive
+                    ? 'bg-white/20 text-white'
+                    : st.id === 'followups'
+                      ? 'bg-amber-500/15 text-amber-600'
+                      : 'bg-bg-primary text-text-secondary'
+                }`}>
+                  {st.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {sub === 'timeline' && <ActivityTimeline activities={activities} loading={loadingActivities} />}
+      {sub === 'notes' && (
+        <NotesTab
+          contact={contact}
+          notes={notes}
+          loading={loadingNotes}
+          onAdd={onAddNote}
+          onDelete={onDeleteNote}
+        />
+      )}
+      {sub === 'followups' && <FollowupsTab contact={contact} canManage={canManage} />}
+    </div>
+  );
+}
+
+function ActivityTimeline({ activities, loading }: { activities: ContactV2State['activities']; loading: boolean }) {
   if (loading) return <SkeletonCard />;
   return (
     <SectionCard title="Activity timeline" icon={Activity}>
@@ -2121,83 +2405,6 @@ function AdAttributionRail({ contact: c }: { contact: Contact }) {
 // ────────────────────────────────────────────────────────────────
 // Datasheets tab — datasheet records that link to this contact
 // ────────────────────────────────────────────────────────────────
-
-function DatasheetsTab({ contactId }: { contactId: number }) {
-  const [groups, setGroups] = useState<LinkedRecordGroup[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    getRecordsLinkedToContact(contactId)
-      .then((res) => { if (!cancelled) setGroups(res.groups); })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load linked records'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [contactId]);
-
-  if (loading) return <SkeletonCard />;
-
-  if (error) {
-    return (
-      <SectionCard title="Datasheets" icon={Table2}>
-        <div className="flex items-center gap-2 text-sm text-red-500">
-          <AlertCircle className="h-4 w-4" /> {error}
-        </div>
-      </SectionCard>
-    );
-  }
-
-  if (groups.length === 0) {
-    return (
-      <SectionCard title="Datasheets" icon={Table2}>
-        <p className="text-sm text-text-secondary">
-          No datasheet records are linked to this contact yet. Records appear here
-          when a datasheet has a relation field pointing at this contact.
-        </p>
-      </SectionCard>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {groups.map((g) => (
-        <SectionCard
-          key={g.model_id}
-          title={g.model_display_name}
-          icon={Table2}
-          action={
-            <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-bg-primary px-1.5 text-[11px] font-semibold text-text-secondary">
-              {g.records.length}
-            </span>
-          }
-        >
-          <ul className="divide-y divide-border-color">
-            {g.records.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-text-primary">{r.title}</p>
-                  <p className="truncate font-mono text-[11px] text-text-secondary">
-                    {r.record_key}
-                    {g.field_display_name ? ` · via ${g.field_display_name}` : ''}
-                  </p>
-                </div>
-                <Link
-                  href={`/data-sheet/${g.model_id}/${r.id}`}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border-color px-2.5 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent"
-                >
-                  Open <ExternalLink className="h-3.5 w-3.5" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      ))}
-    </div>
-  );
-}
 
 function SectionCard({ title, icon: Icon, children, action }: { title: string; icon: React.ElementType; children: React.ReactNode; action?: React.ReactNode }) {
   return (

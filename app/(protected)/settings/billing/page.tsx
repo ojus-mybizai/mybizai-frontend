@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { formatDate } from '@/lib/format-date';
 import {
   Check, Crown, Zap, Building2, Rocket, Loader2, ChevronRight,
   Sparkles, AlertCircle, Coins,
@@ -308,7 +309,7 @@ export default function BillingPage() {
             <span className="font-semibold text-blue-800">Free trial active</span>
             <span className="ml-2 text-blue-700">
               {trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'} left on {current?.plan?.name || currentSlug}
-              {current?.trial_ends_at && ` (ends ${new Date(current.trial_ends_at).toLocaleDateString()})`}
+              {current?.trial_ends_at && ` (ends ${formatDate(current.trial_ends_at)})`}
             </span>
           </div>
           <button
@@ -363,7 +364,7 @@ export default function BillingPage() {
                   {usage.credits.monthly_cap && <> / {usage.credits.monthly_cap.toLocaleString()}</>}
                 </div>
                 {usage.credits.expires_at && (
-                  <div>Expires {new Date(usage.credits.expires_at).toLocaleDateString()}</div>
+                  <div>Expires {formatDate(usage.credits.expires_at)}</div>
                 )}
                 <div>Lifetime granted: {usage.credits.lifetime_granted.toLocaleString()}</div>
               </div>
@@ -560,7 +561,7 @@ export default function BillingPage() {
 
       {isActive && current?.current_period_end && (
         <p className="mt-6 text-center text-xs text-text-secondary">
-          Current period ends: {new Date(current.current_period_end).toLocaleDateString()}
+          Current period ends: {formatDate(current.current_period_end)}
         </p>
       )}
     </div>

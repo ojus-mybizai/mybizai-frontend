@@ -6,6 +6,7 @@ import type { DynamicField } from '@/services/dynamic-data';
 import type { QueryResponse } from '@/features/data-sheet/api';
 import type { CalendarViewConfig } from '@/features/data-sheet/state/view-state';
 import { pickTitleField, pickSecondaryField } from '@/components/data-sheet/field-display';
+import { formatDate } from '@/lib/format-date';
 import { valueColor, type ValueColor } from '@/components/data-sheet/value-colors';
 
 type RecordItem = QueryResponse['items'][number];
@@ -240,7 +241,7 @@ function DayDetailModal({
       <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-color bg-card-bg p-4 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-text-primary">
-            {date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            {formatDate(date)}
           </h3>
           <button type="button" onClick={onClose} className="rounded-md p-1 text-text-secondary hover:bg-bg-secondary hover:text-text-primary" aria-label="Close">
             <X className="h-4 w-4" />

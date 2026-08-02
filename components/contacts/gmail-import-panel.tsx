@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Mail, RefreshCw, Unlink, Loader2, CheckCircle } from 'lucide-react';
 import { gmailIntegrationService, type GmailStatus, type GmailSyncResult } from '@/services/gmailIntegration';
+import { formatDateTime } from '@/lib/format-date';
 
 interface Props {
   onSynced: () => void;  // refresh contacts list after sync
@@ -125,7 +126,7 @@ export function GmailImportPanel({ onSynced }: Props) {
         <>
           {status.lastSyncAt && (
             <p className="text-xs text-secondary-text mb-1">
-              Last sync: {new Date(status.lastSyncAt).toLocaleString()} · {status.contactsSynced} imported
+              Last sync: {formatDateTime(status.lastSyncAt)} · {status.contactsSynced} imported
             </p>
           )}
 

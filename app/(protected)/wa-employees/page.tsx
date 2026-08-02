@@ -6,6 +6,7 @@ import {
   UserX, UserCheck, Trash2, Phone, Shield, Plus, X, Settings, Save, Send,
   AlertTriangle, Wifi,
 } from 'lucide-react';
+import { formatDate } from '@/lib/format-date';
 import {
   listEmployees, addEmployee, resendInvite,
   updateEmployee, deleteEmployee, listGroups, createGroup, updateGroup,
@@ -533,9 +534,7 @@ export default function WaEmployeesPage() {
             <div className="w-1 h-4 rounded-full bg-blue-400" />
             <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
               {selectedCalendarDate
-                ? new Date(selectedCalendarDate + 'T00:00:00').toLocaleDateString(undefined, {
-                    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-                  })
+                ? formatDate(selectedCalendarDate)
                 : 'Select a date'}
             </p>
           </div>

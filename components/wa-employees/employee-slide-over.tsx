@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { X, Phone, Shield, Send, UserX, UserCheck, Trash2, Users, Calendar, CheckCircle } from 'lucide-react';
 import { getGroup, type WaEmployee, type WaEmployeeGroup } from '@/services/waEmployees';
+import { formatDate } from '@/lib/format-date';
 
 const STATUS_PILL: Record<string, string> = {
   active:             'bg-green-50 text-green-800 border-green-300',
@@ -136,12 +137,12 @@ export function EmployeeSlideOver({ employee, groups, onClose, onResendInvite, o
                 <div className="mt-4 space-y-2">
                   <div className="flex items-center gap-2 text-xs text-text-secondary">
                     <Calendar className="w-3.5 h-3.5 shrink-0" />
-                    <span>Added {new Date(employee.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    <span>Added {formatDate(employee.created_at)}</span>
                   </div>
                   {employee.verified_at ? (
                     <div className="flex items-center gap-2 text-xs text-green-600">
                       <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>Accepted {new Date(employee.verified_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      <span>Accepted {formatDate(employee.verified_at)}</span>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 text-xs text-text-secondary">

@@ -31,7 +31,7 @@ const FILTERS: { key: QuickFilter; label: string }[] = [
 function CreateProcessModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: number) => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [entityType, setEntityType] = useState<'lead' | 'contact' | 'datasheet_record'>('lead');
+  const [entityType, setEntityType] = useState<'contact' | 'datasheet_record'>('contact');
   const [dynamicModelId, setDynamicModelId] = useState<number | null>(null);
   const [models, setModels] = useState<DynamicModel[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -39,7 +39,7 @@ function CreateProcessModal({ open, onClose, onCreated }: { open: boolean; onClo
 
   useEffect(() => {
     if (open) listModels().then(setModels).catch(() => {});
-    else { setName(''); setDescription(''); setEntityType('lead'); setDynamicModelId(null); setError(''); }
+    else { setName(''); setDescription(''); setEntityType('contact'); setDynamicModelId(null); setError(''); }
   }, [open]);
 
   if (!open) return null;
@@ -84,8 +84,8 @@ function CreateProcessModal({ open, onClose, onCreated }: { open: boolean; onClo
               className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent resize-none" />
           </Field>
           <Field label="What flows through it?">
-            <div className="grid grid-cols-3 gap-2">
-              {([['lead','Leads'],['contact','Contacts'],['datasheet_record','Records']] as const).map(([v,l]) => (
+            <div className="grid grid-cols-2 gap-2">
+              {([['contact','Contacts'],['datasheet_record','Records']] as const).map(([v,l]) => (
                 <button key={v} type="button"
                   onClick={() => { setEntityType(v); setDynamicModelId(null); }}
                   className={`rounded-md border px-3 py-2 text-xs font-medium transition-quick

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createProject, updateProject, type WorkProject, type WorkProjectCreate } from '@/services/work';
+import { DateField } from '@/components/ui/date-field';
 
 const PRESET_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
@@ -199,11 +200,10 @@ export function CreateProjectModal({
             <label htmlFor="project-due" className="block text-sm font-medium text-text-primary mb-1">
               Due Date
             </label>
-            <input
+            <DateField
               id="project-due"
-              type="date"
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={setDueDate}
               className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent transition-colors"
             />
           </div>

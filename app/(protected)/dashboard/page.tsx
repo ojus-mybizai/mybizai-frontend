@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import SmartInput from '@/components/agent-stream/SmartInput';
 import { useStreamStore } from '@/lib/agent-stream/stream-store';
 import {
@@ -12,7 +12,7 @@ import {
   X, ArrowUpRight, Zap, Database, LayoutGrid,
   UsersRound, Send,
   Wallet, Bot, Activity, Megaphone, Mail, ListChecks, Radio, Tag,
-  Settings2, Calendar, Maximize2, ChevronDown, Search, Sparkles,
+  Settings2, Calendar, Maximize2, ChevronDown, Search, Sparkles, Filter,
 } from 'lucide-react';
 import {
   DndContext,
@@ -30,6 +30,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { apiFetch } from '@/lib/api-client';
+import WidgetComposer from '@/components/dashboard/widget-composer';
 import { listInternalAgents } from '@/services/internal-chat';
 import type { AgentSummary } from '@/lib/agent-blocks';
 import { useDateRangeStore } from '@/lib/stores/date-range-store';
@@ -54,7 +55,20 @@ interface WidgetMeta {
   size: string;
   date_range: string;
   sort_order: number;
+  // custom_list source config (surfaced so the customize popover can prefill)
+  source_id?: number | null;
+  field_id?: number | null;
+  aggregation?: string | null;
+  filter_value?: string | null;
 }
+
+// Patch shape for updateWidget. Config keys use `null` to clear a value and are
+// omitted entirely when unchanged (the backend keys off which keys are present).
+type WidgetPatch = {
+  title?: string; size?: string; date_range?: string;
+  aggregation?: string | null; source_id?: number | null;
+  field_id?: number | null; filter_value?: string | null;
+};
 
 // Per-widget date-window override options (settings popover)
 const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
@@ -85,6 +99,9 @@ const WINDOW_IGNORED = new Set<string>([
   // Structural "X by field" breakdown — resolved all-time on the backend, so it
   // must not offer a (dead) per-widget date window.
   'datasheet_breakdown',
+  // Configurable list + live count — snapshot semantics on the backend (ignores window).
+  'custom_list',
+  'datasheet_list',
 ]);
 const usesDateWindow = (sourceType: string) => !WINDOW_IGNORED.has(sourceType);
 const rangeLabel = (v: string) =>
@@ -126,6 +143,7 @@ interface WidgetOption {
   source_name?: string;
   field_id?: number;       // field-based widgets (breakdown / number / count_date)
   aggregation?: string;    // "total"|"recent"|"group_by"|"sum"|"avg"|"this_week"|"this_month"
+  filter_value?: string;   // datasheet_list: pre-encoded field==value filter
 }
 
 // ── API helpers ──────────────────────────────────────────────────────────────
@@ -148,10 +166,22 @@ const fetchLayouts = () => apiFetch<Layout[]>('/widgets/layouts');
 
 const fetchOptions = async () => (await apiFetch<{ options: WidgetOption[] }>('/widgets/options')).options;
 
+// ── custom_list customize metadata ─────────────────────────────────────────────
+interface ListField { id: number; name: string; label: string; field_type: string; options: string[]; }
+interface ListDatasheet { id: number; name: string; fields: ListField[]; }
+interface ListPipeline { id: number; name: string; }
+interface ListSources {
+  datasheets: ListDatasheet[];
+  pipelines: ListPipeline[];
+  work_statuses: string[];
+  conversation_modes: string[];
+}
+const fetchListSources = () => apiFetch<ListSources>('/widgets/list-sources');
+
 const deleteWidget   = (id: number) => apiFetch<void>(`/widgets/${id}`, { method: 'DELETE' });
 const reorderWidgets = (ids: number[]) =>
   apiFetch<void>('/widgets/reorder', { method: 'PATCH', body: JSON.stringify({ ordered_ids: ids }) });
-const updateWidget   = (id: number, patch: { title?: string; size?: string; date_range?: string }) =>
+const updateWidget   = (id: number, patch: WidgetPatch) =>
   apiFetch<WidgetMeta>(`/widgets/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
 const fetchOneData   = (id: number, startDate?: string, endDate?: string) => {
   const params = new URLSearchParams();
@@ -164,6 +194,7 @@ const fetchOneData   = (id: number, startDate?: string, endDate?: string) => {
 async function createWidget(payload: {
   title: string; source_type: string; display_type: string;
   size: string; source_id?: number; field_id?: number; aggregation?: string;
+  filter_value?: string;
 }): Promise<WidgetMeta> {
   return apiFetch<WidgetMeta>('/widgets', {
     method: 'POST',
@@ -202,6 +233,8 @@ const SOURCE_CONFIG: Record<string, { icon: React.ElementType; bg: string; icon_
   // datasheet family — all share the indigo palette
   datasheet_count:        { icon: Database,      bg: 'bg-indigo-100 dark:bg-indigo-500/15',   icon_color: 'text-indigo-500'  },
   datasheet_recent:       { icon: Database,      bg: 'bg-indigo-100 dark:bg-indigo-500/15',   icon_color: 'text-indigo-500'  },
+  datasheet_list:         { icon: Filter,        bg: 'bg-indigo-100 dark:bg-indigo-500/15',   icon_color: 'text-indigo-500'  },
+  custom_list:            { icon: ListChecks,    bg: 'bg-indigo-100 dark:bg-indigo-500/15',   icon_color: 'text-indigo-500'  },
   datasheet_breakdown:    { icon: BarChart3,     bg: 'bg-violet-100 dark:bg-violet-500/15',   icon_color: 'text-violet-500'  },
   datasheet_count_date:   { icon: Clock,         bg: 'bg-sky-100 dark:bg-sky-500/15',         icon_color: 'text-sky-500'     },
   datasheet_number:       { icon: TrendingUp,    bg: 'bg-amber-100 dark:bg-amber-500/15',     icon_color: 'text-amber-500'   },
@@ -454,6 +487,11 @@ function ListWidget({ data, editing, onDelete }: { data: WidgetData; editing: bo
   const items = data.items ?? [];
   const cfg   = getSourceConfig(data.source_type);
   const Icon  = cfg.icon;
+  // A "list with a count" (e.g. datasheet_list) carries a total in `value`; the
+  // header shows it as a big number and the rows are a sample beneath it.
+  const hasCount = data.value !== null && data.value !== undefined;
+  const total    = data.value ?? 0;
+  const shownMax = 6;
 
   return (
     <div className={`relative p-5 h-full ${cardCls(editing)}`}>
@@ -464,13 +502,23 @@ function ListWidget({ data, editing, onDelete }: { data: WidgetData; editing: bo
         <div className={`w-9 h-9 rounded-xl ${cfg.bg} flex items-center justify-center shrink-0`}>
           <Icon size={17} className={cfg.icon_color} />
         </div>
-        <p className="text-[15px] font-semibold text-text-primary flex-1 min-w-0 truncate">
-          {data.title}
-        </p>
+        <div className="flex-1 min-w-0">
+          <p className="text-[15px] font-semibold text-text-primary truncate leading-tight">
+            {data.title}
+          </p>
+          {hasCount && (
+            <p className="text-2xl font-bold tracking-tight text-text-primary leading-none mt-1 tabular-nums">
+              {total.toLocaleString()}
+              <span className="ml-1.5 text-[11px] font-medium text-text-secondary align-middle">
+                {total === 1 ? 'record' : 'records'}
+              </span>
+            </p>
+          )}
+        </div>
         {data.href && !editing && (
           <Link
             href={data.href}
-            className="ml-auto shrink-0 flex items-center gap-0.5 text-xs text-text-secondary hover:text-accent transition-colors"
+            className="shrink-0 self-start flex items-center gap-0.5 text-xs text-text-secondary hover:text-accent transition-colors"
           >
             All <ArrowUpRight size={11} />
           </Link>
@@ -478,12 +526,14 @@ function ListWidget({ data, editing, onDelete }: { data: WidgetData; editing: bo
       </div>
 
       {items.length === 0 ? (
-        <div className="flex items-center justify-center h-20 text-text-secondary text-sm">
-          No data yet
+        <div className="flex items-center justify-center h-20 text-text-secondary text-sm text-center px-4">
+          {data.source_type === 'custom_list' && !hasCount
+            ? 'Open customize (⚙) and pick a source'
+            : hasCount ? 'No matching records' : 'No data yet'}
         </div>
       ) : (
         <div className="space-y-0.5">
-          {items.map((item, idx) => {
+          {items.slice(0, shownMax).map((item, idx) => {
             const initials = item.label.split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
             const row = (
               <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-bg-secondary transition-colors group cursor-pointer">
@@ -509,6 +559,23 @@ function ListWidget({ data, editing, onDelete }: { data: WidgetData; editing: bo
             if (item.href && !editing) return <Link key={idx} href={item.href}>{row}</Link>;
             return <div key={idx}>{row}</div>;
           })}
+
+          {/* Overflow — a count widget knows the true total; a plain list only
+              knows how many rows it received. */}
+          {(() => {
+            const more = hasCount ? total - Math.min(items.length, shownMax)
+                                  : items.length - shownMax;
+            if (more <= 0) return null;
+            return data.href && !editing ? (
+              <Link href={data.href} className="block px-2 pt-1 text-xs font-semibold text-accent hover:underline">
+                +{more.toLocaleString()} more
+              </Link>
+            ) : (
+              <p className="px-2 pt-1 text-xs font-medium text-text-secondary">
+                +{more.toLocaleString()} more
+              </p>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -522,25 +589,59 @@ function WidgetSettings({
 }: {
   meta: WidgetMeta;
   onClose: () => void;
-  onSave: (patch: { title?: string; size?: string; date_range?: string }) => Promise<void> | void;
+  onSave: (patch: WidgetPatch) => Promise<void> | void;
 }) {
   const [title, setTitle]   = useState(meta.title);
   const [size, setSize]     = useState(meta.size);
   const [range, setRange]   = useState(meta.date_range || 'global');
   const [saving, setSaving] = useState(false);
 
-  // Time-series & funnel widgets are forced to span 3 cols — size control is moot.
-  const sizeLocked = meta.display_type === 'timeseries' || meta.display_type === 'funnel';
+  // custom_list source config
+  const isCustomList = meta.source_type === 'custom_list';
+  const [kind,        setKind]        = useState<string>(meta.aggregation || '');
+  const [sourceId,    setSourceId]    = useState<number | null>(meta.source_id ?? null);
+  const [fieldId,     setFieldId]     = useState<number | null>(meta.field_id ?? null);
+  const [filterValue, setFilterValue] = useState<string>(meta.filter_value || '');
+  // Date-field filter reuses the widget's date_range column as the window preset.
+  const [dateWindow,  setDateWindow]  = useState<string>(
+    meta.date_range && meta.date_range !== 'global' ? meta.date_range : 'last_30_days');
+  const [sources,     setSources]     = useState<ListSources | null>(null);
+
+  useEffect(() => {
+    if (!isCustomList) return;
+    let alive = true;
+    fetchListSources().then((s) => { if (alive) setSources(s); }).catch(() => {});
+    return () => { alive = false; };
+  }, [isCustomList]);
+
+  const activeSheet = sources?.datasheets.find((d) => d.id === sourceId) ?? null;
+  const activeField = activeSheet?.fields.find((f) => f.id === fieldId) ?? null;
+
+  // Full-width shapes (time-series & tables) always span the whole row — size is moot.
+  const sizeLocked = meta.display_type === 'timeseries' || meta.display_type === 'table';
   // Snapshot/structural widgets ignore the date window — hide the control for them.
   const rangeApplies = usesDateWindow(meta.source_type);
 
   async function handleSave() {
     setSaving(true);
-    await onSave({
+    const patch: WidgetPatch = {
       title: title.trim() || meta.title,
       size: sizeLocked ? meta.size : size,
       date_range: rangeApplies ? range : 'global',
-    });
+    };
+    if (isCustomList) {
+      patch.aggregation  = kind || null;
+      // Datasheet keeps its model + field filter; work/conversations use only
+      // filter_value, so clear the datasheet-only keys for them.
+      patch.source_id    = kind === 'datasheet' ? sourceId : null;
+      patch.field_id     = kind === 'datasheet' ? fieldId  : null;
+      const dateFilter   = kind === 'datasheet' && activeField?.field_type === 'date';
+      // A date-field filter carries its window in date_range and has no ==value;
+      // a value filter uses filter_value and leaves date_range neutral.
+      patch.filter_value = dateFilter ? null : (filterValue || null);
+      patch.date_range   = dateFilter ? dateWindow : 'global';
+    }
+    await onSave(patch);
     setSaving(false);
     onClose();
   }
@@ -558,6 +659,147 @@ function WidgetSettings({
             className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
           />
         </div>
+
+        {isCustomList && (
+          <div className="space-y-2.5 pt-1 border-t border-border-color">
+            {/* Source kind */}
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary flex items-center gap-1">
+                <Filter size={10} /> Show
+              </label>
+              <div className="mt-1 grid grid-cols-3 gap-1">
+                {[
+                  { value: 'datasheet',     label: 'Datasheet' },
+                  { value: 'work',          label: 'Tasks' },
+                  { value: 'conversations', label: 'Chats' },
+                ].map((o) => (
+                  <button
+                    key={o.value}
+                    onClick={() => { setKind(o.value); setSourceId(null); setFieldId(null); setFilterValue(''); }}
+                    className={`px-2 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                      kind === o.value
+                        ? 'bg-accent text-white border-accent'
+                        : 'bg-bg-secondary text-text-secondary border-border-color hover:text-text-primary'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Datasheet: which sheet + optional field==value filter */}
+            {kind === 'datasheet' && (
+              <>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Datasheet</label>
+                  <select
+                    value={sourceId ?? ''}
+                    onChange={(e) => { setSourceId(e.target.value ? Number(e.target.value) : null); setFieldId(null); setFilterValue(''); }}
+                    className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  >
+                    <option value="">{sources ? 'Select a datasheet…' : 'Loading…'}</option>
+                    {sources?.datasheets.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+
+                {activeSheet && activeSheet.fields.length > 0 && (
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Filter by (optional)</label>
+                    <select
+                      value={fieldId ?? ''}
+                      onChange={(e) => { setFieldId(e.target.value ? Number(e.target.value) : null); setFilterValue(''); }}
+                      className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                    >
+                      <option value="">No filter — show all</option>
+                      {activeSheet.fields.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {activeField && activeField.field_type === 'date' && (
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary flex items-center gap-1">
+                      <Calendar size={10} /> {activeField.label} within
+                    </label>
+                    <select
+                      value={dateWindow}
+                      onChange={(e) => setDateWindow(e.target.value)}
+                      className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                    >
+                      {DATE_RANGE_OPTIONS.filter((o) => o.value !== 'global').map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {activeField && activeField.field_type !== 'date' && (
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+                      {activeField.label} =
+                    </label>
+                    {activeField.options.length > 0 ? (
+                      <select
+                        value={filterValue}
+                        onChange={(e) => setFilterValue(e.target.value)}
+                        className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                      >
+                        <option value="">Any value</option>
+                        {activeField.options.map((v) => (
+                          <option key={v} value={v}>
+                            {activeField.field_type === 'boolean' ? (v === 'true' ? 'Yes' : 'No') : v}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={filterValue}
+                        onChange={(e) => setFilterValue(e.target.value)}
+                        placeholder="Enter a value"
+                        className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                      />
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Work: status filter */}
+            {kind === 'work' && (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Status</label>
+                <select
+                  value={filterValue}
+                  onChange={(e) => setFilterValue(e.target.value)}
+                  className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                >
+                  <option value="">All statuses</option>
+                  {(sources?.work_statuses ?? []).map((s) => (
+                    <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Conversations: mode filter */}
+            {kind === 'conversations' && (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Handled by</label>
+                <select
+                  value={filterValue}
+                  onChange={(e) => setFilterValue(e.target.value)}
+                  className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                >
+                  <option value="">All conversations</option>
+                  {(sources?.conversation_modes ?? []).map((m) => (
+                    <option key={m} value={m}>{m === 'ai' ? 'AI' : 'Manual'}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
 
         {!sizeLocked && (
           <div>
@@ -660,13 +902,35 @@ function WidgetDateControl({
 
 // ── SortableWidget wrapper ────────────────────────────────────────────────────
 
-function colSpan(size: string, displayType?: string): React.CSSProperties['gridColumn'] {
-  // Time-series + funnel widgets always span 3 columns for readability
-  if (displayType === 'timeseries' || displayType === 'funnel') return 'span 3';
-  if (size === 'small') return undefined;    // 1 col
-  if (size === 'medium') return 'span 2';   // 2 cols
-  if (size === 'large') return 'span 3';    // 3 cols (we have 3-col inner grid)
-  return undefined;
+// Desktop is a 12-col grid, mobile a 4-col grid. A widget's footprint is driven
+// primarily by its display_type (its natural shape); the small/medium/large
+// `size` only nudges the width within safe bounds so nothing can balloon. Spans
+// always divide 12 cleanly (3·4, 4·3, 6·2, 8+4, 12) so rows pack without orphan
+// gaps — the bug the old 3-of-4-column math produced. Class strings are static
+// literals so Tailwind's JIT keeps them.
+const COL_CLASS: Record<number, string> = {
+  3:  'col-span-2 md:col-span-3',   // quarter — KPI, four across
+  4:  'col-span-2 md:col-span-4',   // third
+  6:  'col-span-4 md:col-span-6',   // half
+  8:  'col-span-4 md:col-span-8',   // two-thirds
+  12: 'col-span-4 md:col-span-12',  // full row
+};
+
+// display_types that always claim the full row — `size` is moot for them.
+const FULL_WIDTH_TYPES = new Set(['timeseries', 'table']);
+// Tall card shapes (charts / lists / funnels) — half width by default.
+const WIDE_TYPES = new Set(['breakdown', 'funnel', 'list']);
+
+function widgetSpanClass(displayType?: string, size?: string): string {
+  const dt = displayType ?? 'stat';
+  if (FULL_WIDTH_TYPES.has(dt)) return COL_CLASS[12];
+  if (WIDE_TYPES.has(dt)) {
+    const cols = size === 'large' ? 8 : size === 'small' ? 4 : 6;
+    return COL_CLASS[cols];
+  }
+  // Compact shapes (stat / trend / gauge): a quarter by default.
+  const cols = size === 'large' ? 6 : size === 'medium' ? 4 : 3;
+  return COL_CLASS[cols];
 }
 
 function SortableWidget({
@@ -674,7 +938,7 @@ function SortableWidget({
 }: {
   meta: WidgetMeta; data?: WidgetData; editing: boolean; loading: boolean;
   onDelete: (id: number) => void;
-  onUpdate: (id: number, patch: { title?: string; size?: string; date_range?: string }) => Promise<void> | void;
+  onUpdate: (id: number, patch: WidgetPatch) => Promise<void> | void;
   onDateChange: (id: number, range: string) => void;
 }) {
   const [showSettings, setShowSettings] = useState(false);
@@ -686,21 +950,21 @@ function SortableWidget({
     transition,
     opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 50 : undefined,
-    gridColumn: colSpan(meta.size, data?.display_type),
   };
+  const spanClass = widgetSpanClass(data?.display_type, meta.size);
 
   if (!data) {
     return (
       <div
         ref={setNodeRef}
         style={{ ...style, minHeight: 120 }}
-        className="bg-bg-secondary rounded-2xl animate-pulse"
+        className={`${spanClass} bg-bg-secondary rounded-2xl animate-pulse`}
       />
     );
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="relative">
+    <div ref={setNodeRef} style={style} className={`${spanClass} relative`}>
       {/* Drag handle */}
       {editing && (
         <div
@@ -827,6 +1091,10 @@ function getSourceCategory(opt: WidgetOption): string {
     case 'recent_activity':
     case 'ai_insights':
       return 'Activity';
+    case 'custom_list':
+      // Bound to a datasheet → live in that datasheet's tab (next to "Recent X");
+      // the generic (unbound) List tile lives under "Lists".
+      return opt.source_name ?? 'Lists';
     case 'team_active_employees':
     case 'team_attendance':
     case 'team_live_tasks':
@@ -835,6 +1103,7 @@ function getSourceCategory(opt: WidgetOption): string {
     // All datasheet-derived source types use source_name as the tab label
     case 'datasheet_count':
     case 'datasheet_recent':
+    case 'datasheet_list':
     case 'datasheet_breakdown':
     case 'datasheet_count_date':
     case 'datasheet_number':
@@ -856,6 +1125,7 @@ const CATEGORY_META: Record<string, { icon: React.ElementType; color: string; bg
   'Money':         { icon: Wallet,        color: 'text-green-600 dark:text-green-400',     bg: 'bg-green-50 dark:bg-green-900/30'     },
   'Activity':      { icon: Activity,      color: 'text-cyan-600 dark:text-cyan-400',       bg: 'bg-cyan-50 dark:bg-cyan-900/30'       },
   'Team':          { icon: UsersRound,    color: 'text-green-600 dark:text-green-400',     bg: 'bg-green-50 dark:bg-green-900/30'     },
+  'Lists':         { icon: ListChecks,    color: 'text-indigo-600 dark:text-indigo-400',   bg: 'bg-indigo-50 dark:bg-indigo-900/30'   },
 };
 function getCategoryMeta(cat: string) {
   return CATEGORY_META[cat] ?? {
@@ -1064,7 +1334,7 @@ function AddWidgetModal({
     const seen = new Set<string>();
     const result: string[] = [];
     // Fixed order for core sources first
-    for (const cat of ['Contacts', 'Pipeline', 'Conversations', 'AI Agents', 'Campaigns', 'Work', 'Team', 'Money', 'Follow-ups', 'Activity']) {
+    for (const cat of ['Lists', 'Contacts', 'Pipeline', 'Conversations', 'AI Agents', 'Campaigns', 'Work', 'Team', 'Money', 'Follow-ups', 'Activity']) {
       if (options.some(o => getSourceCategory(o) === cat)) {
         seen.add(cat);
         result.push(cat);
@@ -1228,32 +1498,47 @@ function AddWidgetModal({
 
         {/* ── Category tabs (hidden while searching) ── */}
         {!q && (
-          <div className="flex items-center gap-1.5 px-4 py-2.5 overflow-x-auto border-b border-border-color [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <button
-              onClick={() => setActiveCategory('All')}
-              className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors shrink-0 ${
-                activeCategory === 'All' ? 'bg-accent text-white shadow-sm' : 'text-text-secondary hover:bg-bg-secondary'
-              }`}
-            >
-              All
-            </button>
-            {categories.map(cat => {
-              const meta   = getCategoryMeta(cat);
-              const Icon   = meta.icon;
-              const active = activeCategory === cat;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors shrink-0 ${
-                    active ? 'bg-accent text-white shadow-sm' : 'text-text-secondary hover:bg-bg-secondary'
-                  }`}
-                >
-                  <Icon size={12} />
-                  {cat}
-                </button>
-              );
-            })}
+          <div className="relative border-b border-border-color">
+            {/* edge fades hint that the strip scrolls horizontally */}
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-card-bg to-transparent z-10" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-card-bg to-transparent z-10" />
+
+            <div className="flex items-stretch gap-0.5 px-4 overflow-x-auto no-scrollbar">
+              {(() => {
+                const active = activeCategory === 'All';
+                return (
+                  <button
+                    onClick={() => setActiveCategory('All')}
+                    className={`group relative flex items-center gap-1.5 whitespace-nowrap px-3 py-3.5 text-[13px] font-semibold shrink-0 transition-colors ${
+                      active ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <LayoutGrid size={14} className={active ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary transition-colors'} />
+                    All
+                    <span className={`absolute inset-x-1.5 bottom-0 h-0.5 rounded-full transition-all ${active ? 'bg-accent' : 'bg-transparent'}`} />
+                  </button>
+                );
+              })()}
+
+              {categories.map(cat => {
+                const meta   = getCategoryMeta(cat);
+                const Icon   = meta.icon;
+                const active = activeCategory === cat;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`group relative flex items-center gap-1.5 whitespace-nowrap px-3 py-3.5 text-[13px] font-semibold shrink-0 transition-colors ${
+                      active ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <Icon size={14} className={active ? meta.color : 'text-text-secondary group-hover:text-text-primary transition-colors'} />
+                    {cat}
+                    <span className={`absolute inset-x-1.5 bottom-0 h-0.5 rounded-full transition-all ${active ? 'bg-accent' : 'bg-transparent'}`} />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -1345,14 +1630,14 @@ function Skeleton() {
         <div className="h-9 w-28 bg-bg-secondary rounded-xl animate-pulse" />
       </div>
       {/* Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 md:grid-cols-12 gap-4">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-[116px] bg-bg-secondary rounded-2xl animate-pulse" />
+          <div key={i} className="col-span-2 md:col-span-3 h-[116px] bg-bg-secondary rounded-2xl animate-pulse" />
         ))}
         {[1, 2].map(i => (
-          <div key={i} className="col-span-2 h-[200px] bg-bg-secondary rounded-2xl animate-pulse" />
+          <div key={i} className="col-span-4 md:col-span-6 h-[200px] bg-bg-secondary rounded-2xl animate-pulse" />
         ))}
-        <div className="col-span-2 h-[180px] bg-bg-secondary rounded-2xl animate-pulse" />
+        <div className="col-span-4 md:col-span-12 h-[180px] bg-bg-secondary rounded-2xl animate-pulse" />
       </div>
     </div>
   );
@@ -1374,7 +1659,30 @@ export default function NewDashboardPage() {
   const [loadingIds, setLoadingIds] = useState<Set<number>>(new Set());
   const [layouts,   setLayouts]   = useState<Layout[]>([]);
   const [agents,    setAgents]    = useState<AgentSummary[]>([]);
-  const activeLayout = layouts.find((l) => l.is_active) ?? null;
+  // Widget Composer (spec-based authoring) — datasheets are the phase-1 sources.
+  const [showComposer,  setShowComposer]  = useState(false);
+  const [composerSheets, setComposerSheets] = useState<{ id: number; name: string }[]>([]);
+  const [composerPipelines, setComposerPipelines] = useState<{ id: number; name: string }[]>([]);
+
+  // A `?layout=<id>` URL param (e.g. a System's dashboard link in the sidebar)
+  // selects a SPECIFIC layout to view, fetched via GET — it wins over the
+  // globally-active layout. Clicking a layout in the switcher updates this too.
+  const searchParams = useSearchParams();
+  const [selectedLayoutId, setSelectedLayoutId] = useState<number | null>(() => {
+    const v = Number(searchParams.get('layout'));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  });
+  // Follow the URL param if it changes via client navigation.
+  useEffect(() => {
+    const v = Number(searchParams.get('layout'));
+    setSelectedLayoutId(Number.isFinite(v) && v > 0 ? v : null);
+  }, [searchParams]);
+
+  // The layout to DISPLAY: an explicit selection (URL or switcher) that exists in
+  // the user's layouts wins; otherwise the globally-active one.
+  const activeLayout =
+    (selectedLayoutId != null && layouts.find((l) => l.id === selectedLayoutId)) ||
+    layouts.find((l) => l.is_active) || null;
   const activeLayoutId = activeLayout?.id ?? null;
 
   // The agent the composer opens with = the active layout's bound default, else
@@ -1443,7 +1751,10 @@ export default function NewDashboardPage() {
   const loadAll = useCallback(async () => {
     try {
       const ls = await loadLayouts();
-      const active = ls.find((l) => l.is_active)?.id ?? null;
+      // Honor a URL-selected layout if it resolves; else the active one.
+      const sel = selectedLayoutId != null && ls.some((l) => l.id === selectedLayoutId)
+        ? selectedLayoutId : null;
+      const active = sel ?? ls.find((l) => l.is_active)?.id ?? null;
       const [metas, allData] = await Promise.all([
         fetchWidgets(active),
         fetchAllData(startDate, endDate, active),
@@ -1513,7 +1824,7 @@ export default function NewDashboardPage() {
     await deleteWidget(id);
   }
 
-  async function handleUpdate(id: number, patch: { title?: string; size?: string; date_range?: string }) {
+  async function handleUpdate(id: number, patch: WidgetPatch) {
     // Optimistic meta update so title/size/chip change instantly…
     setWidgets(prev => prev.map(w => (w.id === id ? { ...w, ...patch } : w)));
     await updateWidget(id, patch);
@@ -1549,6 +1860,7 @@ export default function NewDashboardPage() {
         title: opt.default_title, source_type: opt.source_type,
         display_type: opt.display_type, size: opt.size,
         source_id: opt.source_id, field_id: opt.field_id, aggregation: opt.aggregation,
+        filter_value: opt.filter_value,
       });
       created.push(w);
     }
@@ -1566,6 +1878,30 @@ export default function NewDashboardPage() {
     setEditing(true);
   }
 
+  // Open the Widget Composer immediately, then load the datasheet list to seed
+  // step 1 asynchronously — opening must never block on the fetch (core sources
+  // don't need it, and a slow/failed call shouldn't wedge the modal shut).
+  function openComposer() {
+    setShowComposer(true);
+    fetchListSources()
+      .then(src => {
+        setComposerSheets(src.datasheets.map(d => ({ id: d.id, name: d.name })));
+        setComposerPipelines((src.pipelines ?? []).map(p => ({ id: p.id, name: p.name })));
+      })
+      .catch(() => { setComposerSheets([]); setComposerPipelines([]); });
+  }
+
+  // After a composed widget is created — refetch this layout's widgets + data.
+  async function handleComposerCreated() {
+    const ws = await fetchWidgets(activeLayoutId);
+    setWidgets(ws);
+    const allData = await fetchAllData(startDate, endDate, activeLayoutId);
+    const map = new Map<number, WidgetData>();
+    allData.forEach(d => map.set(d.widget_id, d));
+    setDataMap(map);
+    loadLayouts();
+  }
+
   if (loading) return <Skeleton />;
 
   return (
@@ -1580,6 +1916,12 @@ export default function NewDashboardPage() {
             Editing — drag to reorder, × to remove
           </span>
           <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={openComposer}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-accent hover:bg-accent/90 text-white transition-colors shadow-sm"
+            >
+              <Plus size={13} /> Compose
+            </button>
             <button
               onClick={() => setShowModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-colors shadow-sm"
@@ -1611,6 +1953,7 @@ export default function NewDashboardPage() {
                 layouts={layouts}
                 activeId={activeLayoutId}
                 onChange={loadLayouts}
+                onSelect={(id) => setSelectedLayoutId(id)}
               />
             )}
             {/* Date range picker — controls all widget data */}
@@ -1655,6 +1998,12 @@ export default function NewDashboardPage() {
                 <Zap size={15} /> Set up with AI
               </button>
               <button
+                onClick={openComposer}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-card-bg border border-border-color text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                <Plus size={15} /> Compose a widget
+              </button>
+              <button
                 onClick={async () => { await loadOptions(); setEditing(true); setShowModal(true); }}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-card-bg border border-border-color text-text-primary hover:bg-bg-secondary transition-colors"
               >
@@ -1665,7 +2014,7 @@ export default function NewDashboardPage() {
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={widgets.map(w => w.id)} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-4 md:grid-cols-12 gap-4 items-start [grid-auto-flow:dense] pb-28">
                 {widgets.map(meta => (
                   <SortableWidget
                     key={meta.id}
@@ -1690,6 +2039,19 @@ export default function NewDashboardPage() {
           options={options}
           onClose={() => setShowModal(false)}
           onAdd={handleAdd}
+        />
+      )}
+
+      {/* ── Widget Composer (spec-based) ── */}
+      {showComposer && (
+        <WidgetComposer
+          datasheets={composerSheets}
+          pipelines={composerPipelines}
+          startDate={startDate}
+          endDate={endDate}
+          layoutId={activeLayoutId}
+          onClose={() => setShowComposer(false)}
+          onCreated={handleComposerCreated}
         />
       )}
 

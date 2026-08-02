@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
+import { DateField } from '@/components/ui/date-field';
 import type {
   AudienceFilter,
   CustomFieldFilter,
@@ -274,10 +275,9 @@ function CustomFieldRow({
       )}
 
       {showValue && field.field_type === 'date' && (
-        <input
-          type="date"
+        <DateField
           value={current?.value != null ? String(current.value) : ''}
-          onChange={(e) => emit({ value: e.target.value || null })}
+          onChange={(iso) => emit({ value: iso || null })}
           className={inputCls}
         />
       )}
@@ -645,10 +645,9 @@ export function FilterBuilder({ value, onChange }: Props) {
             <label className="block text-xs font-medium text-text-secondary mb-1">
               Added after
             </label>
-            <input
-              type="date"
+            <DateField
               value={value.created_after ?? ''}
-              onChange={(e) => update({ created_after: e.target.value || undefined })}
+              onChange={(iso) => update({ created_after: iso || undefined })}
               className="w-full px-2.5 py-1.5 text-sm border border-border-color rounded-lg bg-bg-primary text-text-primary focus:outline-none focus:border-accent"
             />
           </div>
@@ -656,10 +655,10 @@ export function FilterBuilder({ value, onChange }: Props) {
             <label className="block text-xs font-medium text-text-secondary mb-1">
               Added before
             </label>
-            <input
-              type="date"
+            <DateField
               value={value.created_before ?? ''}
-              onChange={(e) => update({ created_before: e.target.value || undefined })}
+              onChange={(iso) => update({ created_before: iso || undefined })}
+              align="right"
               className="w-full px-2.5 py-1.5 text-sm border border-border-color rounded-lg bg-bg-primary text-text-primary focus:outline-none focus:border-accent"
             />
           </div>

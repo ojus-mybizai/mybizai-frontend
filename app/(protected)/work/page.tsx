@@ -10,6 +10,7 @@ import WorkCalendarView from '@/components/work/work-calendar-view';
 import { WorkTemplateTable } from '@/components/work/work-template-table';
 import { WorkPipelineView } from '@/components/work/work-pipeline-view';
 import { useAuthStore } from '@/lib/auth-store';
+import { formatDayMonth as fmtDayMonth } from '@/lib/format-date';
 import {
   listWork,
   getWorkStats,
@@ -60,7 +61,7 @@ function relativeDate(d: string | null | undefined): { text: string; overdue: bo
   if (diff === 0) return { text: 'Today', overdue: false };
   if (diff === 1) return { text: 'Tomorrow', overdue: false };
   if (diff <= 7) return { text: `in ${diff}d`, overdue: false };
-  return { text: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), overdue: false };
+  return { text: fmtDayMonth(date), overdue: false };
 }
 
 const STATUS_OPTIONS = [

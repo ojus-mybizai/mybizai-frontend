@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, X, CheckCheck, ExternalLink, Loader2 } from 'lucide-react';
 import { useNotificationStore } from '@/lib/notification-store';
+import { formatDate } from '@/lib/format-date';
 import type { NotificationItem } from '@/services/notifications';
 
 /* ─── Helpers ──────────────────────────────────────────────────────────────── */
@@ -43,7 +44,7 @@ function relativeTime(iso: string | null): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 /* Render body text with newline support */

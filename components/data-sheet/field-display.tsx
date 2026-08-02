@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { formatDate as fmtDate } from '@/lib/format-date';
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -141,9 +142,7 @@ function parseDate(value: unknown): Date | null {
 function formatDate(value: unknown, density: FieldDensity): { primary: string; tooltip: string } | null {
   const d = parseDate(value);
   if (!d) return null;
-  const primary = density === 'detail'
-    ? d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
-    : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  const primary = fmtDate(d);
   return { primary, tooltip: d.toString() };
 }
 

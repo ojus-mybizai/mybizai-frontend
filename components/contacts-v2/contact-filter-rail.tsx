@@ -8,10 +8,11 @@ import {
   Zap, Clock, Snowflake, CircleSlash,
   UserPlus, AlarmClock, ContactRound,
   CalendarDays, Tag as TagIcon, Radio, ListChecks,
+  FolderKanban, Lock, Settings2,
 } from 'lucide-react';
 import type {
   ContactFilters, ContactFilterCounts, Priority, RoutingMode,
-  Engagement, CreatedWithin, Attention, ContactTag, CustomFilter,
+  Engagement, CreatedWithin, Attention, ContactTag, ContactGroup, CustomFilter,
 } from '@/services/contacts-v2';
 import type { Channel as BusinessChannel } from '@/services/channels';
 import type { ContactSourceDef } from '@/services/contact-source-defs';
@@ -22,12 +23,14 @@ interface Props {
   counts: ContactFilterCounts | null;
   loadingCounts: boolean;
   tags: ContactTag[];
+  groups: ContactGroup[];
   channelInstances: BusinessChannel[];
   sourceDefs: ContactSourceDef[];
   fieldDefs: ContactFieldDef[];
   onChange: (patch: Partial<ContactFilters>) => void;
   onReset: () => void;
   onCollapse: () => void;
+  onManageGroups: () => void;
 }
 
 // ── Segment option metadata ───────────────────────────────────────────────────
@@ -74,15 +77,21 @@ const SOURCE_LABELS: Record<string, string> = {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function ContactFilterRail({
-  filters, counts, loadingCounts, tags, channelInstances, sourceDefs, fieldDefs, onChange, onReset, onCollapse,
+  filters, counts, loadingCounts, tags, groups, channelInstances, sourceDefs, fieldDefs, onChange, onReset, onCollapse, onManageGroups,
 }: Props) {
   const customFilters = filters.custom_filters ?? [];
+  const tagIds = filters.tag_ids ?? [];
+  const groupIds = filters.group_ids ?? [];
 
   const activeCount = [
     filters.priority, filters.routing_mode, filters.engagement,
-    filters.created_within, filters.attention, filters.tag_id,
+    filters.created_within, filters.attention,
     filters.source, filters.channel_id,
-  ].filter(v => v != null).length + customFilters.length;
+  ].filter(v => v != null).length + customFilters.length + tagIds.length + groupIds.length;
+
+  // Toggle an id in a multi-select array filter (tags = OR, groups = AND).
+  const toggleId = (arr: number[], id: number): number[] =>
+    arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id];
 
   // Display label/color per source key, from the business registry.
   const sourceMeta = useMemo(() => {
@@ -263,7 +272,44 @@ export function ContactFilterRail({
           ))}
         </Section>
 
-        {/* Tags */}
+        {/* Groups — multi-select, AND semantics (contact must be in all checked) */}
+        <Section
+          title="Groups"
+          icon={<FolderKanban className="w-3 h-3" />}
+          action={
+            <button
+              onClick={onManageGroups}
+              title="Create, edit & route groups"
+              className="flex items-center gap-1 text-[10px] text-text-secondary hover:text-accent px-1 py-0.5 rounded"
+            >
+              <Settings2 className="w-3 h-3" /> Manage
+            </button>
+          }
+        >
+          {groups.length === 0 ? (
+            <p className="px-2 py-1 text-[11px] text-text-secondary/70">No groups yet.</p>
+          ) : (
+            groups.map(g => (
+              <CheckRow
+                key={g.id}
+                label={g.name}
+                icon={g.is_system ? <Lock className="w-3 h-3" /> : undefined}
+                dotColor={g.is_system ? undefined : (g.color ?? '#6366f1')}
+                count={counts?.groups?.[String(g.id)] ?? 0}
+                loading={loadingCounts}
+                active={groupIds.includes(g.id)}
+                onClick={() => onChange({ group_ids: toggleId(groupIds, g.id) })}
+              />
+            ))
+          )}
+          {groupIds.length > 1 && (
+            <p className="px-2 pt-1 text-[10px] text-text-secondary/70">
+              Showing contacts in <span className="font-medium">all {groupIds.length}</span> selected groups.
+            </p>
+          )}
+        </Section>
+
+        {/* Tags — multi-select, OR semantics (contact has any checked tag) */}
         {tags.length > 0 && (
           <Section title="Tags" icon={<TagIcon className="w-3 h-3" />}>
             {tags.map(t => (
@@ -273,10 +319,15 @@ export function ContactFilterRail({
                 dotColor={t.color ?? '#6366f1'}
                 count={counts?.tags?.[String(t.id)] ?? 0}
                 loading={loadingCounts}
-                active={filters.tag_id === t.id}
-                onClick={() => onChange({ tag_id: filters.tag_id === t.id ? null : t.id })}
+                active={tagIds.includes(t.id)}
+                onClick={() => onChange({ tag_ids: toggleId(tagIds, t.id) })}
               />
             ))}
+            {tagIds.length > 1 && (
+              <p className="px-2 pt-1 text-[10px] text-text-secondary/70">
+                Showing contacts with <span className="font-medium">any</span> selected tag.
+              </p>
+            )}
           </Section>
         )}
 
@@ -398,12 +449,13 @@ function CustomFieldFilter({
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
 
-function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+function Section({ title, icon, action, children }: { title: string; icon?: React.ReactNode; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
       <div className="flex items-center gap-1.5 px-1 mb-1.5">
         {icon && <span className="text-text-secondary/70">{icon}</span>}
         <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">{title}</span>
+        {action && <span className="ml-auto">{action}</span>}
       </div>
       <div className="space-y-0.5">{children}</div>
     </div>

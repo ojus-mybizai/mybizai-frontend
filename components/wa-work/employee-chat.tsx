@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Send, RefreshCw, MessageSquare, AlertCircle, Wrench } from 'lucide-react';
+import { formatTime, formatDateTime, formatDayMonth } from '@/lib/format-date';
 import {
   getEmployeeChat,
   sendEmployeeChatMessage,
@@ -28,9 +29,9 @@ function formatBubbleTime(iso: string): string {
     d.getMonth() === now.getMonth() &&
     d.getFullYear() === now.getFullYear();
   if (sameDay) {
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return formatTime(d);
   }
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return formatDateTime(d);
 }
 
 function groupByDay(messages: WaEmployeeChatMessage[]): Array<{ day: string; items: WaEmployeeChatMessage[] }> {
@@ -39,7 +40,7 @@ function groupByDay(messages: WaEmployeeChatMessage[]): Array<{ day: string; ite
     const d = new Date(m.timestamp);
     const key = Number.isNaN(d.getTime())
       ? 'Unknown'
-      : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      : formatDayMonth(d);
     const arr = buckets.get(key) ?? [];
     arr.push(m);
     buckets.set(key, arr);

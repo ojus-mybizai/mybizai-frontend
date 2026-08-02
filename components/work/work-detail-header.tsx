@@ -2,11 +2,10 @@
 
 import Link from 'next/link';
 import type { Work } from '@/services/work';
+import { formatDate as fmtDate } from '@/lib/format-date';
 
 function formatDate(d: string | null | undefined): string {
-  if (!d) return '—';
-  const x = new Date(d);
-  return Number.isNaN(x.getTime()) ? '—' : x.toLocaleDateString(undefined, { dateStyle: 'medium' });
+  return fmtDate(d);
 }
 
 function statusBadgeClass(status: string): string {

@@ -26,8 +26,8 @@ const SWATCHES = [
 
 /**
  * Manage the business-configurable "Source" picklist (how a contact was
- * acquired). Built-in sources can be renamed / recolored but not deleted;
- * custom sources support full CRUD. Backs the Source dropdown in the
+ * acquired). Every source — built-in or custom — supports full CRUD
+ * (rename / recolor / delete). Backs the Source dropdown in the
  * create-contact modal and the Source facet in the filter rail.
  */
 export function ManageSourcesModal({ open, onClose, onChanged }: Props) {
@@ -106,7 +106,6 @@ export function ManageSourcesModal({ open, onClose, onChanged }: Props) {
   };
 
   const handleDelete = async (s: ContactSourceDef) => {
-    if (s.is_system) return;
     setDeletingId(s.id);
     setError('');
     try {
@@ -221,7 +220,7 @@ export function ManageSourcesModal({ open, onClose, onChanged }: Props) {
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-accent/10 text-accent">Default</span>
                       )}
                       {s.is_system && (
-                        <span className="flex items-center gap-1 text-[10px] text-text-secondary/70" title="Built-in source — can be renamed but not deleted">
+                        <span className="flex items-center gap-1 text-[10px] text-text-secondary/70" title="Built-in source — can be renamed, recolored, or deleted">
                           <Lock className="w-3 h-3" /> Built-in
                         </span>
                       )}
@@ -232,18 +231,16 @@ export function ManageSourcesModal({ open, onClose, onChanged }: Props) {
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      {!s.is_system && (
-                        deletingId === s.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin text-text-secondary" />
-                        ) : (
-                          <button
-                            onClick={() => handleDelete(s)}
-                            className="p-1.5 rounded-md text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors"
-                            title="Delete source"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )
+                      {deletingId === s.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-text-secondary" />
+                      ) : (
+                        <button
+                          onClick={() => handleDelete(s)}
+                          className="p-1.5 rounded-md text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors"
+                          title="Delete source"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
                     </div>
                   )}

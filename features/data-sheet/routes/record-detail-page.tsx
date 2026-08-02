@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { formatDateTime } from '@/lib/format-date';
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -96,9 +97,7 @@ function singular(name: string): string {
 
 function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return String(iso);
-  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return formatDateTime(iso, String(iso));
 }
 
 export function RecordDetailPage() {
@@ -136,7 +135,8 @@ export function RecordDetailPage() {
   const [childSheetModal, setChildSheetModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [activeRelTab, setActiveRelTab] = useState(0);
+  // Content tabs: "overview" (details + media) or one per related sheet ("rel-<i>").
+  const [activeTab, setActiveTab] = useState<string>('overview');
 
   const fields = ctx?.fields ?? [];
   const modelId = ctx?.modelId ?? params?.modelId;
@@ -483,6 +483,36 @@ export function RecordDetailPage() {
       <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[1fr_340px]">
         {/* LEFT */}
         <div className="flex min-w-0 flex-col gap-5">
+          {/* ── Content tabs: Overview (details + media) + one per related sheet ── */}
+          <div className="flex items-center gap-1 overflow-x-auto rounded-2xl border border-border-color bg-card-bg px-2 shadow-sm">
+            <RecordTab
+              active={activeTab === 'overview'}
+              onClick={() => setActiveTab('overview')}
+              icon={<AlignLeft className="h-4 w-4" />}
+              label="Overview"
+            />
+            {reverseRelations.map((rel, i) => (
+              <RecordTab
+                key={`${rel.source_model_id}-${rel.field_id}`}
+                active={activeTab === `rel-${i}`}
+                onClick={() => setActiveTab(`rel-${i}`)}
+                icon={<Layers className="h-4 w-4" />}
+                label={rel.source_model_display_name}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => setChildSheetModal(true)}
+              className="ml-auto flex h-8 shrink-0 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold text-text-muted transition-colors hover:bg-bg-secondary hover:text-accent"
+              title="Add a related sheet"
+            >
+              <Plus className="h-3.5 w-3.5" /> Related sheet
+            </button>
+          </div>
+
+          {/* ── Overview tab: Details + Media ── */}
+          {activeTab === 'overview' && (
+          <>
           {/* Details */}
           <section className="overflow-hidden rounded-2xl border border-border-color bg-card-bg shadow-sm">
             <header className="flex items-center gap-2.5 border-b border-border-color px-5 py-3.5">
@@ -598,69 +628,32 @@ export function RecordDetailPage() {
             </section>
           )}
 
-          {/* Related records (child datasheets) */}
-          <section className="overflow-hidden rounded-2xl border border-border-color bg-card-bg shadow-sm">
-            <header className="flex items-center gap-2.5 border-b border-border-color px-5 py-3.5">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                <Layers className="h-4 w-4" />
-              </span>
-              <h2 className="flex-1 text-sm font-bold text-text-primary">Related records</h2>
-              {reverseRelations.length > 0 && (
-                <span className="rounded-full bg-bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-text-muted">
-                  {reverseRelations.length} linked sheet{reverseRelations.length !== 1 ? 's' : ''}
-                </span>
-              )}
-            </header>
+          </>
+          )}
 
-            {reverseRelations.length > 0 ? (
-              <div className="p-4">
-                {reverseRelations.length > 1 && (
-                  <div className="mb-3 flex gap-1 border-b border-border-color">
-                    {reverseRelations.map((rel, i) => (
-                      <button
-                        key={`${rel.source_model_id}-${rel.field_id}`}
-                        type="button"
-                        onClick={() => setActiveRelTab(i)}
-                        className={`px-3 py-2 text-sm font-semibold transition-colors ${i === activeRelTab ? 'border-b-2 border-accent text-accent' : 'text-text-secondary hover:text-text-primary'}`}
-                      >
-                        {rel.source_model_display_name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {reverseRelations.map((rel, i) => (
-                  <div key={`${rel.source_model_id}-${rel.field_id}`} className={reverseRelations.length > 1 && i !== activeRelTab ? 'hidden' : ''}>
-                    <ReverseRelationSubTable
-                      parentModelId={modelId!}
-                      parentRecordId={recordId}
-                      reverseRelation={rel}
-                      onRecordCreated={() => {}}
-                      onRecordDeleted={() => {}}
-                      compact={false}
-                    />
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setChildSheetModal(true)}
-                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border-[1.5px] border-dashed border-border-color py-2.5 text-xs font-semibold text-text-muted transition-colors hover:border-accent hover:text-accent"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Create new child datasheet
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setChildSheetModal(true)}
-                className="m-4 flex flex-col items-center gap-1 rounded-xl border-[1.5px] border-dashed border-border-color py-6 text-text-muted transition-colors hover:border-accent hover:text-accent"
-                style={{ width: 'calc(100% - 2rem)' }}
-              >
-                <Layers className="mb-1 h-5 w-5" />
-                <span className="text-sm font-semibold">Create child datasheet</span>
-                <span className="text-[11px]">Add sub-tables like visits, orders or notes</span>
-              </button>
-            )}
-          </section>
+          {/* ── Related-sheet tabs: each reverse relation, in the same card style as Overview ── */}
+          {reverseRelations.map((rel, i) => (
+            activeTab === `rel-${i}` && (
+              <section key={`${rel.source_model_id}-${rel.field_id}`} className="overflow-hidden rounded-2xl border border-border-color bg-card-bg shadow-sm">
+                <header className="flex items-center gap-2.5 border-b border-border-color px-5 py-3.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                    <Layers className="h-4 w-4" />
+                  </span>
+                  <h2 className="text-sm font-bold text-text-primary">{rel.source_model_display_name}</h2>
+                </header>
+                <div className="p-4">
+                  <ReverseRelationSubTable
+                    parentModelId={modelId!}
+                    parentRecordId={recordId}
+                    reverseRelation={rel}
+                    onRecordCreated={() => {}}
+                    onRecordDeleted={() => {}}
+                    compact={false}
+                  />
+                </div>
+              </section>
+            )
+          ))}
         </div>
 
         {/* SIDEBAR */}
@@ -792,6 +785,34 @@ export function RecordDetailPage() {
 }
 
 /* ──────────────────────────────────────────────────────────────── */
+
+/** A single content tab (Overview / a related sheet). */
+function RecordTab({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition-colors ${
+        active
+          ? 'border-accent text-accent'
+          : 'border-transparent text-text-secondary hover:text-text-primary'
+      }`}
+    >
+      <span className={active ? 'text-accent' : 'text-text-muted'}>{icon}</span>
+      <span className="max-w-[160px] truncate">{label}</span>
+    </button>
+  );
+}
 
 function MetaRow({ k, v }: { k: string; v: React.ReactNode }) {
   return (

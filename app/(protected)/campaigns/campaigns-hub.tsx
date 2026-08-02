@@ -11,6 +11,7 @@ import {
   type Campaign, type Sequence, type Segment, type CreditsInfo,
   type CampaignStatus, type SequenceStatus,
 } from '@/services/campaigns';
+import { formatDate } from '@/lib/format-date';
 type Tab = 'campaigns' | 'sequences' | 'segments';
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -199,8 +200,8 @@ function CampaignsTab({ campaigns }: { campaigns: Campaign[] }) {
               <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
               <td className="px-4 py-3 text-text-secondary text-xs">
                 {c.launched_at
-                  ? new Date(c.launched_at).toLocaleDateString()
-                  : new Date(c.created_at).toLocaleDateString()}
+                  ? formatDate(c.launched_at)
+                  : formatDate(c.created_at)}
               </td>
             </tr>
           ))}

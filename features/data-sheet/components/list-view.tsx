@@ -6,6 +6,7 @@ import type { QueryResponse } from '@/features/data-sheet/api';
 import type { ListViewConfig } from '@/features/data-sheet/state/view-state';
 import { FieldDisplay } from '@/components/data-sheet/field-display';
 import { valueColor } from '@/components/data-sheet/value-colors';
+import { formatDate } from '@/lib/format-date';
 
 type RecordItem = QueryResponse['items'][number];
 
@@ -118,9 +119,9 @@ export function ListView({
             {/* Timestamp */}
             <span className="hidden shrink-0 text-[10px] text-text-secondary sm:block">
               {row.updated_at
-                ? new Date(String(row.updated_at)).toLocaleDateString()
+                ? formatDate(String(row.updated_at))
                 : row.created_at
-                  ? new Date(String(row.created_at)).toLocaleDateString()
+                  ? formatDate(String(row.created_at))
                   : ''}
             </span>
 

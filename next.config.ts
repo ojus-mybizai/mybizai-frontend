@@ -1,7 +1,18 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+
+const isProd = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+
+  // Pin the workspace root to this folder. Without it, Next infers the repo
+  // root (which carries its own package.json + react/react-dom for the
+  // docx/pptx tooling) as the root and resolves a second, duplicate module
+  // graph — leaving components bound to stale store instances in dev.
+  turbopack: {
+    root: path.resolve(__dirname),
+  },
 
   images: {
     formats: ["image/avif", "image/webp"],
@@ -35,6 +46,10 @@ const nextConfig: NextConfig = {
   },
 
   async headers() {
+    // Only send long-lived immutable caching in production. In dev, immutable
+    // headers make the browser pin stale Turbopack chunks so a normal reload
+    // never picks up recompiled code.
+    if (!isProd) return [];
     return [
       {
         source: "/_next/static/:path*",
@@ -56,6 +71,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  
 };
 
 export default nextConfig;

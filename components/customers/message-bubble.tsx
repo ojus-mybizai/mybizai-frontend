@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { formatTime as fmtTime, formatDateTime as fmtDateTime } from '@/lib/format-date';
 import {
   AlertCircle,
   CheckCheck,
@@ -37,9 +38,9 @@ function formatMessageTime(timestamp: string): string {
   const now = new Date();
   const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   if (sameDay) {
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return fmtTime(d);
   }
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return fmtDateTime(d);
 }
 
 function formatBytes(bytes: number | null | undefined): string | null {
