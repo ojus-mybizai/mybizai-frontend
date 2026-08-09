@@ -10,7 +10,8 @@ import type {
 export interface ConditionDraft {
   field: string;
   op: string;
-  value: string;
+  // string for scalars; string[] for list ops (in / not_in / contains_any).
+  value: string | string[];
 }
 
 export interface ActionDraft {

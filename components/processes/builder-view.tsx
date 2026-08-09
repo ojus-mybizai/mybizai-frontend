@@ -17,6 +17,7 @@ import {
   type ProcessMessageToken, type WaAssignmentStrategy,
 } from '@/services/processes';
 import { listWorkTemplates, type WorkTemplate } from '@/services/work';
+import { listAgentRoles, type AgentRoleOption } from '@/services/agentRoles';
 import { listEmployees, type Employee } from '@/services/employees';
 import {
   listVerifiedWhatsAppChannels, whatsAppChannelLabel, type Channel,
@@ -29,8 +30,8 @@ import {
   type WaTemplate, type ButtonDef,
 } from '@/services/waTemplates';
 import {
-  listEmployees as listWaEmployees, listGroups as listWaGroups,
-  type WaEmployee, type WaEmployeeGroup,
+  listEmployees as listWaEmployees,
+  type WaEmployee,
 } from '@/services/waEmployees';
 import { randomStageColor } from './shared';
 
@@ -66,7 +67,6 @@ export default function BuilderView({ process, stages, onReload }: Props) {
   // employee-facing task templates).
   const [waWorkTemplates, setWaWorkTemplates] = useState<WaTemplate[]>([]);
   const [waEmployees, setWaEmployees] = useState<WaEmployee[]>([]);
-  const [waGroups, setWaGroups] = useState<WaEmployeeGroup[]>([]);
   const [pickersLoaded, setPickersLoaded] = useState(false);
   const [fieldOptions, setFieldOptions] = useState<ProcessFieldOptions | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -88,10 +88,9 @@ export default function BuilderView({ process, stages, onReload }: Props) {
         // render time so the user can see if they ONLY have lead_list ones)
         listWaTemplatesService().catch(() => [] as WaTemplate[]),
         listWaEmployees({ status: 'active' }).catch(() => [] as WaEmployee[]),
-        listWaGroups().catch(() => [] as WaEmployeeGroup[]),
         getProcessFieldOptions(process.id).catch(() => null),
       ])
-        .then(([t, e, a, chs, tpls, waTpls, waEmps, waGrps, fopts]) => {
+        .then(([t, e, a, chs, tpls, waTpls, waEmps, fopts]) => {
           setTemplates(t.filter(tpl => tpl.is_active));
           setEmployees(e.filter(emp => emp.is_active));
           setAutomations(a);
@@ -99,7 +98,6 @@ export default function BuilderView({ process, stages, onReload }: Props) {
           setWaTemplates(tpls);
           setWaWorkTemplates(waTpls.filter(tpl => tpl.is_active));
           setWaEmployees(waEmps.filter(emp => emp.is_active));
-          setWaGroups(waGrps);
           setFieldOptions(fopts);
           setPickersLoaded(true);
         })
@@ -161,7 +159,6 @@ export default function BuilderView({ process, stages, onReload }: Props) {
                   waTemplates={waTemplates}
                   waWorkTemplates={waWorkTemplates}
                   waEmployees={waEmployees}
-                  waGroups={waGroups}
                   pickersLoaded={pickersLoaded}
                   fieldOptions={fieldOptions}
                   // Only this stage's rules — `on_enter | on_exit | on_stuck`
@@ -213,7 +210,6 @@ export default function BuilderView({ process, stages, onReload }: Props) {
           waTemplates={waTemplates}
           employees={employees}
           waEmployees={waEmployees}
-          waGroups={waGroups}
           pickersLoaded={pickersLoaded}
           onReload={reloadAutomations}
         />
@@ -226,7 +222,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
 
 function StageCard({
   process, stage, templates, employees,
-  waChannels, waTemplates, waWorkTemplates, waEmployees, waGroups,
+  waChannels, waTemplates, waWorkTemplates, waEmployees,
   pickersLoaded, fieldOptions, stageRules,
   onReloadAutomations, onReload,
 }: {
@@ -238,7 +234,6 @@ function StageCard({
   waTemplates: MessageTemplate[];     // approved Meta HSMs — used by WhatsApp message action
   waWorkTemplates: WaTemplate[];      // WaTemplate (simple_task / whatsapp_form / checklist)
   waEmployees: WaEmployee[];          // verified WA employees
-  waGroups: WaEmployeeGroup[];        // WA employee groups
   pickersLoaded: boolean;
   fieldOptions: ProcessFieldOptions | null;
   stageRules: AutomationRule[];
@@ -275,13 +270,22 @@ function StageCard({
   // ones from this UI.
   const [waWorkTemplateId, setWaWorkTemplateId] = useState<number | null>(null);
   const [waWorkTitle, setWaWorkTitle] = useState('');
-  const [waWorkAssigneeMode, setWaWorkAssigneeMode] = useState<'group' | 'employees'>('group');
-  const [waWorkGroupId, setWaWorkGroupId] = useState<number | null>(null);
+  // Slice 3c: dispatch to a ROLE pool (or hand-picked employees). Groups retired.
+  const [waWorkAssigneeMode, setWaWorkAssigneeMode] = useState<'role' | 'employees'>('role');
+  const [waWorkRole, setWaWorkRole] = useState<string | null>(null);
+  const [agentRoles, setAgentRoles] = useState<AgentRoleOption[]>([]);
   const [waWorkEmployeeIds, setWaWorkEmployeeIds] = useState<number[]>([]);
   const [waWorkDispatchMode, setWaWorkDispatchMode] = useState<'individual' | 'broadcast'>('individual');
   const [waWorkStrategy, setWaWorkStrategy] = useState<WaAssignmentStrategy>('all');
   const [waWorkDueIn, setWaWorkDueIn] = useState<string>('');
   const [waWorkAutoDispatch, setWaWorkAutoDispatch] = useState(true);
+
+  // Canonical role list (single source of truth — never a local literal).
+  useEffect(() => {
+    let active = true;
+    listAgentRoles().then((r) => { if (active) setAgentRoles(r); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   async function saveName() {
     if (editName.trim() === stage.name || !editName.trim()) return;
@@ -316,8 +320,8 @@ function StageCard({
 
   function resetWaWorkDraft() {
     setWaWorkTemplateId(null); setWaWorkTitle('');
-    setWaWorkAssigneeMode('group');
-    setWaWorkGroupId(null); setWaWorkEmployeeIds([]);
+    setWaWorkAssigneeMode('role');
+    setWaWorkRole(null); setWaWorkEmployeeIds([]);
     setWaWorkDispatchMode('individual'); setWaWorkStrategy('all');
     setWaWorkDueIn(''); setWaWorkAutoDispatch(true);
   }
@@ -331,16 +335,16 @@ function StageCard({
       alert('Pick a WhatsApp task template.');
       return;
     }
-    const hasGroup = waWorkAssigneeMode === 'group' && waWorkGroupId != null;
+    const hasRole = waWorkAssigneeMode === 'role' && waWorkRole != null;
     const hasEmployees = waWorkAssigneeMode === 'employees' && waWorkEmployeeIds.length > 0;
-    if (!hasGroup && !hasEmployees) {
-      alert('Assign to a group or pick at least one employee.');
+    if (!hasRole && !hasEmployees) {
+      alert('Pick a role or at least one employee.');
       return;
     }
     await addStageWork(process.id, stage.id, {
       dispatch_kind: 'wa_work',
       wa_template_id: templateId,
-      wa_assigned_group_id: hasGroup ? waWorkGroupId : null,
+      wa_assigned_role: hasRole ? waWorkRole : null,
       wa_assigned_employee_ids: hasEmployees ? waWorkEmployeeIds : null,
       wa_dispatch_mode: waWorkDispatchMode,
       wa_assignment_strategy: waWorkStrategy,
@@ -521,7 +525,7 @@ function StageCard({
             <WaWorkForm
               templates={waWorkTemplates}
               employees={waEmployees}
-              groups={waGroups}
+              roles={agentRoles}
               messageTokens={fieldOptions?.message_tokens ?? []}
               templateId={waWorkTemplateId}
               onTemplateIdChange={setWaWorkTemplateId}
@@ -529,8 +533,8 @@ function StageCard({
               onTitleChange={setWaWorkTitle}
               assigneeMode={waWorkAssigneeMode}
               onAssigneeModeChange={setWaWorkAssigneeMode}
-              groupId={waWorkGroupId}
-              onGroupIdChange={setWaWorkGroupId}
+              role={waWorkRole}
+              onRoleChange={setWaWorkRole}
               employeeIds={waWorkEmployeeIds}
               onEmployeeIdsChange={setWaWorkEmployeeIds}
               dispatchMode={waWorkDispatchMode}
@@ -562,7 +566,6 @@ function StageCard({
             waChannels={waChannels}
             waTemplates={waTemplates}
             waEmployees={waEmployees}
-            waGroups={waGroups}
             pickersLoaded={pickersLoaded}
             onReload={onReloadAutomations}
           />
@@ -599,8 +602,8 @@ function StageWorkRow({ work, onDelete }: {
     const typ = work.wa_template_type || 'simple_task';
     kindBadge = WA_TYPE_LABEL[typ] || { icon: '📱', label: typ };
     primary = work.title || work.wa_template_name || 'WhatsApp task';
-    if (work.wa_assigned_group_name) {
-      assignee = `${work.wa_assigned_group_name} group`;
+    if (work.wa_assigned_role) {
+      assignee = `${work.wa_assigned_role[0].toUpperCase()}${work.wa_assigned_role.slice(1)} role`;
     } else if (work.wa_assigned_employee_names && work.wa_assigned_employee_names.length > 0) {
       const names = work.wa_assigned_employee_names;
       assignee = names.length === 1
@@ -662,11 +665,11 @@ function StageWorkRow({ work, onDelete }: {
 // the backend's `_spawn_wa_work_for_stage` helper.
 
 function WaWorkForm({
-  templates, employees, groups, messageTokens,
+  templates, employees, roles, messageTokens,
   templateId, onTemplateIdChange,
   title, onTitleChange,
   assigneeMode, onAssigneeModeChange,
-  groupId, onGroupIdChange,
+  role, onRoleChange,
   employeeIds, onEmployeeIdsChange,
   dispatchMode, onDispatchModeChange,
   strategy, onStrategyChange,
@@ -676,16 +679,16 @@ function WaWorkForm({
 }: {
   templates: WaTemplate[];
   employees: WaEmployee[];
-  groups: WaEmployeeGroup[];
+  roles: AgentRoleOption[];
   messageTokens: ProcessMessageToken[];
   templateId: number | null;
   onTemplateIdChange: (v: number | null) => void;
   title: string;
   onTitleChange: (v: string) => void;
-  assigneeMode: 'group' | 'employees';
-  onAssigneeModeChange: (v: 'group' | 'employees') => void;
-  groupId: number | null;
-  onGroupIdChange: (v: number | null) => void;
+  assigneeMode: 'role' | 'employees';
+  onAssigneeModeChange: (v: 'role' | 'employees') => void;
+  role: string | null;
+  onRoleChange: (v: string | null) => void;
   employeeIds: number[];
   onEmployeeIdsChange: (v: number[]) => void;
   dispatchMode: 'individual' | 'broadcast';
@@ -934,10 +937,10 @@ function WaWorkForm({
         <label className="text-[10px] uppercase tracking-wide text-text-secondary">Assign to</label>
         <div className="mt-1 inline-flex rounded-md border border-border-color overflow-hidden">
           <button
-            onClick={() => onAssigneeModeChange('group')}
-            className={`px-3 py-1.5 text-xs font-medium ${assigneeMode === 'group' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
+            onClick={() => onAssigneeModeChange('role')}
+            className={`px-3 py-1.5 text-xs font-medium ${assigneeMode === 'role' ? 'bg-accent text-white' : 'bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
           >
-            Group
+            Role
           </button>
           <button
             onClick={() => onAssigneeModeChange('employees')}
@@ -947,21 +950,22 @@ function WaWorkForm({
           </button>
         </div>
 
-        {assigneeMode === 'group' ? (
+        {assigneeMode === 'role' ? (
           <div className="mt-2">
             <select
-              value={groupId ?? ''}
-              onChange={(e) => onGroupIdChange(e.target.value ? Number(e.target.value) : null)}
+              value={role ?? ''}
+              onChange={(e) => onRoleChange(e.target.value || null)}
               className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
             >
-              <option value="">— Pick a group —</option>
-              {groups.map(g => (
-                <option key={g.id} value={g.id}>{g.name} ({g.employee_count})</option>
+              <option value="">— Pick a role —</option>
+              {roles.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
-            {loaded && groups.length === 0 && (
-              <p className="mt-1 text-[10px] text-amber-600">No groups yet. Create one under WA Employees.</p>
-            )}
+            <p className="mt-1 text-[10px] text-text-secondary">
+              Dispatches to every active member with this role. Set roles on the{' '}
+              <a href="/members" className="underline">Members page</a>.
+            </p>
           </div>
         ) : (
           <div className="mt-2 max-h-32 overflow-auto rounded border border-border-color bg-bg-secondary p-1.5 space-y-1">
@@ -1005,11 +1009,9 @@ function WaWorkForm({
         </select>
         <p className="mt-1 text-[10px] text-text-secondary/70">
           {strategy === 'all'
-            ? 'Every person in the group / selection gets their own task.'
+            ? 'Every person in the role / selection gets their own task.'
             : strategy === 'round_robin'
-              ? assigneeMode === 'group'
-                ? 'One member each time, rotating through the group so work is shared evenly.'
-                : 'Rotating needs a group; over a hand-picked list it picks the least-busy person instead.'
+              ? 'Rotating spreads work by sending to the least-busy person each time.'
               : strategy === 'least_loaded'
                 ? 'Goes to whoever currently has the fewest open (pending) tasks.'
                 : 'Goes to one person picked at random.'}
@@ -1123,7 +1125,7 @@ const STAGE_TRIGGERS: { key: 'on_enter' | 'on_exit' | 'on_stuck'; label: string;
 
 function StageAutomationsSection({
   process, stage, rules, employees,
-  waChannels, waTemplates, waEmployees, waGroups, pickersLoaded, onReload,
+  waChannels, waTemplates, waEmployees, pickersLoaded, onReload,
 }: {
   process: BusinessProcess;
   stage: ProcessStage;
@@ -1132,7 +1134,6 @@ function StageAutomationsSection({
   waChannels: Channel[];
   waTemplates: MessageTemplate[];
   waEmployees: WaEmployee[];
-  waGroups: WaEmployeeGroup[];
   pickersLoaded: boolean;
   onReload: () => void;
 }) {
@@ -1288,7 +1289,7 @@ function StageAutomationsSection({
                 )}
                 {actionKind === 'assign_deal' && (
                   <AssignDealEditor draft={assignDraft} onChange={setAssignDraft}
-                    waGroups={waGroups} waEmployees={waEmployees} />
+                    waEmployees={waEmployees} />
                 )}
                 {actionKind === 'reassign' && (
                   <div>
@@ -1425,13 +1426,12 @@ const DEFAULT_ASSIGN_DEAL: AssignDealDraft = {
   employee_id: null,
 };
 
-/** Editor for the "assign deal to WhatsApp employee" action — method + optional
- *  group scope (round-robin within a group) or a specific employee. Shared by
- *  the per-stage and process-wide automation panels. */
-function AssignDealEditor({ draft, onChange, waGroups, waEmployees }: {
+/** Editor for the "assign deal to WhatsApp employee" action — a dispatch method
+ *  (round-robin across everyone) or a specific employee. Shared by the per-stage
+ *  and process-wide automation panels. */
+function AssignDealEditor({ draft, onChange, waEmployees }: {
   draft: AssignDealDraft;
   onChange: (d: AssignDealDraft) => void;
-  waGroups: WaEmployeeGroup[];
   waEmployees: WaEmployee[];
 }) {
   return (
@@ -1450,20 +1450,9 @@ function AssignDealEditor({ draft, onChange, waGroups, waEmployees }: {
         </select>
       </div>
       {draft.method !== 'specific' ? (
-        <div>
-          <label className="text-[10px] uppercase tracking-wide text-text-secondary">Within group (optional)</label>
-          <select
-            value={draft.group_id ?? ''}
-            onChange={(e) => onChange({ ...draft, group_id: e.target.value ? Number(e.target.value) : null })}
-            className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
-          >
-            <option value="">All WhatsApp employees</option>
-            {waGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
-          <p className="text-[9px] text-text-secondary/70 mt-0.5">
-            Spreads within this group; falls back to everyone if the group is empty.
-          </p>
-        </div>
+        <p className="text-[9px] text-text-secondary/70">
+          Spreads across all WhatsApp members.
+        </p>
       ) : (
         <div>
           <label className="text-[10px] uppercase tracking-wide text-text-secondary">Assign to</label>
@@ -1547,7 +1536,7 @@ function actionSummary(action: Record<string, any>): string {
 // inside each StageCard above. This panel only handles cross-stage events.
 function AutomationsPanel({
   process, stages, rules,
-  waChannels, waTemplates, employees, waEmployees, waGroups, pickersLoaded,
+  waChannels, waTemplates, employees, waEmployees, pickersLoaded,
   onReload,
 }: {
   process: BusinessProcess;
@@ -1557,7 +1546,6 @@ function AutomationsPanel({
   waTemplates: MessageTemplate[];
   employees: Employee[];
   waEmployees: WaEmployee[];
-  waGroups: WaEmployeeGroup[];
   pickersLoaded: boolean;
   onReload: () => void;
 }) {
@@ -1684,7 +1672,7 @@ function AutomationsPanel({
           )}
           {actionKind === 'assign_deal' && (
             <AssignDealEditor draft={assignDraft} onChange={setAssignDraft}
-              waGroups={waGroups} waEmployees={waEmployees} />
+              waEmployees={waEmployees} />
           )}
           {actionKind === 'reassign' && (
             <div>

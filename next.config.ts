@@ -42,6 +42,12 @@ const nextConfig: NextConfig = {
       // Legacy /conversations route renamed to /inbox (kept for bookmarks & deep links)
       { source: "/conversations", destination: "/inbox", permanent: false },
       { source: "/conversations/:path*", destination: "/inbox/:path*", permanent: false },
+      // Identity screens consolidated into /members (Employee+Task Redesign V2, Slice 5b).
+      // Permanent (308) — the old screens are deleted; bookmarks & deep links land on /members.
+      { source: "/wa-employees", destination: "/members", permanent: true },
+      { source: "/wa-employees/:path*", destination: "/members", permanent: true },
+      { source: "/employees", destination: "/members", permanent: true },
+      { source: "/employees/:path*", destination: "/members", permanent: true },
     ];
   },
 

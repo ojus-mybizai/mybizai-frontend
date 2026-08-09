@@ -9,15 +9,15 @@ import {
   type CreateWaWorkPayload,
   type WaWorkItem,
 } from '@/services/waWork';
+import { listAgentRoles, type AgentRoleOption } from '@/services/agentRoles';
 import type { WaTemplate } from '@/services/waTemplates';
 import type {
-  WaEmployee, WaEmployeeGroup, WaSettings,
+  WaEmployee, WaSettings,
 } from '@/services/waEmployees';
 import type { ContactTypeDef } from '@/services/contacts';
 
 interface Props {
   employees: WaEmployee[];
-  groups: WaEmployeeGroup[];
   templates: WaTemplate[];
   contactTypes: ContactTypeDef[];
   waSettings: WaSettings | null;
@@ -50,7 +50,6 @@ interface Props {
  */
 export function TaskComposer({
   employees,
-  groups,
   templates,
   contactTypes,
   waSettings,
@@ -62,7 +61,8 @@ export function TaskComposer({
 }: Props) {
   const [text, setText] = useState('');
   const [extraEmployeeIds, setExtraEmployeeIds] = useState<number[]>([]);
-  const [groupId, setGroupId] = useState<number | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [roles, setRoles] = useState<AgentRoleOption[]>([]);
   const [templateId, setTemplateId] = useState<number | null>(lockedTemplate?.id ?? null);
   const [leadTypeId, setLeadTypeId] = useState<number | null>(null);
   const [dueAt, setDueAt] = useState('');
@@ -72,12 +72,20 @@ export function TaskComposer({
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Fetch the canonical agent-role list once (single source of truth — never a
+  // local literal array).
+  useEffect(() => {
+    let active = true;
+    listAgentRoles().then((r) => { if (active) setRoles(r); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   // Whenever the lock context changes (employee/template selection switches),
   // reset stale draft state so it doesn't leak between contexts.
   useEffect(() => {
     setText('');
     setExtraEmployeeIds([]);
-    setGroupId(null);
+    setRole(null);
     setLeadTypeId(null);
     setDueAt('');
     setAdvancedOpen(false);
@@ -99,9 +107,9 @@ export function TaskComposer({
 
   const recipientLabel = useMemo(() => {
     const parts: string[] = [];
-    if (groupId) {
-      const g = groups.find((g) => g.id === groupId);
-      if (g) parts.push(`${g.name} (${g.employee_count})`);
+    if (role) {
+      const r = roles.find((r) => r.value === role);
+      parts.push(`${r?.label ?? role} role`);
     }
     if (lockedEmployee) parts.push(lockedEmployee.name.split(' ')[0]);
     for (const id of extraEmployeeIds) {
@@ -110,7 +118,7 @@ export function TaskComposer({
     }
     if (parts.length === 0) return null;
     return parts.slice(0, 2).join(', ') + (parts.length > 2 ? ` +${parts.length - 2}` : '');
-  }, [groupId, extraEmployeeIds, lockedEmployee, groups, employees]);
+  }, [role, extraEmployeeIds, lockedEmployee, roles, employees]);
 
   function toggleExtraRecipient(empId: number) {
     if (lockedEmployee?.id === empId) return; // can't unselect the locked one
@@ -119,12 +127,12 @@ export function TaskComposer({
     );
   }
 
-  const noRecipients = employees.length === 0 && groups.length === 0;
+  const noRecipients = employees.length === 0;
 
   async function handleSend() {
     if (!text.trim()) return;
-    if (allRecipientIds.length === 0 && !groupId) {
-      setError('Pick at least one employee or a group');
+    if (allRecipientIds.length === 0 && !role) {
+      setError('Pick at least one employee or a role');
       setRecipientOpen(true);
       return;
     }
@@ -136,7 +144,7 @@ export function TaskComposer({
         title: text.trim(),
         wa_template_id: templateId || undefined,
         assigned_employee_ids: allRecipientIds,
-        assigned_group_id: groupId || undefined,
+        assigned_role: role || undefined,
         due_at: dueAt ? dueAt + (dueAt.endsWith('Z') ? '' : ':00Z') : undefined,
         contact_type_id: leadTypeId || undefined,
         auto_dispatch: true,
@@ -146,7 +154,7 @@ export function TaskComposer({
       // Reset draft, keep locked context
       setText('');
       setExtraEmployeeIds([]);
-      setGroupId(null);
+      setRole(null);
       setLeadTypeId(null);
       setDueAt('');
       setAdvancedOpen(false);
@@ -209,29 +217,34 @@ export function TaskComposer({
         <div className="border-b border-border-color p-3 max-h-52 overflow-y-auto space-y-3">
           {noRecipients ? (
             <p className="text-xs text-text-secondary text-center py-2">
-              No active employees.{' '}
-              <a href="/wa-employees" className="text-green-600 underline">Add employees →</a>
+              No active members.{' '}
+              <a href="/members" className="text-green-600 underline">Add members →</a>
             </p>
           ) : (
             <>
-              {!lockedEmployee && groups.length > 0 && (
+              {!lockedEmployee && roles.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase text-text-secondary mb-1.5">Groups</p>
+                  <p className="text-[10px] font-semibold uppercase text-text-secondary mb-1.5">Role</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {groups.map((g) => (
+                    {roles.map((r) => (
                       <button
-                        key={g.id}
-                        onClick={() => setGroupId(groupId === g.id ? null : g.id)}
+                        key={r.value}
+                        onClick={() => setRole(role === r.value ? null : r.value)}
                         className={`px-2.5 py-1 text-xs rounded-full border transition-all ${
-                          groupId === g.id
+                          role === r.value
                             ? 'bg-green-600 text-white border-green-600'
                             : 'border-border-color text-text-primary hover:bg-bg-secondary'
                         }`}
                       >
-                        👥 {g.name} ({g.employee_count})
+                        🎭 {r.label}
                       </button>
                     ))}
                   </div>
+                  <p className="mt-1.5 text-[10px] text-text-secondary">
+                    Sends to every active member with that role. Most staff default to{' '}
+                    <span className="font-medium">Staff</span> — set roles on the{' '}
+                    <a href="/members" className="underline">Members page</a> for finer targeting.
+                  </p>
                 </div>
               )}
               {employees.length > 0 && (
@@ -311,14 +324,14 @@ export function TaskComposer({
           {template?.type === 'whatsapp_form' && !template.meta_flow_id && (
             <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300 rounded-lg px-2 py-1.5">
               ⚠ This form template hasn&apos;t been published to Meta yet.{' '}
-              <a href="/wa-employees" className="underline font-medium">Publish it first →</a>
+              <a href="/wa-templates" className="underline font-medium">Publish it first →</a>
             </p>
           )}
 
           {waSettings && !waSettings.task_template_name && (
             <p className="text-xs text-text-secondary bg-bg-secondary rounded-lg px-2 py-1.5">
-              💡 No task template set — messages only reach employees who messaged you in the last 24h.{' '}
-              <a href="/wa-employees" className="underline">Configure →</a>
+              💡 No task template set — messages only reach members who messaged you in the last 24h.{' '}
+              <a href="/settings/whatsapp" className="underline">Configure →</a>
             </p>
           )}
         </div>

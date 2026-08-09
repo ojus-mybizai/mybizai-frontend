@@ -170,7 +170,6 @@ export default function ContactsClient() {
   const xlsxRef = useRef<HTMLInputElement>(null);
   const importMenuRef = useRef<HTMLDivElement>(null);
   const manageMenuRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Active filter count (excluding sort)
@@ -295,17 +294,6 @@ export default function ContactsClient() {
       void loadFilterCounts({ search: val || undefined });
     }, 300);
   };
-
-  // Infinite scroll sentinel
-  useEffect(() => {
-    const el = bottomRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && !loadingMore) void loadMore();
-    }, { threshold: 0.5 });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [loadingMore]);
 
   // Close import menu / bulk group picker on outside click
   useEffect(() => {
@@ -820,14 +808,23 @@ export default function ContactsClient() {
                 </tbody>
               </table>
 
-              {/* Infinite scroll sentinel + load-more indicator */}
-              <div ref={bottomRef} className="flex flex-col items-center py-4 gap-2">
+              {/* Load-more control */}
+              <div className="flex flex-col items-center py-4 gap-2">
                 {loadingMore ? (
                   <LoadMoreIndicator loaded={contacts.length} total={total} />
                 ) : contacts.length < total ? (
-                  <span className="text-xs text-text-secondary">
-                    Showing <span className="font-medium text-text-primary">{contacts.length.toLocaleString()}</span> of <span className="font-medium text-text-primary">{total.toLocaleString()}</span> contacts — scroll down to load more
-                  </span>
+                  <>
+                    <button
+                      onClick={() => void loadMore()}
+                      className="flex items-center gap-2 px-5 py-2 text-sm font-medium border border-border-color rounded-lg text-text-primary hover:bg-bg-secondary hover:border-accent hover:text-accent transition-colors"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                      Load more contacts
+                    </button>
+                    <span className="text-xs text-text-secondary">
+                      Showing <span className="font-medium text-text-primary">{contacts.length.toLocaleString()}</span> of <span className="font-medium text-text-primary">{total.toLocaleString()}</span>
+                    </span>
+                  </>
                 ) : contacts.length > 0 ? (
                   <span className="text-xs text-text-secondary/60">All {total.toLocaleString()} contacts loaded</span>
                 ) : null}

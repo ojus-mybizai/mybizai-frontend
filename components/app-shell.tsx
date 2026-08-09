@@ -33,6 +33,7 @@ import {
   GraduationCap,
   SlidersHorizontal,
   Plug,
+  ListChecks,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -195,8 +196,10 @@ const OWNER_NAV: NavEntry[] = [
       { label: 'Work Templates',  href: '/wa-templates',      icon: FileText,       module: 'work_tasks' },
       { label: 'Work Board',      href: '/work',              icon: Briefcase,      module: 'work_tasks' },
       { label: 'Processes',       href: '/processes',         icon: Workflow,       module: 'work_tasks' },
-      { label: 'Employees',       href: '/wa-employees',      icon: UsersRound,     module: 'wa_employees' },
-      { label: 'Team Access',     href: '/employees',         icon: Users },
+      { label: 'Members',         href: '/members',           icon: UsersRound },
+      { label: 'Tasks',           href: '/tasks',             icon: ListChecks },
+      { label: 'Roles & Access',  href: '/settings?tab=roles', icon: Users },
+      { label: 'WhatsApp Settings', href: '/settings/whatsapp', icon: MessageCircle, module: 'wa_employees' },
       { label: 'Settings',        href: '/settings',          icon: Settings },
       { label: 'Billing',         href: '/settings/billing',  icon: CreditCard },
       { label: 'AI Credits',      href: '/settings/credits',  icon: Coins },
@@ -243,13 +246,14 @@ const TITLE_MAP: Record<string, string> = {
   '/agent-chat':          'AI Chat',
   '/automation':          'Automation',
   '/wa-work':             'Tasks',           // WhatsApp task dispatch (primary task system)
-  '/wa-employees':        'Employees',       // WhatsApp team (was "Members")
+  '/members':             'Members',         // Unified identity surface (Phase 4)
+  '/tasks':               'Tasks',           // Unified task surface over task_assignments (Phase 4, Slice 3)
   '/work':                'Work Board',      // Platform internal kanban
   '/work/templates':      'Work Templates',
-  '/employees':           'Team Access',     // Platform RBAC (was "Employees")
   '/processes':           'Processes',
   '/data-sheet':          'Data Sheets',
   '/settings':            'Settings',
+  '/settings/whatsapp':   'WhatsApp Settings',
   '/settings/billing':    'Billing & Plans',
   '/integrations/meta':   'Meta Ads',
   '/analytics':           'Analytics',

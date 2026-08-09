@@ -5,16 +5,78 @@ import {
   Zap, Plus, Trash2, Edit, Power, Clock, AlertCircle, X,
   Filter, Bell, Briefcase, Database, MessageCircle,
   ChevronDown, ChevronRight, Eye, EyeOff,
+  Users, Phone, Globe, GitBranch,
 } from 'lucide-react';
 import {
   RULE_CATEGORIES,
   type AutomationRule,
   type EventOption,
   type ActionOption,
-  type RuleCategory,
 } from '@/services/automation';
 import { humanizeTrigger, humanizeConditions, humanizeActions, OP_LABELS } from './types';
 import { ToggleSwitch, formatDate } from './shared';
+import { deriveScope, type ScopeSurface } from '@/components/automation/scope';
+
+/* ─── Surface grouping (AUTOMATION_REDESIGN_SPEC §8) ─────────────────────── */
+
+const SURFACE_ICONS: Record<ScopeSurface, React.ReactNode> = {
+  datasheet: <Database className="h-3.5 w-3.5" />,
+  pipeline: <GitBranch className="h-3.5 w-3.5" />,
+  contacts: <Users className="h-3.5 w-3.5" />,
+  call: <Phone className="h-3.5 w-3.5" />,
+  schedule: <Clock className="h-3.5 w-3.5" />,
+  global: <Globe className="h-3.5 w-3.5" />,
+};
+
+const SURFACE_ORDER: ScopeSurface[] = ['datasheet', 'pipeline', 'contacts', 'call', 'schedule', 'global'];
+const SURFACE_LABELS: Record<Exclude<ScopeSurface, 'datasheet'>, string> = {
+  pipeline: 'Pipelines',
+  contacts: 'Contacts',
+  call: 'Calls',
+  schedule: 'Scheduled',
+  global: 'Global',
+};
+
+interface ScopeGroup {
+  key: string;
+  label: string;
+  surface: ScopeSurface;
+  rules: AutomationRule[];
+}
+
+/** Group rules by derived surface; datasheet rules sub-group by sheet, resolving names. */
+function buildScopeGroups(rules: AutomationRule[], datasheetNames: Record<number, string>): ScopeGroup[] {
+  const datasheetGroups = new Map<string, ScopeGroup>();
+  const surfaceGroups = new Map<ScopeSurface, ScopeGroup>();
+
+  for (const rule of rules) {
+    const scope = deriveScope(rule);
+    if (scope.surface === 'datasheet') {
+      const id = scope.datasheetId;
+      const key = `datasheet:${id ?? 'unlinked'}`;
+      const label = id != null ? (datasheetNames[id] || `Datasheet #${id}`) : 'Datasheet (unlinked)';
+      if (!datasheetGroups.has(key)) datasheetGroups.set(key, { key, label, surface: 'datasheet', rules: [] });
+      datasheetGroups.get(key)!.rules.push(rule);
+    } else {
+      if (!surfaceGroups.has(scope.surface)) {
+        surfaceGroups.set(scope.surface, {
+          key: scope.surface, label: SURFACE_LABELS[scope.surface], surface: scope.surface, rules: [],
+        });
+      }
+      surfaceGroups.get(scope.surface)!.rules.push(rule);
+    }
+  }
+
+  const ordered: ScopeGroup[] = [];
+  // Datasheets first, alphabetical by resolved name.
+  ordered.push(...Array.from(datasheetGroups.values()).sort((a, b) => a.label.localeCompare(b.label)));
+  for (const surface of SURFACE_ORDER) {
+    if (surface === 'datasheet') continue;
+    const g = surfaceGroups.get(surface);
+    if (g) ordered.push(g);
+  }
+  return ordered;
+}
 
 /* ─── Category icon map ──────────────────────────────────────────────────── */
 
@@ -325,6 +387,7 @@ export default function RuleList({
   onEditRule,
   onToggleRule,
   onDeleteRule,
+  datasheetNames = {},
 }: {
   rules: AutomationRule[];
   events: EventOption[];
@@ -336,30 +399,21 @@ export default function RuleList({
   onEditRule: (rule: AutomationRule) => void;
   onToggleRule: (id: number) => void;
   onDeleteRule: (id: number) => void;
+  /** id → display name, for labelling datasheet-scoped groups. */
+  datasheetNames?: Record<number, string>;
 }) {
-  const [filterCategory, setFilterCategory] = useState<RuleCategory | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [deleteTarget, setDeleteTarget] = useState<AutomationRule | null>(null);
 
-  /* ── Filtered rules ────────────────────────────────────────────────── */
+  /* ── Filtered rules (status only; grouping is by derived surface) ────── */
   const filteredRules = rules.filter((r) => {
-    if (filterCategory !== 'all' && (r.category || 'general') !== filterCategory) return false;
     if (filterStatus === 'active' && !r.is_active) return false;
     if (filterStatus === 'inactive' && r.is_active) return false;
     return true;
   });
 
-  /* ── Group by category ─────────────────────────────────────────────── */
-  const grouped: Record<string, AutomationRule[]> = {};
-  for (const rule of filteredRules) {
-    const cat = rule.category || 'general';
-    if (!grouped[cat]) grouped[cat] = [];
-    grouped[cat].push(rule);
-  }
-  const categoryOrder = RULE_CATEGORIES.map((c) => c.key);
-  const sortedGroups = Object.entries(grouped).sort(
-    ([a], [b]) => categoryOrder.indexOf(a as RuleCategory) - categoryOrder.indexOf(b as RuleCategory)
-  );
+  /* ── Group by derived surface (§8 cockpit) ─────────────────────────── */
+  const scopeGroups = buildScopeGroups(filteredRules, datasheetNames);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -426,40 +480,6 @@ export default function RuleList({
         <div className="flex flex-wrap items-center gap-2">
           <Filter className="h-4 w-4 text-text-secondary" />
 
-          {/* Category filters */}
-          <button
-            type="button"
-            onClick={() => setFilterCategory('all')}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              filterCategory === 'all'
-                ? 'bg-accent text-white'
-                : 'bg-bg-secondary text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            All ({rules.length})
-          </button>
-          {RULE_CATEGORIES.map((cat) => {
-            const count = rules.filter((r) => (r.category || 'general') === cat.key).length;
-            if (count === 0) return null;
-            return (
-              <button
-                key={cat.key}
-                type="button"
-                onClick={() => setFilterCategory(cat.key)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  filterCategory === cat.key
-                    ? 'bg-accent text-white'
-                    : 'bg-bg-secondary text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                {cat.label} ({count})
-              </button>
-            );
-          })}
-
-          {/* Divider */}
-          <div className="h-4 w-px bg-border-color mx-1" />
-
           {/* Status filters */}
           <button
             type="button"
@@ -488,30 +508,23 @@ export default function RuleList({
         </div>
       )}
 
-      {/* Rules list — grouped by category */}
+      {/* Rules list — grouped by derived surface (datasheet name / Pipelines / Contacts / …) */}
       {!loading && filteredRules.length > 0 && (
         <div className="space-y-6">
-          {sortedGroups.map(([catKey, catRules]) => {
-            const catDef = RULE_CATEGORIES.find((c) => c.key === catKey);
-            const activeCount = catRules.filter((r) => r.is_active).length;
+          {scopeGroups.map((group) => {
+            const activeCount = group.rules.filter((r) => r.is_active).length;
             return (
-              <div key={catKey}>
-                {filterCategory === 'all' && (
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className={`${catDef?.color || 'text-text-secondary'}`}>
-                      {CATEGORY_ICONS[catKey] || <Zap className="h-3.5 w-3.5" />}
-                    </span>
-                    <span className={`text-sm font-semibold ${catDef?.color || 'text-text-secondary'}`}>
-                      {catDef?.label || catKey}
-                    </span>
-                    <span className="text-[10px] text-text-muted">
-                      {activeCount}/{catRules.length} active
-                    </span>
-                    <div className="flex-1 border-t border-border-color" />
-                  </div>
-                )}
+              <div key={group.key}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-text-secondary">{SURFACE_ICONS[group.surface]}</span>
+                  <span className="text-sm font-semibold text-text-primary">{group.label}</span>
+                  <span className="text-[10px] text-text-muted">
+                    {activeCount}/{group.rules.length} active
+                  </span>
+                  <div className="flex-1 border-t border-border-color" />
+                </div>
                 <div className="space-y-3">
-                  {catRules.map((rule) => (
+                  {group.rules.map((rule) => (
                     <RuleCard
                       key={rule.id}
                       rule={rule}
@@ -536,7 +549,7 @@ export default function RuleList({
           <p className="text-sm text-text-secondary">No rules match your filters</p>
           <button
             type="button"
-            onClick={() => { setFilterCategory('all'); setFilterStatus('all'); }}
+            onClick={() => { setFilterStatus('all'); }}
             className="mt-2 text-xs text-accent hover:underline"
           >
             Clear filters

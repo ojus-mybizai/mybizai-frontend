@@ -11,6 +11,9 @@ import { ReverseRelationSubTable } from '@/components/data-sheet/reverse-relatio
 import { ChevronDown, ChevronRight, Layers, Plus, ArrowUpRight } from 'lucide-react';
 import { CreateChildDatasheetModal } from '@/components/data-sheet/create-child-datasheet-modal';
 import { DataSheetFilterBuilder } from '@/components/data-sheet/data-sheet-filter-builder';
+import { DatasheetAutomationDrawer } from '@/components/automation/datasheet-automation-drawer';
+import { listAutomationRules } from '@/services/automation';
+import { rulesForDatasheet } from '@/components/automation/scope';
 import { useDataSheetContext } from '@/features/data-sheet/context/data-sheet-context';
 import { ConfirmModal } from '@/features/data-sheet/components/confirm-modal';
 import {
@@ -140,6 +143,8 @@ export function TablePage() {
   const [addRowSaving, setAddRowSaving] = useState(false);
   const [cellErrors, setCellErrors] = useState<Record<string, Record<string, string>>>({});
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false);
+  const [automationDrawerOpen, setAutomationDrawerOpen] = useState(false);
+  const [automationCount, setAutomationCount] = useState(0);
   const [visibleColumns, setVisibleColumns] = useState<Set<string> | null>(null);
   const [views, setViews] = useState<Array<{ id: number; name: string; config: Record<string, unknown>; is_default?: boolean }>>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -206,6 +211,19 @@ export function TablePage() {
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx?.modelId]);
+
+  // Automation count for this datasheet (toolbar badge + drawer peek).
+  const loadAutomationCount = useCallback(() => {
+    if (!ctx?.modelId) return;
+    const mid = Number(ctx.modelId);
+    listAutomationRules()
+      .then((res) => setAutomationCount(rulesForDatasheet(res.items, mid).length))
+      .catch(() => {});
+  }, [ctx?.modelId]);
+
+  useEffect(() => {
+    loadAutomationCount();
+  }, [loadAutomationCount]);
 
   // Load reverse relation metadata (which child models point to this one)
   useEffect(() => {
@@ -642,6 +660,24 @@ export function TablePage() {
           <span className="hidden sm:inline">Reports</span>
         </Link>
 
+        {/* Automations */}
+        <button
+          type="button"
+          onClick={() => setAutomationDrawerOpen(true)}
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+            automationCount > 0
+              ? 'border-accent/60 bg-accent-soft text-accent'
+              : 'border-border-color bg-card-bg text-text-secondary hover:bg-bg-secondary'
+          }`}
+          title="Automations for this datasheet"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+          <span className="hidden sm:inline">Automations</span>
+          {automationCount > 0 && (
+            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">{automationCount}</span>
+          )}
+        </button>
+
         {/* Import */}
         <Link
           href={`/data-sheet/${ctx.modelId}/import`}
@@ -725,6 +761,15 @@ export function TablePage() {
         open={filterBuilderOpen}
         onClose={() => setFilterBuilderOpen(false)}
         reverseRelations={tableReverseRelations}
+      />
+
+      <DatasheetAutomationDrawer
+        open={automationDrawerOpen}
+        onClose={() => setAutomationDrawerOpen(false)}
+        modelId={Number(modelId)}
+        modelName={ctx?.model?.display_name || 'Datasheet'}
+        fields={fields}
+        onChanged={loadAutomationCount}
       />
 
       {confirmDeleteRowId !== null && (

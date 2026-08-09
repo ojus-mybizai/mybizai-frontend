@@ -27,6 +27,7 @@ export interface WaWorkItem {
   type: string | null;
   status: WaWorkStatus;
   dispatch_mode: string;
+  assigned_role: string | null;
   due_at: string | null;
   dispatched_at: string | null;
   wa_template_id: number | null;
@@ -56,7 +57,7 @@ export interface CreateWaWorkPayload {
   description?: string;
   wa_template_id?: number;
   assigned_employee_ids?: number[];
-  assigned_group_id?: number;
+  assigned_role?: string;              // Slice 3c — role dispatch pool
   dispatch_mode?: 'individual' | 'broadcast';
   contact_type_id?: number;   // lead_list: filter contacts by type (null = all contacts)
   due_at?: string;

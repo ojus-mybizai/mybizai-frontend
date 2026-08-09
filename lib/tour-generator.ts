@@ -219,7 +219,7 @@ export function generateTourFromTemplate(
       id: 'invite-team',
       title: 'Invite your team',
       description: `Assign ${roles.map((r: any) => r.name).join(', ')} roles`,
-      href: '/employees',
+      href: '/members',
       icon: 'users',
     });
   }

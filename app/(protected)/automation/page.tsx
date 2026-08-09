@@ -15,6 +15,7 @@ import {
   type RuleCategory,
 } from '@/services/automation';
 import dynamic from 'next/dynamic';
+import { listModels } from '@/services/dynamic-data';
 import type { RuleFormState } from './components/types';
 import RuleList from './components/rule-list';
 const RuleEditor = dynamic(() => import('./components/rule-editor'), {
@@ -30,6 +31,7 @@ type View = { kind: 'list' } | { kind: 'editor'; rule: AutomationRule | null };
 
 export default function AutomationPage() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
+  const [datasheetNames, setDatasheetNames] = useState<Record<number, string>>({});
   const [metadata, setMetadata] = useState<AutomationMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +56,11 @@ export default function AutomationPage() {
       ]);
       setRules(rulesRes.items);
       setMetadata(metaRes);
+      // Datasheet names for labelling scope groups (best-effort; non-blocking).
+      listModels()
+        .then((models) =>
+          setDatasheetNames(Object.fromEntries(models.map((m) => [m.id, m.display_name || m.name]))))
+        .catch(() => {});
     } catch (err: any) {
       setError(err?.message || 'Failed to load automation rules');
     } finally {
@@ -263,6 +270,7 @@ export default function AutomationPage() {
         onEditRule={(rule) => setView({ kind: 'editor', rule })}
         onToggleRule={handleToggle}
         onDeleteRule={handleDelete}
+        datasheetNames={datasheetNames}
       />
     </div>
     </PermissionGuard>

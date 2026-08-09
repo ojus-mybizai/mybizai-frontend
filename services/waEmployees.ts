@@ -1,4 +1,5 @@
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, API_BASE_URL } from '@/lib/api-client';
+import { useAuthStore } from '@/lib/auth-store';
 
 // pending_acceptance → employee hasn't tapped Accept yet
 // active            → employee accepted the invite
@@ -19,25 +20,6 @@ export interface WaEmployee {
   session_window_expires_at: string | null;
   /** True if the 24h free-form messaging window is currently open. */
   session_active: boolean;
-}
-
-export interface WaGroupMember {
-  id: number;
-  name: string;
-  whatsapp_number: string;
-  status: string;
-}
-
-export interface WaEmployeeGroup {
-  id: number;
-  name: string;
-  description: string | null;
-  employee_count: number;
-  created_at: string;
-}
-
-export interface WaEmployeeGroupDetail extends WaEmployeeGroup {
-  members: WaGroupMember[];
 }
 
 export interface AttendanceRecord {
@@ -64,10 +46,9 @@ export async function addEmployeesBulk(
   return apiFetch('/wa/employees/bulk', { method: 'POST', body: JSON.stringify({ employees }) });
 }
 
-export async function listEmployees(params?: { status?: string; group_id?: number; q?: string }): Promise<WaEmployee[]> {
+export async function listEmployees(params?: { status?: string; q?: string }): Promise<WaEmployee[]> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);
-  if (params?.group_id) qs.set('group_id', String(params.group_id));
   if (params?.q) qs.set('q', params.q);
   const query = qs.toString() ? `?${qs}` : '';
   return apiFetch(`/wa/employees${query}`);
@@ -100,43 +81,6 @@ export async function repairEmployeeContacts(): Promise<{
   return apiFetch('/wa/employees/repair-contacts', { method: 'POST' });
 }
 
-// --- Groups ---
-
-export async function createGroup(data: {
-  name: string;
-  description?: string;
-  employee_ids?: number[];
-}): Promise<WaEmployeeGroup> {
-  return apiFetch('/wa/employees/groups', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export async function listGroups(): Promise<WaEmployeeGroup[]> {
-  return apiFetch('/wa/employees/groups');
-}
-
-export async function getGroup(group_id: number): Promise<WaEmployeeGroupDetail> {
-  return apiFetch(`/wa/employees/groups/${group_id}`);
-}
-
-export async function updateGroup(
-  group_id: number,
-  data: { name?: string; description?: string }
-): Promise<WaEmployeeGroup> {
-  return apiFetch(`/wa/employees/groups/${group_id}`, { method: 'PUT', body: JSON.stringify(data) });
-}
-
-export async function addGroupMembers(group_id: number, employee_ids: number[]): Promise<{ added: number }> {
-  return apiFetch(`/wa/employees/groups/${group_id}/members`, { method: 'POST', body: JSON.stringify({ employee_ids }) });
-}
-
-export async function removeGroupMember(group_id: number, employee_id: number): Promise<void> {
-  return apiFetch(`/wa/employees/groups/${group_id}/members/${employee_id}`, { method: 'DELETE' });
-}
-
-export async function deleteGroup(group_id: number): Promise<void> {
-  return apiFetch(`/wa/employees/groups/${group_id}`, { method: 'DELETE' });
-}
-
 // --- Attendance ---
 
 export async function getAttendance(params?: {
@@ -166,6 +110,31 @@ export async function setManualAttendance(data: {
 
 export async function sendDailyCheckin(): Promise<{ success: boolean; sent: number; failed: number }> {
   return apiFetch('/wa/employees/attendance/send-checkin', { method: 'POST' });
+}
+
+/**
+ * Download the attendance CSV export. `employee_id` is the WA-employee id
+ * (a member's `legacy_wa_employee_id`); omit to export the whole team.
+ * Returns a Blob so the caller can trigger a browser download — apiFetch always
+ * JSON-parses, so the CSV stream is fetched directly here.
+ */
+export async function downloadAttendanceExport(params?: {
+  employee_id?: number;
+  date_from?: string;
+  date_to?: string;
+}): Promise<Blob> {
+  const qs = new URLSearchParams();
+  if (params?.employee_id) qs.set('employee_id', String(params.employee_id));
+  if (params?.date_from)   qs.set('date_from',   params.date_from);
+  if (params?.date_to)     qs.set('date_to',     params.date_to);
+  const query = qs.toString() ? `?${qs}` : '';
+  const token = useAuthStore.getState().accessToken;
+  const res = await fetch(`${API_BASE_URL}/wa/employees/attendance/export${query}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error(`Export failed (${res.status})`);
+  return res.blob();
 }
 
 // --- Settings ---

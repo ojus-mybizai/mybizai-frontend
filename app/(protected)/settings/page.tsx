@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import PermissionGuard from '@/components/permission-guard';
 import { useAuthStore } from '@/lib/auth-store';
 import {
@@ -53,7 +53,19 @@ type TabKey =
 
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<TabKey>('profile');
+
+  // Deep-link support (e.g. /settings?tab=roles) — lets the sidebar "Roles &
+  // Access" entry land directly on the Team & Roles tab, and reacts to query
+  // changes even when already on /settings (no remount).
+  useEffect(() => {
+    const requested = searchParams.get('tab');
+    const allowed: TabKey[] = ['profile', 'workspace', 'business', 'roles', 'notifications', 'danger_zone'];
+    if (requested && (allowed as string[]).includes(requested)) {
+      setTab(requested as TabKey);
+    }
+  }, [searchParams]);
   const [profile, setProfile] = useState<ProfileSettings | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null);
   const [business, setBusiness] = useState<BusinessInfo | null>(null);
@@ -1102,7 +1114,7 @@ export default function SettingsPage() {
                       </div>
                     )}
                     <p className="mt-3 text-xs text-text-secondary">
-                      To change base roles or deactivate employees, use the Employees page. Custom
+                      To change base roles or deactivate members, use the Members page. Custom
                       roles below refine what managers and executives can do.
                     </p>
                   </div>

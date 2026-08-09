@@ -78,7 +78,7 @@ const SECTIONS: Section[] = [
     steps: [
       {
         id: 'e1',
-        text: 'Open WA Team in the sidebar (or navigate to /wa-employees)',
+        text: 'Open Members in the sidebar (or navigate to /members)',
       },
       {
         id: 'e2',
@@ -392,7 +392,7 @@ export default function WaTestGuidePage() {
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Pages to Test</p>
         <div className="flex flex-wrap gap-3">
           {[
-            { href: '/wa-employees', label: 'WA Team', icon: <Phone className="w-3.5 h-3.5" /> },
+            { href: '/members', label: 'Members', icon: <Phone className="w-3.5 h-3.5" /> },
             { href: '/wa-templates', label: 'WA Templates', icon: <MessageCircle className="w-3.5 h-3.5" /> },
             { href: '/wa-work', label: 'WA Work', icon: <Send className="w-3.5 h-3.5" /> },
           ].map((link) => (

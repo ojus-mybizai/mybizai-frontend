@@ -15,8 +15,8 @@ import {
 } from '@/services/waWork';
 import { listTemplates, type WaTemplate } from '@/services/waTemplates';
 import {
-  listEmployees, listGroups, getWaSettings,
-  type WaEmployee, type WaEmployeeGroup, type WaSettings,
+  listEmployees, getWaSettings,
+  type WaEmployee, type WaSettings,
 } from '@/services/waEmployees';
 import { contactTypesService, type ContactTypeDef } from '@/services/contacts';
 import { ByEmployeePanel } from '@/components/wa-work/by-employee-panel';
@@ -232,7 +232,6 @@ export default function WaWorkPage() {
   const [stats, setStats] = useState<WaWorkStats | null>(null);
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
   const [employees, setEmployees] = useState<WaEmployee[]>([]);
-  const [groups, setGroups] = useState<WaEmployeeGroup[]>([]);
   const [waSettings, setWaSettings] = useState<WaSettings | null>(null);
   const [contactTypes, setContactTypes] = useState<ContactTypeDef[]>([]);
   const [loading, setLoading] = useState(true);
@@ -257,12 +256,11 @@ export default function WaWorkPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [items, statsData, tmpl, emps, grps, settings, ctypes] = await Promise.all([
+      const [items, statsData, tmpl, emps, settings, ctypes] = await Promise.all([
         listWorkItems({ status: statusFilter || undefined, per_page: 50 }),
         getWorkStats(),
         listTemplates(),
         listEmployees({ status: 'active' }),
-        listGroups(),
         getWaSettings(),
         contactTypesService.list().catch(() => [] as ContactTypeDef[]),
       ]);
@@ -270,7 +268,6 @@ export default function WaWorkPage() {
       setStats(statsData);
       setTemplates(tmpl);
       setEmployees(emps);
-      setGroups(grps);
       setWaSettings(settings);
       setContactTypes(ctypes);
     } catch {
@@ -580,7 +577,6 @@ export default function WaWorkPage() {
         {viewMode === 'items' && (
           <TaskComposer
             employees={employees}
-            groups={groups}
             templates={templates}
             contactTypes={contactTypes}
             waSettings={waSettings}
@@ -597,7 +593,6 @@ export default function WaWorkPage() {
           loading={detailsLoading}
           composerProps={{
             employees,
-            groups,
             templates,
             contactTypes,
             waSettings,
@@ -615,7 +610,6 @@ export default function WaWorkPage() {
           templates={templates}
           composerProps={{
             employees,
-            groups,
             templates,
             contactTypes,
             waSettings,

@@ -40,6 +40,26 @@ export interface WorkspaceUpdate {
   working_hours?: Record<string, any>;
 }
 
+export interface WhatsAppSyncSettings {
+  /** When on, a message a human sends from the WhatsApp Business app pauses the AI on that conversation. */
+  wa_app_takeover_enabled: boolean;
+  /** Hours of no human reply before the AI resumes on that conversation. */
+  wa_app_takeover_resume_hours: number;
+}
+
+export async function getWhatsAppSyncSettings(): Promise<WhatsAppSyncSettings> {
+  return apiFetch<WhatsAppSyncSettings>('/settings/whatsapp-sync', { method: 'GET' });
+}
+
+export async function updateWhatsAppSyncSettings(
+  payload: Partial<WhatsAppSyncSettings>,
+): Promise<WhatsAppSyncSettings> {
+  return apiFetch<WhatsAppSyncSettings>('/settings/whatsapp-sync', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
 export interface DashboardPinsResponse {
   model_ids: number[];
 }

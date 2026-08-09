@@ -33,8 +33,8 @@ export interface ProcessStageWork {
   wa_template_type: string | null;
   wa_assigned_employee_ids: number[] | null;
   wa_assigned_employee_names: string[] | null;
-  wa_assigned_group_id: number | null;
-  wa_assigned_group_name: string | null;
+  /** Slice 3c — the role dispatch pool (owner|manager|sales|support|caller|staff). */
+  wa_assigned_role: string | null;
   wa_dispatch_mode: 'individual' | 'broadcast' | null;
   wa_auto_dispatch: boolean;
   wa_assignment_strategy: WaAssignmentStrategy | null;
@@ -245,7 +245,7 @@ export interface AddStageWorkPayload {
   // WA-work
   wa_template_id?: number | null;
   wa_assigned_employee_ids?: number[] | null;
-  wa_assigned_group_id?: number | null;
+  wa_assigned_role?: string | null;             // Slice 3c — role dispatch pool
   wa_dispatch_mode?: 'individual' | 'broadcast';
   wa_auto_dispatch?: boolean;
   wa_assignment_strategy?: WaAssignmentStrategy;

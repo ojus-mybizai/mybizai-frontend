@@ -32,20 +32,17 @@ import {
 } from '@/services/automation';
 import {
   type RuleFormState,
-  type ConditionDraft,
   type ActionDraft,
   EMPTY_FORM,
   OP_LABELS,
   groupEventsByCategory,
-  getFieldGroups,
-  getKnownValues,
-  getFieldMeta,
-  getOperatorsForField,
   humanizeTrigger,
   humanizeConditions,
   humanizeActions,
 } from './types';
-import { ToggleSwitch, Select, Input, Textarea, FieldLabel, formatDate } from './shared';
+import { ToggleSwitch, Select, Input, Textarea, FieldLabel } from './shared';
+import { ConditionBuilder, type Condition } from '@/components/automation/condition-builder';
+import { fieldDefsFromEcaMetadata } from '@/components/automation/condition-builder-adapters';
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* STEP DEFINITIONS                                                          */
@@ -251,125 +248,6 @@ function getParamPlaceholder(actionType: string, paramName: string): string | un
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
-/* FIELD SELECT DROPDOWN (grouped by category)                               */
-/* ═══════════════════════════════════════════════════════════════════════════ */
-
-function FieldSelect({
-  value,
-  onChange,
-  triggerEvent,
-  metadata,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  triggerEvent: string;
-  metadata: AutomationMetadata;
-}) {
-  const groups = getFieldGroups(triggerEvent, metadata);
-  const hasFields = groups.length > 0 && groups.some((g) => g.fields.length > 0);
-
-  if (!hasFields) {
-    // Fallback to text input for schedule events or unknown triggers
-    return (
-      <Input
-        value={value}
-        onChange={onChange}
-        placeholder="Field path (e.g. entity.field)"
-      />
-    );
-  }
-
-  return (
-    <Select value={value} onChange={onChange}>
-      <option value="">Select field...</option>
-      {groups.map((g) => (
-        <optgroup key={g.group} label={g.group}>
-          {g.fields.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </Select>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* VALUE INPUT — dropdown if known values exist, text input otherwise        */
-/* ═══════════════════════════════════════════════════════════════════════════ */
-
-function ValueInput({
-  value,
-  onChange,
-  triggerEvent,
-  fieldValue,
-  operator,
-  metadata,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  triggerEvent: string;
-  fieldValue: string;
-  operator: string;
-  metadata: AutomationMetadata;
-}) {
-  const knownValues = getKnownValues(triggerEvent, fieldValue, metadata);
-  // Render hint comes from the operator's declared input type.
-  const opMeta = (metadata.operators || []).find((o) => o.value === operator);
-  const inputKind = opMeta?.input;
-
-  // Operators with no value (is_empty / is_not_empty) need no input.
-  if (inputKind === 'none') {
-    return <Input value="" onChange={() => {}} placeholder="(no value needed)" />;
-  }
-
-  // List operators (in / not_in) — comma-separated text.
-  if (inputKind === 'list') {
-    return (
-      <Input
-        value={value}
-        onChange={onChange}
-        placeholder="value1, value2, value3"
-      />
-    );
-  }
-
-  // Numeric operators (comparisons, day-deltas).
-  if (inputKind === 'number') {
-    return (
-      <Input
-        type="number"
-        value={value}
-        onChange={onChange}
-        placeholder="0"
-      />
-    );
-  }
-
-  // If known values exist, show select dropdown
-  if (knownValues.length > 0) {
-    return (
-      <Select value={value} onChange={onChange}>
-        <option value="">Select value...</option>
-        {knownValues.map((v) => (
-          <option key={v} value={v}>{v}</option>
-        ))}
-      </Select>
-    );
-  }
-
-  // Fallback to text input
-  return (
-    <Input
-      value={value}
-      onChange={onChange}
-      placeholder="Value"
-    />
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════ */
 /* MAIN EDITOR COMPONENT                                                     */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -404,7 +282,7 @@ export default function RuleEditor({
       conditions: (editingRule.conditions || []).map((c) => ({
         field: c.field || '',
         op: c.op || 'eq',
-        value: String(c.value ?? ''),
+        value: Array.isArray(c.value) ? c.value.map(String) : String(c.value ?? ''),
       })),
       actions: (editingRule.actions || []).map((a) => ({
         type: a.type,
@@ -436,21 +314,16 @@ export default function RuleEditor({
   const eventGroups = useMemo(() => groupEventsByCategory(events), [events]);
   const selectedEvent = events.find((e) => e.event === form.trigger_event);
   const isScheduleEvent = selectedEvent?.event.startsWith('schedule.');
-  const fieldGroups = useMemo(
-    () => getFieldGroups(form.trigger_event, metadata),
+  // Schema-aware condition fields for the current trigger (the fix for the old
+  // raw "entity.field" text box). For record.* the datasheet drawer supplies a
+  // richer schema; here we drive off the ECA metadata roots.
+  const conditionFields = useMemo(
+    () => fieldDefsFromEcaMetadata(form.trigger_event, metadata),
     [form.trigger_event, metadata],
   );
 
   /* ── Step index ────────────────────────────────────────────────────── */
   const stepIdx = STEPS.findIndex((s) => s.key === step);
-
-  /* ── Condition helpers ─────────────────────────────────────────────── */
-  const addCondition = () =>
-    updateForm({ conditions: [...form.conditions, { field: '', op: 'eq', value: '' }] });
-  const updateCondition = (idx: number, patch: Partial<ConditionDraft>) =>
-    updateForm({ conditions: form.conditions.map((c, i) => (i === idx ? { ...c, ...patch } : c)) });
-  const removeCondition = (idx: number) =>
-    updateForm({ conditions: form.conditions.filter((_, i) => i !== idx) });
 
   /* ── Action helpers ────────────────────────────────────────────────── */
   const addAction = () =>
@@ -813,90 +686,28 @@ export default function RuleEditor({
                   Add conditions to only run this rule when specific criteria are met. All conditions must be true (AND logic).
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={addCondition}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-accent border border-accent/20 hover:bg-accent/10 transition-colors"
-              >
-                <Plus className="h-3 w-3" />
-                Add Condition
-              </button>
             </div>
 
-            {form.conditions.length === 0 && (
-              <div className="rounded-xl border border-dashed border-border-color p-8 text-center">
-                <AlertCircle className="mx-auto h-8 w-8 text-text-secondary/30 mb-2" />
-                <p className="text-sm text-text-secondary">No conditions added</p>
-                <p className="text-xs text-text-secondary/60 mt-1">
-                  Rule will run every time the trigger fires. Add conditions to filter.
-                </p>
-              </div>
-            )}
-
-            {form.conditions.map((cond, idx) => (
-              <div
-                key={idx}
-                className="rounded-xl border border-border-color bg-bg-primary/50 p-4"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="shrink-0 flex items-center justify-center h-5 w-5 rounded-full bg-yellow-400/10 text-yellow-400 text-[10px] font-bold mt-2">
-                    {idx + 1}
-                  </span>
-                  <div className="flex-1 space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <div className="sm:col-span-1">
-                        <FieldLabel>Field</FieldLabel>
-                        <FieldSelect
-                          value={cond.field}
-                          onChange={(v) => updateCondition(idx, { field: v, value: '' })}
-                          triggerEvent={form.trigger_event}
-                          metadata={metadata}
-                        />
-                      </div>
-                      <div>
-                        <FieldLabel>Operator</FieldLabel>
-                        <Select
-                          value={cond.op}
-                          onChange={(v) => updateCondition(idx, { op: v })}
-                        >
-                          {getOperatorsForField(form.trigger_event, cond.field, metadata).map((o) => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                          ))}
-                        </Select>
-                      </div>
-                      {cond.op !== 'is_empty' && cond.op !== 'is_not_empty' && (
-                        <div>
-                          <FieldLabel>Value</FieldLabel>
-                          <ValueInput
-                            value={cond.value}
-                            onChange={(v) => updateCondition(idx, { value: v })}
-                            triggerEvent={form.trigger_event}
-                            fieldValue={cond.field}
-                            operator={cond.op}
-                            metadata={metadata}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeCondition(idx)}
-                    className="shrink-0 rounded-md p-1.5 text-text-secondary hover:bg-red-500/10 hover:text-red-400 transition-colors mt-6"
-                    title="Remove condition"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                {idx < form.conditions.length - 1 && (
-                  <div className="flex items-center gap-2 mt-3 ml-8">
-                    <div className="flex-1 border-t border-border-color" />
-                    <span className="text-[10px] font-semibold text-yellow-400/60 uppercase tracking-wider">AND</span>
-                    <div className="flex-1 border-t border-border-color" />
-                  </div>
-                )}
-              </div>
-            ))}
+            <ConditionBuilder
+              fields={conditionFields}
+              value={form.conditions as Condition[]}
+              onChange={(next) =>
+                updateForm({
+                  conditions: next.map((c) => ({
+                    field: c.field,
+                    op: c.op,
+                    value: Array.isArray(c.value) ? c.value.map(String) : String(c.value ?? ''),
+                  })),
+                })
+              }
+              operators={metadata.operators}
+              addLabel="Add Condition"
+              emptyHint={
+                isScheduleEvent
+                  ? 'Scheduled triggers have no entity context — pair with a scan action instead.'
+                  : 'This trigger has no filterable fields. The rule runs every time it fires.'
+              }
+            />
           </div>
         )}
 

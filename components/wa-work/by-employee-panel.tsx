@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Users, AlertTriangle, Search, MessageSquare, ClipboardList } from 'lucide-react';
 import { formatTime, formatDayMonth } from '@/lib/format-date';
-import type { WaEmployee, WaEmployeeGroup, WaSettings } from '@/services/waEmployees';
+import type { WaEmployee, WaSettings } from '@/services/waEmployees';
 import type { WaWorkItem, WaWorkAssignment } from '@/services/waWork';
 import type { WaTemplate } from '@/services/waTemplates';
 import type { ContactTypeDef } from '@/services/contacts';
@@ -15,7 +15,6 @@ type EmployeeTab = 'work' | 'chat';
 /** Props the parent page threads through to TaskComposer. */
 export interface ComposerSharedProps {
   employees: WaEmployee[];
-  groups: WaEmployeeGroup[];
   templates: WaTemplate[];
   contactTypes: ContactTypeDef[];
   waSettings: WaSettings | null;

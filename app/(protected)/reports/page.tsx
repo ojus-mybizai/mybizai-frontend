@@ -135,7 +135,7 @@ export default function ReportsPage() {
           </Link>
           {!isExecutive && lmsEnabled && (
             <Link
-              href="/employees"
+              href="/members"
               className="rounded-lg border border-border-color bg-bg-primary px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               Manage team
@@ -290,7 +290,7 @@ export default function ReportsPage() {
                     {filteredRows.map((r) => (
                       <tr key={r.user_id} className="hover:bg-bg-secondary/60">
                         <td className="px-4 py-2.5 text-base font-medium">
-                          <Link href={`/employees/${r.id}`} className="text-text-primary hover:text-accent">{r.name}</Link>
+                          <Link href="/members" className="text-text-primary hover:text-accent">{r.name}</Link>
                         </td>
                         <td className="px-4 py-2.5 text-sm text-text-primary">{r.email}</td>
                         <td className="px-4 py-2.5 text-sm text-text-primary">{ROLE_LABELS[r.role] ?? r.role}</td>
