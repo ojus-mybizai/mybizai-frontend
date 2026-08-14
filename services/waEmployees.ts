@@ -25,6 +25,8 @@ export interface WaSettings {
     phone_number: string;
     phone_number_id: string;
   }[];
+  invite_header: string | null;
+  invite_body: string | null;
 }
 
 export interface WaEmployeeChatMessage {

@@ -1,6 +1,7 @@
 import { apiFetch } from '@/lib/api-client';
 
 export type MemberChannel = 'portal' | 'whatsapp';
+export type MemberWaStatus = 'not_connected' | 'pending' | 'declined' | 'active' | 'inactive';
 
 export interface Member {
   id: number;
@@ -14,6 +15,8 @@ export interface Member {
   status: string;
   is_active: boolean;
   is_assignable: boolean;
+  /** Per-channel WhatsApp state. Prefer this over `status` for the WA pill. */
+  wa_status: MemberWaStatus;
   /**
    * Only present on the create response — the real outcome of the WhatsApp
    * invite. The member is created either way; 'no_channel' means nothing was
@@ -121,6 +124,13 @@ export async function attachPortal(id: number, email: string): Promise<Member> {
 
 export async function resendWhatsAppInvite(id: number): Promise<{ status: string; message: string }> {
   return apiFetch(`/members/${id}/channels/whatsapp/resend`, { method: 'POST', auth: true });
+}
+
+export async function detachWhatsApp(id: number): Promise<Member> {
+  return apiFetch<Member>(`/members/${id}/channels/whatsapp`, {
+    method: 'DELETE',
+    auth: true,
+  });
 }
 
 export async function resendPortalInvite(id: number): Promise<{ status: string; message: string }> {

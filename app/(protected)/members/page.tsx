@@ -3,12 +3,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Plus, Phone, Shield, X, Search, MessageCircle,
-  KeyRound, UserMinus, AlertTriangle, Mail,
+  KeyRound, UserMinus, AlertTriangle, Mail, CheckCircle2, Clock, XCircle, Trash2, RefreshCw, Pencil,
 } from 'lucide-react';
 import {
   listMembers, createMember, updateMember, attachWhatsApp, attachPortal,
-  deactivateMember, resendWhatsAppInvite, resendPortalInvite, waChannelSetupError,
-  type Member, type MemberCreatePayload,
+  deactivateMember, resendWhatsAppInvite, resendPortalInvite, waChannelSetupError, detachWhatsApp,
+  type Member, type MemberCreatePayload, type MemberWaStatus,
 } from '@/services/members';
 import { listRoles, type Role } from '@/services/roles';
 import { getWaSettings } from '@/services/waEmployees';
@@ -21,16 +21,24 @@ import { getWaSettings } from '@/services/waEmployees';
  */
 type WaSetup = 'loading' | 'ready' | 'no_channels' | 'not_selected';
 
-const CHANNEL_PILL: Record<string, string> = {
-  portal:   'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300',
-  whatsapp: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-300',
+// Borderless pills — one flat color surface, no outline. Lighter fills so the
+// text does the talking; borders were creating visual noise in the drawer.
+const PORTAL_PILL = 'bg-blue-100/70 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+
+const WA_PILL: Record<MemberWaStatus, { cls: string; label: string; Icon: typeof CheckCircle2 } | null> = {
+  active:        { cls: 'bg-green-100/70 text-green-700 dark:bg-green-900/40 dark:text-green-300', label: 'WhatsApp verified', Icon: CheckCircle2 },
+  pending:       { cls: 'bg-amber-100/70 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', label: 'WhatsApp pending',  Icon: Clock },
+  declined:      { cls: 'bg-red-100/70 text-red-700 dark:bg-red-900/40 dark:text-red-300',         label: 'WhatsApp declined', Icon: XCircle },
+  inactive:      { cls: 'bg-bg-secondary text-text-secondary',                                     label: 'WhatsApp inactive', Icon: XCircle },
+  not_connected: null,
 };
 
 const STATUS_PILL: Record<string, string> = {
-  active:             'bg-green-50 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-300',
-  pending_acceptance: 'bg-yellow-50 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300',
-  rejected:           'bg-red-50 text-red-600 border-red-300 dark:bg-red-900/30 dark:text-red-300',
-  inactive:           'bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400',
+  active:             'bg-green-100/70 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  pending_acceptance: 'bg-amber-100/70 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  rejected:           'bg-red-100/70 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  declined:           'bg-red-100/70 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  inactive:           'bg-bg-secondary text-text-secondary',
 };
 
 export default function MembersPage() {
@@ -162,9 +170,9 @@ export default function MembersPage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border-secondary overflow-hidden">
+      <div className="rounded-lg overflow-hidden bg-bg-primary">
         <table className="w-full text-sm">
-          <thead className="bg-bg-secondary text-text-secondary">
+          <thead className="bg-bg-secondary/60 text-text-secondary">
             <tr>
               <th className="text-left font-medium px-4 py-2.5">Name</th>
               <th className="text-left font-medium px-4 py-2.5">Channels</th>
@@ -172,14 +180,14 @@ export default function MembersPage() {
               <th className="text-left font-medium px-4 py-2.5">Status</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-border-secondary/50">
             {loading ? (
               <tr><td colSpan={4} className="px-4 py-8 text-center text-text-secondary">Loading...</td></tr>
             ) : members.length === 0 ? (
               <tr><td colSpan={4} className="px-4 py-8 text-center text-text-secondary">No members yet — add your first one.</td></tr>
             ) : (
               members.map((m) => (
-                <tr key={m.id} onClick={() => setSelected(m)} className="border-t border-border-secondary hover:bg-bg-secondary/50 cursor-pointer">
+                <tr key={m.id} onClick={() => setSelected(m)} className="hover:bg-bg-secondary/40 cursor-pointer transition-colors">
                   <td className="px-4 py-3">
                     <span className="font-medium text-text-primary">{m.name}</span>
                     {m.whatsapp_number && (
@@ -191,11 +199,17 @@ export default function MembersPage() {
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1.5">
                       {m.channels.length === 0 && <span className="text-xs text-text-secondary">—</span>}
-                      {m.channels.map((c) => (
-                        <span key={c} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${CHANNEL_PILL[c] || ''}`}>
-                          {c === 'portal' ? 'Portal' : 'WhatsApp'}
+                      {m.channels.includes('portal') && (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${PORTAL_PILL}`}>
+                          <KeyRound className="w-3 h-3" /> Portal
                         </span>
-                      ))}
+                      )}
+                      {WA_PILL[m.wa_status] && (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${WA_PILL[m.wa_status]!.cls}`}>
+                          {(() => { const Icon = WA_PILL[m.wa_status]!.Icon; return <Icon className="w-3 h-3" />; })()}
+                          {WA_PILL[m.wa_status]!.label}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-text-secondary">
@@ -204,7 +218,7 @@ export default function MembersPage() {
                     ) : '—'}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_PILL[m.status] || 'bg-bg-secondary text-text-secondary border-border-secondary'}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_PILL[m.status] || 'bg-bg-secondary text-text-secondary'}`}>
                       {m.status.replace('_', ' ')}
                     </span>
                   </td>
@@ -248,24 +262,14 @@ function MemberDetail({ member, allMembers, roles, onClose, onChanged, onDeactiv
   onDeactivated: () => void;
   waSetup: WaSetup;
 }) {
-  const [waNumber, setWaNumber] = useState('');
   const [email, setEmail] = useState('');
   const [editRole, setEditRole] = useState(false);
   const [selectedRoleId, setSelectedRoleId] = useState<number | ''>(member.role_id ?? '');
-  const [busy, setBusy] = useState<'wa' | 'portal' | 'role' | 'resend_wa' | 'resend_portal' | null>(null);
+  const [busy, setBusy] = useState<'portal' | 'role' | 'resend_portal' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const hasWa = member.channels.includes('whatsapp');
   const hasPortal = member.channels.includes('portal');
-
-  async function addWa() {
-    if (!waNumber.trim()) return;
-    setBusy('wa'); setError(null);
-    try { onChanged(await attachWhatsApp(member.id, waNumber.trim())); setWaNumber(''); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Failed to add WhatsApp'); }
-    finally { setBusy(null); }
-  }
 
   async function addPortal() {
     if (!email.trim()) return;
@@ -299,16 +303,20 @@ function MemberDetail({ member, allMembers, roles, onClose, onChanged, onDeactiv
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
           <div>
             <h3 className="text-base font-semibold text-text-primary">{member.name}</h3>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {hasPortal && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300">Portal</span>}
-              {hasWa && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-300">WhatsApp</span>}
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {hasPortal && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${PORTAL_PILL}`}>
+                  <KeyRound className="w-3 h-3" /> Portal
+                </span>
+              )}
+              {WA_PILL[member.wa_status] && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${WA_PILL[member.wa_status]!.cls}`}>
+                  {(() => { const Icon = WA_PILL[member.wa_status]!.Icon; return <Icon className="w-3 h-3" />; })()}
+                  {WA_PILL[member.wa_status]!.label}
+                </span>
+              )}
               {member.channels.length === 0 && <span className="text-xs text-text-secondary">No channels yet</span>}
             </div>
-            {member.whatsapp_number && (
-              <div className="mt-2 flex items-center gap-1.5 text-sm text-text-secondary">
-                <Phone className="w-3.5 h-3.5" /><span className="font-mono">+{member.whatsapp_number}</span>
-              </div>
-            )}
 
             {/* Role */}
             <div className="mt-2">
@@ -330,9 +338,13 @@ function MemberDetail({ member, allMembers, roles, onClose, onChanged, onDeactiv
                   <button onClick={() => setEditRole(false)} className="text-xs text-text-secondary">Cancel</button>
                 </div>
               ) : (
-                <button onClick={() => setEditRole(true)} className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary">
+                <button
+                  onClick={() => setEditRole(true)}
+                  className="group inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 -ml-1.5 text-sm text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
+                >
                   <Shield className="w-3.5 h-3.5" />
-                  {member.role_name || 'No role'} <span className="text-xs text-accent ml-1">edit</span>
+                  <span>{member.role_name || 'No role'}</span>
+                  <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity" />
                 </button>
               )}
             </div>
@@ -344,114 +356,56 @@ function MemberDetail({ member, allMembers, roles, onClose, onChanged, onDeactiv
           <div>
             <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Channels</span>
 
-            {!hasWa && (
-              <div className="mt-3 rounded-lg border border-border-secondary p-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-text-primary mb-2">
-                  <MessageCircle className="w-4 h-4 text-green-600" /> Add WhatsApp
-                </div>
-                {waSetup === 'no_channels' ? (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Connect a WhatsApp channel in{' '}
-                    <a href="/settings/channels" className="underline font-medium">Settings → Channels</a> first.
-                  </p>
-                ) : waSetup === 'not_selected' ? (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Pick the number that reaches your team in{' '}
-                    <a href="/settings/whatsapp" className="underline font-medium">Settings → WhatsApp</a> first.
-                  </p>
-                ) : (
-                  <>
-                    <input
-                      value={waNumber}
-                      onChange={(e) => setWaNumber(e.target.value)}
-                      placeholder="919876543210"
-                      className="w-full rounded-lg border border-border-secondary bg-bg-primary px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
-                    />
-                    <button onClick={addWa} disabled={busy === 'wa'} className="mt-2 w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60">
-                      {busy === 'wa' ? 'Sending invite...' : 'Send WhatsApp invite'}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
+            <WhatsAppSection member={member} waSetup={waSetup} onChanged={onChanged} onNotice={setNotice} onError={setError} />
 
             {!hasPortal && (
-              <div className="mt-3 rounded-lg border border-border-secondary p-3">
+              <div className="mt-3 rounded-lg bg-bg-secondary/50 p-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-text-primary mb-2">
-                  <KeyRound className="w-4 h-4 text-blue-600" /> Add dashboard login
+                  <KeyRound className="w-4 h-4 text-blue-600" /> Portal login
+                  <span className="text-xs font-normal text-text-secondary">— not set up</span>
                 </div>
                 <input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   type="email"
                   placeholder="name@company.com"
-                  className="w-full rounded-lg border border-border-secondary bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="w-full rounded-md border border-border-secondary bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
                 />
-                <button onClick={addPortal} disabled={busy === 'portal'} className="mt-2 w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60">
+                <button onClick={addPortal} disabled={busy === 'portal'} className="mt-2 w-full rounded-md bg-accent px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60">
                   {busy === 'portal' ? 'Sending invite...' : 'Send email invite'}
                 </button>
               </div>
             )}
 
-            {/* Resend invite buttons for attached channels */}
-            {hasWa && (member.status === 'pending_acceptance' || member.status === 'rejected') && (
-              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm">
-                    <MessageCircle className="w-4 h-4 text-green-600" />
-                    <span className={`font-medium ${member.status === 'rejected' ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-300'}`}>
-                      {member.status === 'rejected' ? 'Declined' : 'Pending acceptance'}
-                    </span>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      setBusy('resend_wa'); setError(null); setNotice(null);
-                      try {
-                        const res = await resendWhatsAppInvite(member.id);
-                        setNotice(res.message);
-                      } catch (e) {
-                        const setup = waChannelSetupError(e);
-                        setError(setup
-                          ? `${setup.message} Open Settings → WhatsApp to choose a number.`
-                          : e instanceof Error ? e.message : 'Failed to resend');
-                      }
-                      finally { setBusy(null); }
-                    }}
-                    disabled={busy === 'resend_wa'}
-                    className="text-xs font-semibold text-accent hover:underline disabled:opacity-60"
-                  >
-                    {busy === 'resend_wa' ? 'Sending...' : member.status === 'rejected' ? 'Re-invite' : 'Resend invite'}
-                  </button>
-                </div>
-              </div>
-            )}
-
             {hasPortal && !member.has_login && (
-              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Mail className="w-4 h-4 text-blue-600" />
-                    <span className="font-medium text-amber-700 dark:text-amber-300">Portal invite pending</span>
+              <div className="mt-3 rounded-lg bg-bg-secondary/50 p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
+                    <Mail className="w-4 h-4 text-blue-600" /> Portal login
                   </div>
-                  <button
-                    onClick={async () => {
-                      setBusy('resend_portal'); setError(null); setNotice(null);
-                      try {
-                        const res = await resendPortalInvite(member.id);
-                        setNotice(res.message);
-                      } catch (e) { setError(e instanceof Error ? e.message : 'Failed to resend'); }
-                      finally { setBusy(null); }
-                    }}
-                    disabled={busy === 'resend_portal'}
-                    className="text-xs font-semibold text-accent hover:underline disabled:opacity-60"
-                  >
-                    {busy === 'resend_portal' ? 'Sending...' : 'Resend email invite'}
-                  </button>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100/70 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                    <Clock className="w-3 h-3" /> Invite pending
+                  </span>
                 </div>
+                <button
+                  onClick={async () => {
+                    setBusy('resend_portal'); setError(null); setNotice(null);
+                    try {
+                      const res = await resendPortalInvite(member.id);
+                      setNotice(res.message);
+                    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to resend'); }
+                    finally { setBusy(null); }
+                  }}
+                  disabled={busy === 'resend_portal'}
+                  className="mt-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary disabled:opacity-60"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  {busy === 'resend_portal' ? 'Sending…' : 'Resend email invite'}
+                </button>
               </div>
             )}
 
-            {hasWa && hasPortal && member.status === 'active' && member.has_login && (
+            {member.wa_status === 'active' && hasPortal && member.has_login && (
               <p className="mt-3 text-xs text-text-secondary">This member is reachable on both channels.</p>
             )}
           </div>
@@ -462,6 +416,221 @@ function MemberDetail({ member, allMembers, roles, onClose, onChanged, onDeactiv
     </>
   );
 }
+
+function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
+  member: Member;
+  waSetup: WaSetup;
+  onChanged: (m: Member) => void;
+  onNotice: (s: string | null) => void;
+  onError: (s: string | null) => void;
+}) {
+  const [waNumber, setWaNumber] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState<'attach' | 'resend' | 'remove' | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  const setupReady = waSetup === 'ready';
+
+  async function submitNumber() {
+    const trimmed = waNumber.trim();
+    if (!trimmed) return;
+    setBusy('attach'); onError(null); onNotice(null);
+    try {
+      const updated = await attachWhatsApp(member.id, trimmed);
+      if (updated.wa_invite_status === 'sent') {
+        onNotice(`Invite sent to +${updated.whatsapp_number}. Waiting for accept.`);
+      } else if (updated.wa_invite_status === 'no_channel') {
+        onNotice(`Number saved but no invite went out — ${updated.wa_invite_detail ?? 'no team WhatsApp number is configured.'}`);
+      } else if (updated.wa_invite_status === 'failed') {
+        onError(`Number saved but the invite failed: ${updated.wa_invite_detail ?? 'unknown error'}`);
+      }
+      onChanged(updated);
+      setWaNumber('');
+      setEditing(false);
+    } catch (e) {
+      const setup = waChannelSetupError(e);
+      onError(setup
+        ? `${setup.message} Open Settings → WhatsApp to choose a number.`
+        : e instanceof Error ? e.message : 'Failed to attach WhatsApp');
+    } finally { setBusy(null); }
+  }
+
+  async function resend() {
+    setBusy('resend'); onError(null); onNotice(null);
+    try {
+      const res = await resendWhatsAppInvite(member.id);
+      onNotice(res.message);
+    } catch (e) {
+      const setup = waChannelSetupError(e);
+      onError(setup
+        ? `${setup.message} Open Settings → WhatsApp to choose a number.`
+        : e instanceof Error ? e.message : 'Failed to resend');
+    } finally { setBusy(null); }
+  }
+
+  async function remove() {
+    setBusy('remove'); onError(null); onNotice(null);
+    try {
+      const updated = await detachWhatsApp(member.id);
+      onChanged(updated);
+      onNotice('WhatsApp channel removed.');
+      setConfirmRemove(false);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to remove WhatsApp');
+    } finally { setBusy(null); }
+  }
+
+  const setupWarning = waSetup === 'no_channels' ? (
+    <p className="text-xs text-amber-600 dark:text-amber-400">
+      Connect a WhatsApp channel in{' '}
+      <a href="/settings/channels" className="underline font-medium">Settings → Channels</a> first.
+    </p>
+  ) : waSetup === 'not_selected' ? (
+    <p className="text-xs text-amber-600 dark:text-amber-400">
+      Pick the number that reaches your team in{' '}
+      <a href="/settings/whatsapp" className="underline font-medium">Settings → WhatsApp</a> first.
+    </p>
+  ) : null;
+
+  // NOT CONNECTED — show input to add
+  if (member.wa_status === 'not_connected') {
+    return (
+      <div className="mt-3 rounded-lg bg-bg-secondary/50 p-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-text-primary mb-2">
+          <MessageCircle className="w-4 h-4 text-green-600" /> WhatsApp
+          <span className="text-xs font-normal text-text-secondary">— not connected</span>
+        </div>
+        {setupWarning ? setupWarning : (
+          <>
+            <input
+              value={waNumber}
+              onChange={(e) => setWaNumber(e.target.value)}
+              placeholder="919876543210"
+              className="w-full rounded-lg border border-border-secondary bg-bg-primary px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <p className="mt-1 text-[11px] text-text-secondary">
+              Include country code, no + or spaces. An Accept/Decline invite goes to this number.
+            </p>
+            <button
+              onClick={submitNumber}
+              disabled={busy === 'attach' || !waNumber.trim() || !setupReady}
+              className="mt-2 w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+            >
+              {busy === 'attach' ? 'Sending invite…' : 'Send WhatsApp invite'}
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // CONNECTED — show status + manage actions
+  const badge = WA_PILL[member.wa_status];
+  const canResend = member.wa_status === 'pending' || member.wa_status === 'declined';
+
+  return (
+    <div className="mt-3 rounded-lg bg-bg-secondary/50 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
+          <MessageCircle className="w-4 h-4 text-green-600" /> WhatsApp
+        </div>
+        {badge && (
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>
+            <badge.Icon className="w-3 h-3" />
+            {member.wa_status === 'active' ? 'Verified' : member.wa_status === 'pending' ? 'Pending acceptance' : member.wa_status === 'declined' ? 'Declined' : 'Inactive'}
+          </span>
+        )}
+      </div>
+
+      {editing ? (
+        <>
+          {setupWarning}
+          <input
+            value={waNumber}
+            onChange={(e) => setWaNumber(e.target.value)}
+            placeholder={member.whatsapp_number ?? '919876543210'}
+            autoFocus
+            className="w-full rounded-md border border-border-secondary bg-bg-primary px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <p className="mt-1 text-[11px] text-text-secondary">
+            Replacing the number resets verification — a fresh invite goes out.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={submitNumber}
+              disabled={busy === 'attach' || !waNumber.trim() || !setupReady}
+              className="flex-1 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+            >
+              {busy === 'attach' ? 'Saving…' : 'Save & send invite'}
+            </button>
+            <button
+              onClick={() => { setEditing(false); setWaNumber(''); }}
+              className="rounded-md px-3 py-2 text-sm text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-1.5 text-sm text-text-primary">
+            <Phone className="w-3.5 h-3.5 text-text-secondary" />
+            <span className="font-mono">+{member.whatsapp_number}</span>
+          </div>
+
+          {confirmRemove ? (
+            <div className="mt-3 rounded-md bg-red-100/60 dark:bg-red-950/30 p-2">
+              <p className="text-xs text-red-700 dark:text-red-300 mb-2">
+                Remove this WhatsApp channel? Tasks will stop reaching them here.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={remove}
+                  disabled={busy === 'remove'}
+                  className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                >
+                  {busy === 'remove' ? 'Removing…' : 'Yes, remove'}
+                </button>
+                <button
+                  onClick={() => setConfirmRemove(false)}
+                  className="rounded-md px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-1">
+              {canResend && (
+                <button
+                  onClick={resend}
+                  disabled={busy === 'resend'}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary disabled:opacity-60"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  {busy === 'resend' ? 'Sending…' : member.wa_status === 'declined' ? 'Re-invite' : 'Resend invite'}
+                </button>
+              )}
+              <button
+                onClick={() => { setEditing(true); setWaNumber(''); }}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary"
+              >
+                <Pencil className="w-3 h-3" /> Change number
+              </button>
+              <button
+                onClick={() => setConfirmRemove(true)}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100/60 dark:hover:bg-red-950/30"
+              >
+                <Trash2 className="w-3 h-3" /> Remove
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 
 function DeactivateSection({ member, allMembers, onDeactivated }: {
   member: Member;
@@ -493,7 +662,7 @@ function DeactivateSection({ member, allMembers, onDeactivated }: {
 
   if (!open) {
     return (
-      <div className="pt-2 border-t border-border-secondary">
+      <div className="pt-4 mt-1 border-t border-border-secondary/50">
         <button
           onClick={() => setOpen(true)}
           className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 hover:text-red-700"
@@ -505,7 +674,7 @@ function DeactivateSection({ member, allMembers, onDeactivated }: {
   }
 
   return (
-    <div className="pt-3 border-t border-border-secondary">
+    <div className="pt-4 mt-1 border-t border-border-secondary/50">
       <div className="flex items-center gap-1.5 text-sm font-semibold text-red-600 mb-2">
         <AlertTriangle className="w-4 h-4" /> Deactivate {member.name}
       </div>

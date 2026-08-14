@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MessageCircle, Save, CheckCircle2, XCircle, AlertTriangle, Bot } from 'lucide-react';
+import { MessageCircle, Save, CheckCircle2, XCircle, AlertTriangle, Bot, UserPlus } from 'lucide-react';
 import PermissionGuard from '@/components/permission-guard';
 import { getWaSettings, updateWaSettings, type WaSettings } from '@/services/waEmployees';
 import {
@@ -23,6 +23,8 @@ export default function WhatsAppSettingsPage() {
   const [taskTemplate, setTaskTemplate] = useState('');
   const [checkinTime, setCheckinTime] = useState('');
   const [checkinEnabled, setCheckinEnabled] = useState(false);
+  const [inviteHeader, setInviteHeader] = useState('');
+  const [inviteBody, setInviteBody] = useState('');
 
   // AI human-takeover (WhatsApp Coexistence) — separate endpoint, own save.
   const [takeoverEnabled, setTakeoverEnabled] = useState(true);
@@ -41,6 +43,8 @@ export default function WhatsAppSettingsPage() {
         setTaskTemplate(s.task_template_name || '');
         setCheckinTime(s.checkin_schedule_time || '');
         setCheckinEnabled(s.checkin_schedule_enabled);
+        setInviteHeader(s.invite_header || '');
+        setInviteBody(s.invite_body || '');
         if (sync) {
           setTakeoverEnabled(sync.wa_app_takeover_enabled);
           setResumeHours(String(sync.wa_app_takeover_resume_hours));
@@ -79,6 +83,8 @@ export default function WhatsAppSettingsPage() {
         task_template_name: taskTemplate.trim() || null,
         checkin_schedule_time: checkinTime.trim() || null,
         checkin_schedule_enabled: checkinEnabled,
+        invite_header: inviteHeader.trim() || null,
+        invite_body: inviteBody.trim() || null,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -198,6 +204,73 @@ export default function WhatsAppSettingsPage() {
                   <AlertTriangle className="h-3 w-3" /> Set a time or disable the schedule.
                 </p>
               )}
+            </div>
+
+            {/* Team invite message — shown to a new member with Accept/Decline buttons */}
+            <div className="rounded-2xl border border-border-color bg-card-bg p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10">
+                  <UserPlus className="h-4 w-4 text-accent" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-text-primary">Team Invite Message</h2>
+                  <p className="text-sm text-text-secondary">
+                    The WhatsApp message a new member sees. Buttons (Accept / Decline) are added automatically.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-text-secondary">
+                  Header <span className="font-normal text-text-secondary/70">— up to 60 chars</span>
+                </label>
+                <input
+                  value={inviteHeader}
+                  onChange={(e) => setInviteHeader(e.target.value.slice(0, 60))}
+                  maxLength={60}
+                  placeholder="Team Invite"
+                  className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-text-secondary">Body</label>
+                <textarea
+                  value={inviteBody}
+                  onChange={(e) => setInviteBody(e.target.value.slice(0, 1024))}
+                  maxLength={1024}
+                  rows={3}
+                  placeholder="You've been invited to join {business}. Accept to start receiving tasks."
+                  className="w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent resize-y"
+                />
+                <div className="mt-1 flex items-center justify-between text-xs text-text-secondary">
+                  <div>
+                    Variables:{' '}
+                    <code className="rounded bg-bg-secondary px-1">{'{business}'}</code>,{' '}
+                    <code className="rounded bg-bg-secondary px-1">{'{name}'}</code>
+                  </div>
+                  <span>{inviteBody.length}/1024</span>
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="rounded-lg bg-bg-secondary/60 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary mb-1.5">Preview</div>
+                <div className="rounded-md bg-bg-primary p-3 text-sm">
+                  <div className="font-semibold text-text-primary">
+                    {(inviteHeader.trim() || 'Team Invite')}
+                  </div>
+                  <p className="mt-1 text-text-primary/90 whitespace-pre-wrap">
+                    {(inviteBody.trim() || "You've been invited to join {business}. Accept to start receiving tasks.")
+                      .replaceAll('{business}', 'Your business')
+                      .replaceAll('{name}', 'Alex')}
+                  </p>
+                  <div className="mt-2 flex gap-2 border-t border-border-color pt-2">
+                    <span className="rounded-md bg-bg-secondary px-2 py-1 text-xs font-medium text-text-primary">Accept</span>
+                    <span className="rounded-md bg-bg-secondary px-2 py-1 text-xs font-medium text-text-primary">Decline</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <button
