@@ -549,7 +549,11 @@ function mapConvosToInboxConversations(convos: ConvoOut[]): InboxConversation[] 
     agentId: c.agent_id ?? null,
     agentName: c.agent_name ?? '—',
     status: c.mode,
-    updatedAt: c.updated_at ?? c.last_message_at ?? new Date().toISOString(),
+    // Prefer last_message_at so the inbox row reflects actual message timing.
+    // `updated_at` gets bumped by side-effects like marking-as-read on open,
+    // which would otherwise make the just-opened conversation show "Just now"
+    // and jump to the top of the list.
+    updatedAt: c.last_message_at ?? c.updated_at ?? new Date().toISOString(),
     lastMessagePreview: c.last_message_preview ?? c.summary ?? '—',
     leadName: c.lead_name ?? undefined,
     contactName: c.contact_name ?? undefined,

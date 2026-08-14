@@ -9,7 +9,7 @@
  * deriveScope groups back onto this sheet.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { X, Plus, Zap, Clock, Trash2 } from 'lucide-react';
 import type { DynamicField } from '@/services/dynamic-data';
 import {
@@ -25,6 +25,11 @@ import { ConditionBuilder, type Condition } from './condition-builder';
 import { fieldDefsFromDatasheetSchema } from './condition-builder-adapters';
 import { rulesForDatasheet } from './scope';
 import {
+  ChannelPicker, WaTemplatePicker, TemplateVariablePreview, RecipientPicker,
+} from './action-widgets';
+import { DatasheetFieldInput } from '@/components/data-sheet/datasheet-field-input';
+import type { MessageTemplate } from '@/services/message-templates';
+import {
   recipesForSchema,
   applyRecipe,
   emptyForm,
@@ -35,8 +40,9 @@ import {
 // Actions relevant inside a datasheet (§10). move_stage / assign_deal_* stay
 // pipeline-scoped and are intentionally excluded.
 const DATASHEET_ACTION_TYPES = new Set([
-  'notify', 'send_whatsapp', 'schedule_followup', 'add_tag', 'remove_tag',
-  'add_note', 'update_record', 'create_record', 'dispatch_wa_work', 'log_activity',
+  'notify', 'send_whatsapp_template', 'send_whatsapp', 'schedule_followup',
+  'add_tag', 'remove_tag', 'add_note', 'update_record', 'create_record',
+  'dispatch_wa_work', 'log_activity',
 ]);
 
 const TRIGGER_OPTIONS: { value: TriggerType; label: string }[] = [
@@ -64,6 +70,8 @@ export function DatasheetAutomationDrawer({
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Selected template per action index → drives the read-only variable preview.
+  const [templateByAction, setTemplateByAction] = useState<Record<number, MessageTemplate | null>>({});
 
   const dateFields = useMemo(
     () => fields.filter((f) => f.field_type === 'date' || f.field_type === 'datetime'),
@@ -95,6 +103,75 @@ export function DatasheetAutomationDrawer({
   }, [open, modelId]);
 
   const update = (patch: Partial<DatasheetRuleForm>) => setForm((f) => ({ ...f, ...patch }));
+
+  const setParam = (idx: number, name: string, value: string) =>
+    update({ actions: form.actions.map((a, i) => (i === idx ? { ...a, params: { ...a.params, [name]: value } } : a)) });
+
+  /** Widget-aware render of one action parameter (channel/template/field/recipient/…). */
+  const renderActionParam = (
+    p: { name: string; type: string; label: string; required?: boolean; options?: string[]; widget?: string; hint?: string },
+    action: { type: string; params: Record<string, string> },
+    idx: number,
+  ) => {
+    const val = action.params[p.name] ?? '';
+    const set = (v: string) => setParam(idx, p.name, v);
+
+    let control: ReactNode;
+    switch (p.widget) {
+      case 'channel':
+        control = <ChannelPicker value={val} onChange={set} />;
+        break;
+      case 'wa_message_template':
+        control = (
+          <WaTemplatePicker value={val} onChange={set}
+            onTemplate={(t) => setTemplateByAction((m) => (m[idx] === t ? m : { ...m, [idx]: t }))} />
+        );
+        break;
+      case 'recipient':
+        control = <RecipientPicker value={val} onChange={set} />;
+        break;
+      case 'record_field':
+        control = (
+          <select value={val} onChange={(e) => set(e.target.value)} className={`${INPUT} appearance-none`}>
+            <option value="">Select field…</option>
+            {fields.filter((f) => f.field_type !== 'computed').map((f) => (
+              <option key={f.id} value={f.name}>{f.display_name}</option>
+            ))}
+          </select>
+        );
+        break;
+      case 'record_value': {
+        const targetField = fields.find((f) => f.name === action.params['field']);
+        control = targetField ? (
+          <DatasheetFieldInput field={targetField} value={val} onChange={(v) => set(v == null ? '' : String(v))} />
+        ) : (
+          <input disabled placeholder="Pick a field first" className={`${INPUT} opacity-60`} />
+        );
+        break;
+      }
+      default:
+        control = p.options && p.options.length > 0 ? (
+          <select value={val} onChange={(e) => set(e.target.value)} className={`${INPUT} appearance-none`}>
+            <option value="">Select…</option>
+            {p.options.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        ) : (
+          <input type={p.type === 'number' ? 'number' : 'text'} value={val}
+            onChange={(e) => set(e.target.value)} className={INPUT} />
+        );
+    }
+
+    return (
+      <div key={p.name}>
+        <label className="mb-1 block text-[11px] text-text-secondary">{p.label}{p.required ? ' *' : ''}</label>
+        {control}
+        {p.hint && <p className="mt-1 text-[10px] text-text-secondary/70">{p.hint}</p>}
+        {p.widget === 'wa_message_template' && templateByAction[idx] && (
+          <div className="mt-2"><TemplateVariablePreview template={templateByAction[idx]!} /></div>
+        )}
+      </div>
+    );
+  };
 
   const startBlank = () => { setForm(emptyForm()); setCreating(true); };
   const startRecipe = (key: string) => { setForm(applyRecipe(key, fields)); setCreating(true); };
@@ -320,23 +397,7 @@ export function DatasheetAutomationDrawer({
                           </button>
                         )}
                       </div>
-                      {meta?.param_schema.map((p) => (
-                        <div key={p.name}>
-                          <label className="mb-1 block text-[11px] text-text-secondary">{p.label}{p.required ? ' *' : ''}</label>
-                          {p.options && p.options.length > 0 ? (
-                            <select value={action.params[p.name] ?? ''}
-                              onChange={(e) => update({ actions: form.actions.map((a, i) => i === idx ? { ...a, params: { ...a.params, [p.name]: e.target.value } } : a) })}
-                              className={`${INPUT} appearance-none`}>
-                              <option value="">Select…</option>
-                              {p.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                            </select>
-                          ) : (
-                            <input type={p.type === 'number' ? 'number' : 'text'} value={action.params[p.name] ?? ''}
-                              onChange={(e) => update({ actions: form.actions.map((a, i) => i === idx ? { ...a, params: { ...a.params, [p.name]: e.target.value } } : a) })}
-                              className={INPUT} />
-                          )}
-                        </div>
-                      ))}
+                      {meta?.param_schema.map((p) => renderActionParam(p, action, idx))}
                     </div>
                   );
                 })}

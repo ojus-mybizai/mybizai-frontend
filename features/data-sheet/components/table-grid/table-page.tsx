@@ -12,6 +12,7 @@ import { ChevronDown, ChevronRight, Layers, Plus, ArrowUpRight } from 'lucide-re
 import { CreateChildDatasheetModal } from '@/components/data-sheet/create-child-datasheet-modal';
 import { DataSheetFilterBuilder } from '@/components/data-sheet/data-sheet-filter-builder';
 import { DatasheetAutomationDrawer } from '@/components/automation/datasheet-automation-drawer';
+import { DatasheetTasksPanel } from '@/components/tasks/datasheet-tasks-panel';
 import { listAutomationRules } from '@/services/automation';
 import { rulesForDatasheet } from '@/components/automation/scope';
 import { useDataSheetContext } from '@/features/data-sheet/context/data-sheet-context';
@@ -145,6 +146,7 @@ export function TablePage() {
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false);
   const [automationDrawerOpen, setAutomationDrawerOpen] = useState(false);
   const [automationCount, setAutomationCount] = useState(0);
+  const [tasksDrawerOpen, setTasksDrawerOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<Set<string> | null>(null);
   const [views, setViews] = useState<Array<{ id: number; name: string; config: Record<string, unknown>; is_default?: boolean }>>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -678,6 +680,17 @@ export function TablePage() {
           )}
         </button>
 
+        {/* Tasks */}
+        <button
+          type="button"
+          onClick={() => setTasksDrawerOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+          title="Tasks for this datasheet"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <span className="hidden sm:inline">Tasks</span>
+        </button>
+
         {/* Import */}
         <Link
           href={`/data-sheet/${ctx.modelId}/import`}
@@ -771,6 +784,13 @@ export function TablePage() {
         fields={fields}
         onChanged={loadAutomationCount}
       />
+
+      {tasksDrawerOpen && (
+        <DatasheetTasksPanel
+          datasheetId={Number(modelId)}
+          onClose={() => setTasksDrawerOpen(false)}
+        />
+      )}
 
       {confirmDeleteRowId !== null && (
         <ConfirmModal

@@ -68,7 +68,16 @@ export interface ActionOption {
   label: string;
   description: string;
   category: string;
-  param_schema: Array<{ name: string; type: string; label: string; required: boolean; options?: string[] }>;
+  param_schema: Array<{
+    name: string;
+    type: string;
+    label: string;
+    required: boolean;
+    options?: string[];
+    /** Semantic widget hint so the UI renders a real picker (channel/template/field/recipient). */
+    widget?: string;
+    hint?: string;
+  }>;
   /** False = catalogued but handler not wired yet; render disabled. */
   available: boolean;
 }

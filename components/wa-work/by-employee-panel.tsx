@@ -110,6 +110,7 @@ export function ByEmployeePanel({ employees, itemDetailsMap, loading, composerPr
               name: a.employee_name,
               whatsapp_number: a.employee_number,
               status: 'inactive' as const,
+              role: '',
               is_active: false,
               contact_id: null,
               created_at: '',

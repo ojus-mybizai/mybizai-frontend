@@ -151,6 +151,8 @@ export function EmployeeChat({ employee, pollMs = POLL_DEFAULT }: Props) {
       timestamp: new Date().toISOString(),
       read: false,
       delivered: false,
+      tool_called: null,
+      tool_status: null,
     };
     setChat((prev) =>
       prev

@@ -41,12 +41,15 @@ import {
   type Message, type ConversationSession,
 } from '@/services/customers';
 import { DataTab } from '@/components/contacts-v2/data-tab/data-tab';
+import { listTasks, type Task } from '@/services/tasks';
+import { TaskDrawer } from '@/components/tasks/task-drawer';
+import { CreateTaskModal } from '@/components/tasks/create-task-modal';
 
 // ────────────────────────────────────────────────────────────────
 // Constants
 // ────────────────────────────────────────────────────────────────
 
-type TabId = 'overview' | 'details' | 'conversation' | 'activity' | 'pipeline' | 'data' | 'channels' | 'groups';
+type TabId = 'overview' | 'details' | 'conversation' | 'activity' | 'pipeline' | 'data' | 'channels' | 'groups' | 'tasks';
 type ActivitySub = 'timeline' | 'notes' | 'followups';
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
@@ -58,6 +61,7 @@ const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
   { id: 'data',         label: 'Data',         Icon: Table2 },
   { id: 'channels',     label: 'Channels',     Icon: Wifi },
   { id: 'groups',       label: 'Groups',       Icon: FolderKanban },
+  { id: 'tasks',        label: 'Tasks',        Icon: CheckCircle2 },
 ];
 
 const PRIORITY_OPTIONS: Priority[] = ['hot', 'high', 'medium', 'low'];
@@ -456,6 +460,7 @@ function ContactDetailInner() {
                 }}
               />
             )}
+            {tab === 'tasks' && <ContactTasksTab contactId={c.id} />}
           </div>
 
           {/* ── Right rail ──────────────────────────────────────── */}
@@ -2430,6 +2435,99 @@ function SkeletonCard() {
         <div className="h-3 w-3/4 animate-pulse rounded bg-bg-primary" />
         <div className="h-3 w-1/2 animate-pulse rounded bg-bg-primary" />
       </div>
+    </div>
+  );
+}
+
+const TASK_STATUS_PILL: Record<string, string> = {
+  open: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  done: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+  cancelled: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+};
+
+function ContactTasksTab({ contactId }: { contactId: number }) {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    listTasks({ contact_id: contactId })
+      .then(setTasks)
+      .catch(() => setTasks([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [contactId]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-text-primary">Tasks ({tasks.length})</h3>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+        >
+          <Plus className="w-3.5 h-3.5" /> Create task
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-8 text-sm text-text-secondary">Loading tasks...</div>
+      ) : tasks.length === 0 ? (
+        <div className="text-center py-8 text-sm text-text-secondary">
+          <CheckCircle2 className="w-10 h-10 mx-auto mb-2 opacity-20" />
+          No tasks for this contact yet.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {tasks.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setSelectedTaskId(t.id)}
+              className="w-full text-left rounded-lg border border-border-secondary p-3 hover:bg-bg-secondary/50 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-text-primary truncate">{t.title}</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${TASK_STATUS_PILL[t.status]}`}>
+                  {t.status.replace('_', ' ')}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-xs text-text-secondary">
+                {t.type === 'app_action' && (
+                  <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                    app_action
+                  </span>
+                )}
+                <span>{t.assignee_name || 'Unassigned'}</span>
+                {t.due_at && (
+                  <span className={t.is_overdue ? 'text-red-600 dark:text-red-400 font-medium' : ''}>
+                    {fmtDate(t.due_at)}{t.is_overdue ? ' (overdue)' : ''}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selectedTaskId && (
+        <TaskDrawer
+          taskId={selectedTaskId}
+          onClose={() => setSelectedTaskId(null)}
+          onTaskUpdated={load}
+        />
+      )}
+
+      {showCreate && (
+        <CreateTaskModal
+          prefillContactId={contactId}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => { setShowCreate(false); load(); }}
+        />
+      )}
     </div>
   );
 }

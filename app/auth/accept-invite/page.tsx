@@ -36,7 +36,7 @@ function AcceptInviteContent() {
 
     async function runValidation() {
       if (!token) {
-        setValidation({ valid: false });
+        setValidation({ valid: false, email: null, name: null, role: null, expires_at: null, status: null });
         setValidating(false);
         return;
       }
@@ -50,7 +50,7 @@ function AcceptInviteContent() {
         }
       } catch (err) {
         if (!cancelled) {
-          setValidation({ valid: false });
+          setValidation({ valid: false, email: null, name: null, role: null, expires_at: null, status: null });
           setError(err instanceof Error ? err.message : 'Could not validate invite token.');
         }
       } finally {
@@ -83,7 +83,7 @@ function AcceptInviteContent() {
       setUser(null);
       setOnboardingRequired(false);
       setDefaultBusinessId(null);
-      setDefaultRole(result.role);
+      setDefaultRole((result.role as any) ?? null);
       setHasActiveBusinessAccess(true);
       broadcastAuthEvent('login');
 

@@ -1,8 +1,5 @@
 import { apiFetch } from '@/lib/api-client';
 
-// Unified Member surface (Employee+Task Redesign V2 — Phase 4, Slice 1).
-// A Member is one identity; `portal` (login) and `whatsapp` are optional channels.
-
 export type MemberChannel = 'portal' | 'whatsapp';
 
 export interface Member {
@@ -12,37 +9,41 @@ export interface Member {
   role_name: string | null;
   channels: MemberChannel[];
   whatsapp_number: string | null;
+  phone: string | null;
   has_login: boolean;
   status: string;
   is_active: boolean;
-  /** Legacy WA-employee id — reuse /wa/employees/{id}/chat during transition. */
-  legacy_wa_employee_id: number | null;
-  /** WhatsApp-channel members only: checked in today? null = not applicable. */
-  checked_in_today: boolean | null;
+  is_assignable: boolean;
+  /**
+   * Only present on the create response — the real outcome of the WhatsApp
+   * invite. The member is created either way; 'no_channel' means nothing was
+   * sent because no team WhatsApp number is configured.
+   */
+  wa_invite_status?: 'sent' | 'failed' | 'no_channel' | null;
+  wa_invite_detail?: string | null;
+  wa_invite_settings_url?: string | null;
 }
 
-export interface MemberAttendanceDay {
-  date: string;
-  check_in_at: string | null;
-  check_out_at: string | null;
-  check_in_method: string | null;
-  check_out_method: string | null;
-  work_hours: number | null;
-}
+/** Error code the API returns when no team WhatsApp number is configured. */
+export const WA_CHANNEL_NOT_CONFIGURED = 'wa_channel_not_configured';
 
-export interface MemberDeactivatePayload {
-  reassign_to_member_id?: number | null;
-  force?: boolean;
-  reason?: string | null;
-}
-
-export interface MemberDeactivateResult {
-  member_id: number;
-  is_active: boolean;
-  reassigned_work: number;
-  reassigned_contacts: number;
-  reassigned_wa_contacts: number;
-  reassigned_wa_tasks: number;
+/** Pull the structured picker error off a thrown ApiError, if that's what it is. */
+export function waChannelSetupError(
+  err: unknown,
+): { message: string; settings_url: string } | null {
+  const data = (err as { data?: { detail?: unknown } })?.data;
+  const detail = data?.detail;
+  if (detail && typeof detail === 'object') {
+    const d = detail as Record<string, unknown>;
+    if (d.code === WA_CHANNEL_NOT_CONFIGURED) {
+      return {
+        message: typeof d.message === 'string' ? d.message : 'WhatsApp is not configured.',
+        settings_url:
+          typeof d.settings_url === 'string' ? d.settings_url : '/settings/whatsapp',
+      };
+    }
+  }
+  return null;
 }
 
 export interface MemberCreatePayload {
@@ -50,17 +51,30 @@ export interface MemberCreatePayload {
   role_id?: number | null;
   whatsapp_number?: string | null;
   email?: string | null;
+  phone?: string | null;
+}
+
+export interface MemberUpdatePayload {
+  name?: string;
+  role_id?: number;
+}
+
+export interface MemberDeactivatePayload {
+  reassign_to_member_id?: number | null;
+  force?: boolean;
 }
 
 export async function listMembers(params?: {
   q?: string;
   channel?: MemberChannel;
   role_id?: number;
+  assignable_only?: boolean;
 }): Promise<Member[]> {
   const qs = new URLSearchParams();
   if (params?.q) qs.set('q', params.q);
   if (params?.channel) qs.set('channel', params.channel);
   if (params?.role_id) qs.set('role_id', String(params.role_id));
+  if (params?.assignable_only) qs.set('assignable_only', 'true');
   const query = qs.toString() ? `?${qs}` : '';
   return apiFetch<Member[]>(`/members${query}`, { method: 'GET', auth: true });
 }
@@ -75,6 +89,18 @@ export async function createMember(payload: MemberCreatePayload): Promise<Member
 
 export async function getMember(id: number): Promise<Member> {
   return apiFetch<Member>(`/members/${id}`, { method: 'GET', auth: true });
+}
+
+export async function getMe(): Promise<Member> {
+  return apiFetch<Member>('/members/me', { method: 'GET', auth: true });
+}
+
+export async function updateMember(id: number, payload: MemberUpdatePayload): Promise<Member> {
+  return apiFetch<Member>(`/members/${id}`, {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function attachWhatsApp(id: number, whatsapp_number: string): Promise<Member> {
@@ -93,25 +119,60 @@ export async function attachPortal(id: number, email: string): Promise<Member> {
   });
 }
 
-export async function getMemberAttendance(id: number, days = 14): Promise<MemberAttendanceDay[]> {
-  return apiFetch<MemberAttendanceDay[]>(`/members/${id}/attendance?days=${days}`, {
+export async function resendWhatsAppInvite(id: number): Promise<{ status: string; message: string }> {
+  return apiFetch(`/members/${id}/channels/whatsapp/resend`, { method: 'POST', auth: true });
+}
+
+export async function resendPortalInvite(id: number): Promise<{ status: string; message: string }> {
+  return apiFetch(`/members/${id}/channels/portal/resend`, { method: 'POST', auth: true });
+}
+
+// ── Chat (Path A: delegates to WA-employee chat backend) ────────────────────
+
+export interface MemberChatMessage {
+  id: number;
+  role: string;
+  content: string;
+  timestamp: string;
+  read: boolean;
+  delivered: boolean;
+  tool_called?: string | null;
+  tool_status?: string | null;
+}
+
+export interface MemberChat {
+  employee_id: number;
+  conversation_id: number | null;
+  channel_id: number | null;
+  unread_count: number;
+  last_message_at: string | null;
+  messages: MemberChatMessage[];
+}
+
+export async function getMemberChat(id: number, limit = 100): Promise<MemberChat> {
+  return apiFetch<MemberChat>(`/members/${id}/chat?limit=${limit}`, {
     method: 'GET',
     auth: true,
   });
 }
 
-export async function sendMemberCheckin(): Promise<{ sent: number; failed: number }> {
-  return apiFetch<{ sent: number; failed: number }>('/members/attendance/send-checkin', {
+export async function sendMemberMessage(id: number, text: string): Promise<MemberChatMessage> {
+  return apiFetch<MemberChatMessage>(`/members/${id}/messages`, {
     method: 'POST',
     auth: true,
+    body: JSON.stringify({ text }),
   });
+}
+
+export async function markMemberChatRead(id: number): Promise<void> {
+  await apiFetch(`/members/${id}/chat/read`, { method: 'POST', auth: true });
 }
 
 export async function deactivateMember(
   id: number,
   payload: MemberDeactivatePayload = {},
-): Promise<MemberDeactivateResult> {
-  return apiFetch<MemberDeactivateResult>(`/members/${id}/deactivate`, {
+): Promise<{ member_id: number; is_active: boolean; reassigned_tasks: number }> {
+  return apiFetch(`/members/${id}/deactivate`, {
     method: 'POST',
     auth: true,
     body: JSON.stringify(payload),

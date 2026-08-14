@@ -56,16 +56,17 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<TabKey>('profile');
 
-  // Deep-link support (e.g. /settings?tab=roles) — lets the sidebar "Roles &
-  // Access" entry land directly on the Team & Roles tab, and reacts to query
-  // changes even when already on /settings (no remount).
   useEffect(() => {
     const requested = searchParams.get('tab');
+    if (requested === 'roles') {
+      router.replace('/settings/roles');
+      return;
+    }
     const allowed: TabKey[] = ['profile', 'workspace', 'business', 'roles', 'notifications', 'danger_zone'];
     if (requested && (allowed as string[]).includes(requested)) {
       setTab(requested as TabKey);
     }
-  }, [searchParams]);
+  }, [searchParams, router]);
   const [profile, setProfile] = useState<ProfileSettings | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null);
   const [business, setBusiness] = useState<BusinessInfo | null>(null);

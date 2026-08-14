@@ -167,4 +167,63 @@ html { scrollbar-gutter: stable; }
 /* Fully hide the scrollbar for a scroll container (e.g. horizontal tab strips).
    Overrides the global 6px `*::-webkit-scrollbar` rule above. */
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Task Console tokens (TASK_FRONTEND_BUILD_SPEC §2) ────────────────────────
+   Namespaced with `tc-` to keep the console's brand palette from overwriting
+   the existing app tokens (notably `accent`, which is indigo everywhere else
+   and green in the console). Referenced as `bg-tc-bg-ground`, `text-tc-ink`,
+   `border-tc-rule`, etc. */
+:root {
+  --tc-bg-ground:    #F4EFE4;
+  --tc-bg-card:      #FBF7EC;
+  --tc-bg-card-2:    #EFE9DA;
+  --tc-ink:          #1B1913;
+  --tc-ink-2:        #3D372E;
+  --tc-ink-muted:    #6B655A;
+  --tc-rule:         #E0D8C6;
+  --tc-rule-strong:  #C9C0AA;
+  --tc-accent:       #2E5F45;
+  --tc-accent-soft:  #DBE7DE;
+  --tc-alert:        #C25A2E;
+  --tc-alert-soft:   #F1DED0;
+  --tc-info:         #4A5F7A;
+  --tc-info-soft:    #DDE4EC;
+  --tc-shadow-soft:  0 1px 0 rgba(27,25,19,.04), 0 4px 20px -12px rgba(27,25,19,.1);
+}
+.dark {
+  --tc-bg-ground:    #14120E;
+  --tc-bg-card:      #1D1A14;
+  --tc-bg-card-2:    #241F17;
+  --tc-ink:          #EDE7D6;
+  --tc-ink-2:        #C8C1AF;
+  --tc-ink-muted:    #9B9482;
+  --tc-rule:         #2E2A22;
+  --tc-rule-strong:  #3A3529;
+  --tc-accent:       #7CBF97;
+  --tc-accent-soft:  #1F3628;
+  --tc-alert:        #E38059;
+  --tc-alert-soft:   #3B2318;
+  --tc-info:         #8AA3C4;
+  --tc-info-soft:    #22303F;
+  --tc-shadow-soft:  0 1px 0 rgba(0,0,0,.4), 0 6px 24px -14px rgba(0,0,0,.5);
+}
+@theme {
+  --color-tc-bg-ground:   var(--tc-bg-ground);
+  --color-tc-bg-card:     var(--tc-bg-card);
+  --color-tc-bg-card-2:   var(--tc-bg-card-2);
+  --color-tc-ink:         var(--tc-ink);
+  --color-tc-ink-2:       var(--tc-ink-2);
+  --color-tc-ink-muted:   var(--tc-ink-muted);
+  --color-tc-rule:        var(--tc-rule);
+  --color-tc-rule-strong: var(--tc-rule-strong);
+  --color-tc-accent:      var(--tc-accent);
+  --color-tc-accent-soft: var(--tc-accent-soft);
+  --color-tc-alert:       var(--tc-alert);
+  --color-tc-alert-soft:  var(--tc-alert-soft);
+  --color-tc-info:        var(--tc-info);
+  --color-tc-info-soft:   var(--tc-info-soft);
+  --radius-tc-chip:  4px;
+  --radius-tc-card:  8px;
+  --radius-tc-panel: 12px;
+}
 .no-scrollbar::-webkit-scrollbar { width: 0; height: 0; display: none; }

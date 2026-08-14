@@ -1,0 +1,354 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import {
+  Plus, Search, Clock, CheckCircle2, User, LayoutList,
+  Columns3, CircleDashed, CircleDot, Ban,
+} from 'lucide-react';
+import { useAuthStore } from '@/lib/auth-store';
+import { formatDayMonth } from '@/lib/format-date';
+import { listTasks, type Task } from '@/services/tasks';
+import { getMe } from '@/services/members';
+import { TaskDrawer } from '@/components/tasks/task-drawer';
+import { CreateTaskModal } from '@/components/tasks/create-task-modal';
+import { useDebounce } from '@/lib/use-debounce';
+
+const STATUS_META: Record<string, { label: string; cls: string; pillCls: string; Icon: typeof CheckCircle2 }> = {
+  open:        { label: 'Open',        cls: 'text-amber-600',  pillCls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300', Icon: CircleDashed },
+  in_progress: { label: 'In progress', cls: 'text-blue-600',   pillCls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',     Icon: CircleDot },
+  done:        { label: 'Done',        cls: 'text-emerald-600', pillCls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300', Icon: CheckCircle2 },
+  cancelled:   { label: 'Cancelled',   cls: 'text-gray-500',   pillCls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',       Icon: Ban },
+};
+
+const PRIORITY_DOT: Record<string, string> = {
+  high: 'bg-red-500', normal: 'bg-amber-400', low: 'bg-gray-400',
+};
+
+type StatusFilter = '' | 'open' | 'in_progress' | 'done' | 'cancelled';
+type TypeFilter = '' | 'simple' | 'app_action';
+type DueFilter = '' | 'overdue' | 'today' | 'this_week';
+type LayoutMode = 'list' | 'kanban';
+type ViewMode = 'my_work' | 'team_board';
+
+export default function TasksPage() {
+  const { isOwner } = useAuthStore();
+  const searchParams = useSearchParams();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [myMemberId, setMyMemberId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<ViewMode>('my_work');
+  const [statusF, setStatusF] = useState<StatusFilter>('');
+  const [typeF, setTypeF] = useState<TypeFilter>('');
+  const [dueF, setDueF] = useState<DueFilter>('');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
+  const [layout, setLayout] = useState<LayoutMode>('list');
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+
+  // Deep-link seed: /tasks?task=<id> opens the drawer on mount.
+  useEffect(() => {
+    const raw = searchParams?.get('task');
+    if (raw) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n > 0) setSelectedTaskId(n);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    getMe().then(m => setMyMemberId(m.id)).catch(() => setMyMemberId(null));
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const t = await listTasks({
+        status: statusF || undefined,
+        type: typeF || undefined,
+      });
+      setTasks(t);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, [statusF, typeF]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = useMemo(() => {
+    let items = tasks;
+
+    if (view === 'my_work' && myMemberId != null) {
+      items = items.filter(t => t.assignee_member_id === myMemberId);
+    }
+
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
+      items = items.filter(t =>
+        t.title.toLowerCase().includes(q) ||
+        (t.assignee_name || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (dueF === 'overdue') {
+      items = items.filter(t => t.is_overdue);
+    } else if (dueF === 'today') {
+      const today = new Date().toISOString().slice(0, 10);
+      items = items.filter(t => t.due_at && t.due_at.slice(0, 10) === today);
+    } else if (dueF === 'this_week') {
+      const now = new Date();
+      const weekEnd = new Date(now);
+      weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
+      items = items.filter(t => t.due_at && new Date(t.due_at) <= weekEnd);
+    }
+
+    return items;
+  }, [tasks, view, myMemberId, debouncedSearch, dueF]);
+
+  const kanbanGroups = useMemo(() => {
+    const g: Record<string, Task[]> = { open: [], in_progress: [], done: [] };
+    for (const t of filtered) {
+      if (t.status !== 'cancelled') (g[t.status] ??= []).push(t);
+    }
+    return g;
+  }, [filtered]);
+
+  const stats = useMemo(() => {
+    const scope = view === 'my_work' && myMemberId != null
+      ? tasks.filter(t => t.assignee_member_id === myMemberId)
+      : tasks;
+    return {
+      total: scope.length,
+      overdue: scope.filter(t => t.is_overdue).length,
+      open: scope.filter(t => t.status === 'open').length,
+      in_progress: scope.filter(t => t.status === 'in_progress').length,
+    };
+  }, [tasks, view, myMemberId]);
+
+  const canSeeTeamBoard = isOwner;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border-secondary">
+        <div>
+          <h1 className="text-xl font-semibold text-text-primary">Tasks</h1>
+          <p className="text-sm text-text-secondary mt-0.5">
+            {stats.total} tasks
+            {stats.overdue > 0 && <> · <span className="text-red-600 dark:text-red-400 font-medium">{stats.overdue} overdue</span></>}
+            {' '}· {stats.open} open · {stats.in_progress} in progress
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex bg-bg-secondary rounded-lg p-0.5">
+            <button
+              onClick={() => setView('my_work')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                view === 'my_work' ? 'bg-bg-primary shadow-sm text-text-primary font-medium' : 'text-text-secondary'
+              }`}
+            >
+              My Work
+            </button>
+            {canSeeTeamBoard && (
+              <button
+                onClick={() => setView('team_board')}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  view === 'team_board' ? 'bg-bg-primary shadow-sm text-text-primary font-medium' : 'text-text-secondary'
+                }`}
+              >
+                Team Board
+              </button>
+            )}
+          </div>
+
+          <div className="flex bg-bg-secondary rounded-lg p-0.5">
+            <button onClick={() => setLayout('list')} className={`p-1.5 rounded-md ${layout === 'list' ? 'bg-bg-primary shadow-sm' : ''}`}>
+              <LayoutList className="w-4 h-4 text-text-secondary" />
+            </button>
+            <button onClick={() => setLayout('kanban')} className={`p-1.5 rounded-md ${layout === 'kanban' ? 'bg-bg-primary shadow-sm' : ''}`}>
+              <Columns3 className="w-4 h-4 text-text-secondary" />
+            </button>
+          </div>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent/90"
+          >
+            <Plus className="w-4 h-4" /> New Task
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 px-6 py-3 border-b border-border-secondary flex-wrap">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
+          <input
+            type="text"
+            placeholder="Search tasks..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border-secondary bg-bg-primary text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+        </div>
+        <select value={statusF} onChange={e => setStatusF(e.target.value as StatusFilter)}
+          className="px-3 py-2 text-sm rounded-lg border border-border-secondary bg-bg-primary text-text-primary">
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="in_progress">In Progress</option>
+          <option value="done">Done</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <select value={typeF} onChange={e => setTypeF(e.target.value as TypeFilter)}
+          className="px-3 py-2 text-sm rounded-lg border border-border-secondary bg-bg-primary text-text-primary">
+          <option value="">All types</option>
+          <option value="simple">Simple</option>
+          <option value="app_action">App Action</option>
+        </select>
+        <select value={dueF} onChange={e => setDueF(e.target.value as DueFilter)}
+          className="px-3 py-2 text-sm rounded-lg border border-border-secondary bg-bg-primary text-text-primary">
+          <option value="">Any due date</option>
+          <option value="overdue">Overdue</option>
+          <option value="today">Due today</option>
+          <option value="this_week">Due this week</option>
+        </select>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto">
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin h-8 w-8 border-2 border-accent border-t-transparent rounded-full" />
+          </div>
+        ) : layout === 'list' ? (
+          <TaskList tasks={filtered} onSelect={setSelectedTaskId} />
+        ) : (
+          <TaskKanban groups={kanbanGroups} onSelect={setSelectedTaskId} />
+        )}
+      </div>
+
+      {selectedTaskId && (
+        <TaskDrawer
+          taskId={selectedTaskId}
+          onClose={() => setSelectedTaskId(null)}
+          onTaskUpdated={load}
+        />
+      )}
+
+      {showCreate && (
+        <CreateTaskModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => { setShowCreate(false); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TaskList({ tasks, onSelect }: { tasks: Task[]; onSelect: (id: number) => void }) {
+  if (tasks.length === 0) {
+    return (
+      <div className="text-center py-16 text-text-secondary">
+        <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
+        <p className="text-lg font-medium">No tasks found</p>
+        <p className="text-sm mt-1">Try adjusting your filters.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-border-secondary">
+      {tasks.map(t => {
+        const sm = STATUS_META[t.status] || STATUS_META.open;
+        return (
+          <button
+            key={t.id}
+            onClick={() => onSelect(t.id)}
+            className="w-full flex items-center gap-4 px-6 py-3 text-left hover:bg-bg-secondary transition-colors"
+          >
+            <div className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[t.priority]}`} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-text-primary truncate">{t.title}</span>
+                {t.type === 'app_action' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 shrink-0">
+                    app_action
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 text-xs text-text-secondary">
+                <span className="flex items-center gap-1">
+                  <User className="w-3 h-3" /> {t.assignee_name || 'Unassigned'}
+                </span>
+                {t.due_at && (
+                  <span className={`flex items-center gap-1 ${t.is_overdue ? 'text-red-600 dark:text-red-400 font-medium' : ''}`}>
+                    <Clock className="w-3 h-3" /> {formatDayMonth(t.due_at)}
+                    {t.is_overdue && ' (overdue)'}
+                  </span>
+                )}
+                {t.delivery_channel && (
+                  <span className="capitalize">{t.delivery_channel}</span>
+                )}
+              </div>
+            </div>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${sm.pillCls}`}>
+              {sm.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TaskKanban({ groups, onSelect }: { groups: Record<string, Task[]>; onSelect: (id: number) => void }) {
+  const columns = [
+    { key: 'open', label: 'Open', color: 'border-amber-400' },
+    { key: 'in_progress', label: 'In Progress', color: 'border-blue-400' },
+    { key: 'done', label: 'Done', color: 'border-emerald-400' },
+  ];
+
+  return (
+    <div className="flex gap-4 p-4 h-full overflow-x-auto">
+      {columns.map(col => (
+        <div key={col.key} className="flex-shrink-0 w-72">
+          <div className={`flex items-center gap-2 mb-3 pb-2 border-b-2 ${col.color}`}>
+            <h3 className="text-sm font-semibold text-text-primary">{col.label}</h3>
+            <span className="text-xs text-text-secondary bg-bg-secondary rounded-full px-2 py-0.5">
+              {(groups[col.key] || []).length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {(groups[col.key] || []).map(t => (
+              <button
+                key={t.id}
+                onClick={() => onSelect(t.id)}
+                className="w-full text-left p-3 rounded-lg border border-border-secondary bg-bg-primary hover:shadow-sm transition-shadow"
+              >
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-text-primary truncate flex-1">{t.title}</p>
+                  {t.type === 'app_action' && (
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 shrink-0">
+                      action
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-2 text-xs text-text-secondary">
+                  <div className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[t.priority]}`} />
+                  <span>{t.assignee_name || 'Unassigned'}</span>
+                  {t.due_at && (
+                    <span className={t.is_overdue ? 'text-red-600 dark:text-red-400' : ''}>
+                      {formatDayMonth(t.due_at)}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
