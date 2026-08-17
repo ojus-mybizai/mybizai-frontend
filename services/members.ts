@@ -25,6 +25,13 @@ export interface Member {
   wa_invite_status?: 'sent' | 'failed' | 'no_channel' | null;
   wa_invite_detail?: string | null;
   wa_invite_settings_url?: string | null;
+  /**
+   * Portal-email invite outcome from create / attachPortal. The member is
+   * created either way — 'failed' means SMTP send did not go through.
+   */
+  portal_invite_status?: 'sent' | 'failed' | null;
+  portal_invite_detail?: string | null;
+  portal_invite_email?: string | null;
 }
 
 /** Error code the API returns when no team WhatsApp number is configured. */
@@ -72,12 +79,18 @@ export async function listMembers(params?: {
   channel?: MemberChannel;
   role_id?: number;
   assignable_only?: boolean;
+  /** Comma-separated Member.status values (e.g. "pending_acceptance,declined"). */
+  status?: string;
+  /** Default true — set false to hide deactivated members. */
+  include_inactive?: boolean;
 }): Promise<Member[]> {
   const qs = new URLSearchParams();
   if (params?.q) qs.set('q', params.q);
   if (params?.channel) qs.set('channel', params.channel);
   if (params?.role_id) qs.set('role_id', String(params.role_id));
   if (params?.assignable_only) qs.set('assignable_only', 'true');
+  if (params?.status) qs.set('status', params.status);
+  if (params?.include_inactive === false) qs.set('include_inactive', 'false');
   const query = qs.toString() ? `?${qs}` : '';
   return apiFetch<Member[]>(`/members${query}`, { method: 'GET', auth: true });
 }

@@ -21,6 +21,84 @@ import { getWaSettings } from '@/services/waEmployees';
  */
 type WaSetup = 'loading' | 'ready' | 'no_channels' | 'not_selected';
 
+/**
+ * India-only: user enters a 10-digit mobile number; we prefix +91 ourselves.
+ * Backend expects 11–15 digits with country code, so we send "91" + digits.
+ */
+const WA_COUNTRY_CODE = '91';
+const WA_LOCAL_LEN = 10;
+
+function validateWaLocal(raw: string): { digits: string } | { error: string } {
+  const digits = raw.replace(/\D+/g, '');
+  if (digits.length === 0) return { error: 'Enter a 10-digit mobile number.' };
+  if (digits.length !== WA_LOCAL_LEN) {
+    return { error: `India mobile numbers are 10 digits. Got ${digits.length}.` };
+  }
+  return { digits: WA_COUNTRY_CODE + digits };
+}
+
+/** Strip the +91 prefix if present so an existing number pre-fills as 10 digits. */
+function stripCountryCode(stored: string | null | undefined): string {
+  if (!stored) return '';
+  const d = stored.replace(/\D+/g, '');
+  return d.startsWith(WA_COUNTRY_CODE) && d.length === WA_LOCAL_LEN + WA_COUNTRY_CODE.length
+    ? d.slice(WA_COUNTRY_CODE.length)
+    : d;
+}
+
+/** Render a stored WA number without hiding invalid ones behind a bare `+`. */
+function FormattedWa({ raw }: { raw: string }) {
+  const digits = raw.replace(/\D+/g, '');
+  const looksValid = digits.length >= 11 && digits.length <= 15;
+  if (looksValid) return <span className="font-mono">+{digits}</span>;
+  return (
+    <span
+      className="font-mono text-red-600 dark:text-red-400"
+      title="Number looks invalid — 10–15 digits with country code expected."
+    >
+      {raw}
+    </span>
+  );
+}
+
+/**
+ * Report both invite legs after create. All-sent → success; any leg failed →
+ * warning (or error if hard-failed); nothing attempted → success ("added").
+ */
+function buildCreateNotice(created: Member): CreateNotice {
+  const waStatus = created.wa_invite_status ?? null;
+  const portalStatus = created.portal_invite_status ?? null;
+  const parts: string[] = [];
+  let severity: 'success' | 'warning' | 'error' = 'success';
+  let url: string | undefined;
+
+  if (waStatus === 'sent') {
+    parts.push(`WhatsApp invite sent to +${created.whatsapp_number}`);
+  } else if (waStatus === 'no_channel') {
+    parts.push(`WhatsApp invite not sent — ${created.wa_invite_detail ?? 'no team WhatsApp number is configured.'}`);
+    severity = 'warning';
+    url = created.wa_invite_settings_url ?? '/settings/whatsapp';
+  } else if (waStatus === 'failed') {
+    parts.push(`WhatsApp rejected the invite: ${created.wa_invite_detail ?? 'unknown error'}`);
+    severity = 'warning';
+  }
+
+  if (portalStatus === 'sent') {
+    parts.push(`portal email sent to ${created.portal_invite_email ?? 'the address you entered'}`);
+  } else if (portalStatus === 'failed') {
+    parts.push(`portal email failed: ${created.portal_invite_detail ?? 'unknown error'}`);
+    severity = severity === 'success' ? 'warning' : severity;
+  }
+
+  const summary = parts.length
+    ? `${created.name} added — ${parts.join('; ')}.`
+    : `${created.name} added.`;
+
+  if (severity === 'success') return { kind: 'success', text: summary };
+  if (severity === 'warning') return { kind: 'warning', text: summary, url };
+  return { kind: 'error', text: summary };
+}
+
 // Borderless pills — one flat color surface, no outline. Lighter fills so the
 // text does the talking; borders were creating visual noise in the drawer.
 const PORTAL_PILL = 'bg-blue-100/70 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
@@ -32,6 +110,17 @@ const WA_PILL: Record<MemberWaStatus, { cls: string; label: string; Icon: typeof
   inactive:      { cls: 'bg-bg-secondary text-text-secondary',                                     label: 'WhatsApp inactive', Icon: XCircle },
   not_connected: null,
 };
+
+type StatusFilterKey = 'all' | 'active' | 'pending' | 'declined' | 'inactive';
+
+/** Which Member.status values each filter chip matches. */
+const STATUS_FILTERS: { key: StatusFilterKey; label: string; matches: (m: Member) => boolean }[] = [
+  { key: 'all',      label: 'All',          matches: () => true },
+  { key: 'active',   label: 'Active',       matches: (m) => m.is_active && m.status === 'active' },
+  { key: 'pending',  label: 'Invite pending', matches: (m) => m.is_active && (m.status === 'pending_acceptance' || m.status === 'pending') },
+  { key: 'declined', label: 'Declined',     matches: (m) => m.is_active && (m.status === 'declined' || m.status === 'rejected') },
+  { key: 'inactive', label: 'Deactivated',  matches: (m) => !m.is_active },
+];
 
 const STATUS_PILL: Record<string, string> = {
   active:             'bg-green-100/70 text-green-700 dark:bg-green-900/40 dark:text-green-300',
@@ -50,7 +139,8 @@ export default function MembersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Member | null>(null);
   const [waSetup, setWaSetup] = useState<WaSetup>('loading');
-  const [notice, setNotice] = useState<{ text: string; url?: string } | null>(null);
+  const [notice, setNotice] = useState<CreateNotice>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all');
 
   useEffect(() => {
     getWaSettings()
@@ -117,6 +207,28 @@ export default function MembersPage() {
         </button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-1.5 mb-3">
+        {STATUS_FILTERS.map((f) => {
+          const count = members.filter(f.matches).length;
+          const active = statusFilter === f.key;
+          return (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              className={
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ' +
+                (active
+                  ? 'bg-accent text-white'
+                  : 'bg-bg-secondary text-text-secondary hover:text-text-primary')
+              }
+            >
+              {f.label}
+              <span className={active ? 'opacity-80' : 'opacity-60'}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {error && (
         <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
           {error}
@@ -124,16 +236,34 @@ export default function MembersPage() {
       )}
 
       {notice && (
-        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
-          {notice.text}
-          {notice.url && (
-            <>
-              {' '}
-              <a href={notice.url} className="underline font-medium hover:text-amber-900 dark:hover:text-amber-200">
-                Open WhatsApp settings
-              </a>
-            </>
-          )}
+        <div
+          className={
+            'mb-4 flex items-start justify-between gap-3 rounded-lg border px-4 py-3 text-sm ' +
+            (notice.kind === 'success'
+              ? 'border-green-300 bg-green-50 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300'
+              : notice.kind === 'warning'
+              ? 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300'
+              : 'border-red-300 bg-red-50 text-red-800 dark:bg-red-900/30 dark:border-red-700 dark:text-red-300')
+          }
+        >
+          <div>
+            {notice.text}
+            {notice.kind === 'warning' && notice.url && (
+              <>
+                {' '}
+                <a href={notice.url} className="underline font-medium hover:text-amber-900 dark:hover:text-amber-200">
+                  Open WhatsApp settings
+                </a>
+              </>
+            )}
+          </div>
+          <button
+            onClick={() => setNotice(null)}
+            className="shrink-0 opacity-60 hover:opacity-100"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -181,18 +311,25 @@ export default function MembersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border-secondary/50">
-            {loading ? (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-text-secondary">Loading...</td></tr>
-            ) : members.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-text-secondary">No members yet — add your first one.</td></tr>
-            ) : (
-              members.map((m) => (
+            {(() => {
+              const activeFilter = STATUS_FILTERS.find((f) => f.key === statusFilter) ?? STATUS_FILTERS[0];
+              const visible = members.filter(activeFilter.matches);
+              if (loading) {
+                return <tr><td colSpan={4} className="px-4 py-8 text-center text-text-secondary">Loading...</td></tr>;
+              }
+              if (members.length === 0) {
+                return <tr><td colSpan={4} className="px-4 py-8 text-center text-text-secondary">No members yet — add your first one.</td></tr>;
+              }
+              if (visible.length === 0) {
+                return <tr><td colSpan={4} className="px-4 py-8 text-center text-text-secondary">No members match this filter.</td></tr>;
+              }
+              return visible.map((m) => (
                 <tr key={m.id} onClick={() => setSelected(m)} className="hover:bg-bg-secondary/40 cursor-pointer transition-colors">
                   <td className="px-4 py-3">
                     <span className="font-medium text-text-primary">{m.name}</span>
                     {m.whatsapp_number && (
                       <div className="flex items-center gap-1 text-xs text-text-secondary mt-0.5">
-                        <Phone className="w-3 h-3" /> <span className="font-mono">+{m.whatsapp_number}</span>
+                        <Phone className="w-3 h-3" /> <FormattedWa raw={m.whatsapp_number} />
                       </div>
                     )}
                   </td>
@@ -223,8 +360,8 @@ export default function MembersPage() {
                     </span>
                   </td>
                 </tr>
-              ))
-            )}
+              ));
+            })()}
           </tbody>
         </table>
       </div>
@@ -428,15 +565,18 @@ function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<'attach' | 'resend' | 'remove' | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
 
   const setupReady = waSetup === 'ready';
 
   async function submitNumber() {
     const trimmed = waNumber.trim();
     if (!trimmed) return;
-    setBusy('attach'); onError(null); onNotice(null);
+    const v = validateWaLocal(trimmed);
+    if ('error' in v) { setFieldError(v.error); return; }
+    setBusy('attach'); onError(null); onNotice(null); setFieldError(null);
     try {
-      const updated = await attachWhatsApp(member.id, trimmed);
+      const updated = await attachWhatsApp(member.id, v.digits);
       if (updated.wa_invite_status === 'sent') {
         onNotice(`Invite sent to +${updated.whatsapp_number}. Waiting for accept.`);
       } else if (updated.wa_invite_status === 'no_channel') {
@@ -502,15 +642,31 @@ function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
         </div>
         {setupWarning ? setupWarning : (
           <>
-            <input
-              value={waNumber}
-              onChange={(e) => setWaNumber(e.target.value)}
-              placeholder="919876543210"
-              className="w-full rounded-lg border border-border-secondary bg-bg-primary px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
-            />
-            <p className="mt-1 text-[11px] text-text-secondary">
-              Include country code, no + or spaces. An Accept/Decline invite goes to this number.
-            </p>
+            <div
+              className={
+                'flex items-stretch rounded-lg border overflow-hidden focus-within:ring-1 ' +
+                (fieldError ? 'border-red-400 focus-within:ring-red-400' : 'border-border-secondary focus-within:ring-accent')
+              }
+            >
+              <span className="flex items-center px-2.5 bg-bg-secondary text-sm font-mono text-text-secondary border-r border-border-secondary select-none">
+                +{WA_COUNTRY_CODE}
+              </span>
+              <input
+                value={waNumber}
+                onChange={(e) => { setWaNumber(e.target.value.replace(/\D+/g, '').slice(0, WA_LOCAL_LEN)); setFieldError(null); }}
+                inputMode="numeric"
+                maxLength={WA_LOCAL_LEN}
+                placeholder="9876543210"
+                className="flex-1 bg-bg-primary px-3 py-2 text-sm font-mono text-text-primary focus:outline-none"
+              />
+            </div>
+            {fieldError ? (
+              <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{fieldError}</p>
+            ) : (
+              <p className="mt-1 text-[11px] text-text-secondary">
+                10-digit India mobile number. An Accept/Decline invite goes to this number.
+              </p>
+            )}
             <button
               onClick={submitNumber}
               disabled={busy === 'attach' || !waNumber.trim() || !setupReady}
@@ -545,16 +701,32 @@ function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
       {editing ? (
         <>
           {setupWarning}
-          <input
-            value={waNumber}
-            onChange={(e) => setWaNumber(e.target.value)}
-            placeholder={member.whatsapp_number ?? '919876543210'}
-            autoFocus
-            className="w-full rounded-md border border-border-secondary bg-bg-primary px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
-          />
-          <p className="mt-1 text-[11px] text-text-secondary">
-            Replacing the number resets verification — a fresh invite goes out.
-          </p>
+          <div
+            className={
+              'flex items-stretch rounded-md border overflow-hidden focus-within:ring-1 ' +
+              (fieldError ? 'border-red-400 focus-within:ring-red-400' : 'border-border-secondary focus-within:ring-accent')
+            }
+          >
+            <span className="flex items-center px-2.5 bg-bg-secondary text-sm font-mono text-text-secondary border-r border-border-secondary select-none">
+              +{WA_COUNTRY_CODE}
+            </span>
+            <input
+              value={waNumber}
+              onChange={(e) => { setWaNumber(e.target.value.replace(/\D+/g, '').slice(0, WA_LOCAL_LEN)); setFieldError(null); }}
+              inputMode="numeric"
+              maxLength={WA_LOCAL_LEN}
+              placeholder={stripCountryCode(member.whatsapp_number) || '9876543210'}
+              autoFocus
+              className="flex-1 bg-bg-primary px-3 py-2 text-sm font-mono text-text-primary focus:outline-none"
+            />
+          </div>
+          {fieldError ? (
+            <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{fieldError}</p>
+          ) : (
+            <p className="mt-1 text-[11px] text-text-secondary">
+              Replacing the number resets verification — a fresh invite goes out.
+            </p>
+          )}
           <div className="mt-2 flex gap-2">
             <button
               onClick={submitNumber}
@@ -575,7 +747,7 @@ function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
         <>
           <div className="flex items-center gap-1.5 text-sm text-text-primary">
             <Phone className="w-3.5 h-3.5 text-text-secondary" />
-            <span className="font-mono">+{member.whatsapp_number}</span>
+            {member.whatsapp_number && <FormattedWa raw={member.whatsapp_number} />}
           </div>
 
           {confirmRemove ? (
@@ -722,12 +894,16 @@ function DeactivateSection({ member, allMembers, onDeactivated }: {
   );
 }
 
-type CreateWarning = { text: string; url?: string } | null;
+type CreateNotice =
+  | { kind: 'success'; text: string }
+  | { kind: 'warning'; text: string; url?: string }
+  | { kind: 'error'; text: string }
+  | null;
 
 function CreateMemberModal({ roles, onClose, onCreated, waConfigured }: {
   roles: Role[];
   onClose: () => void;
-  onCreated: (warning: CreateWarning) => void;
+  onCreated: (notice: CreateNotice) => void;
   waConfigured: boolean;
 }) {
   const [name, setName] = useState('');
@@ -736,34 +912,30 @@ function CreateMemberModal({ roles, onClose, onCreated, waConfigured }: {
   const [roleId, setRoleId] = useState<number | ''>('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [waFieldError, setWaFieldError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) { setError('Name is required.'); return; }
     if (!whatsapp.trim() && !email.trim()) { setError('Add a WhatsApp number, an email, or both.'); return; }
+
+    let normalizedWa: string | null = null;
+    if (whatsapp.trim()) {
+      const v = validateWaLocal(whatsapp);
+      if ('error' in v) { setWaFieldError(v.error); return; }
+      normalizedWa = v.digits;
+    }
+
     setSaving(true);
     setError(null);
     try {
       const created = await createMember({
         name: name.trim(),
-        whatsapp_number: whatsapp.trim() || null,
+        whatsapp_number: normalizedWa,
         email: email.trim() || null,
         role_id: roleId === '' ? null : roleId,
       });
-      // The member is created even when the WhatsApp invite doesn't go out —
-      // hand the real outcome to the page instead of implying it was sent.
-      let warning: { text: string; url?: string } | null = null;
-      if (created.wa_invite_status === 'no_channel') {
-        warning = {
-          text: `${created.name} was added, but the WhatsApp invite was not sent. ${created.wa_invite_detail ?? ''}`.trim(),
-          url: created.wa_invite_settings_url ?? '/settings/whatsapp',
-        };
-      } else if (created.wa_invite_status === 'failed') {
-        warning = {
-          text: `${created.name} was added, but WhatsApp rejected the invite: ${created.wa_invite_detail ?? 'unknown error'}. Use "Resend invite" to try again.`,
-        };
-      }
-      onCreated(warning);
+      onCreated(buildCreateNotice(created));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create member');
     } finally {
@@ -801,13 +973,29 @@ function CreateMemberModal({ roles, onClose, onCreated, waConfigured }: {
             </label>
             {waConfigured ? (
               <>
-                <input
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                  placeholder="919876543210"
-                  className="w-full rounded-lg border border-border-secondary bg-bg-primary px-3 py-2 text-base text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-                />
-                <p className="mt-1 text-xs text-text-secondary">Sends a WhatsApp Accept/Decline invite.</p>
+                <div
+                  className={
+                    'flex items-stretch rounded-lg border overflow-hidden focus-within:ring-1 ' +
+                    (waFieldError ? 'border-red-400 focus-within:ring-red-400' : 'border-border-secondary focus-within:ring-accent')
+                  }
+                >
+                  <span className="flex items-center px-3 bg-bg-secondary text-base font-mono text-text-secondary border-r border-border-secondary select-none">
+                    +{WA_COUNTRY_CODE}
+                  </span>
+                  <input
+                    value={whatsapp}
+                    onChange={(e) => { setWhatsapp(e.target.value.replace(/\D+/g, '').slice(0, WA_LOCAL_LEN)); setWaFieldError(null); }}
+                    inputMode="numeric"
+                    maxLength={WA_LOCAL_LEN}
+                    placeholder="9876543210"
+                    className="flex-1 bg-bg-primary px-3 py-2 text-base text-text-primary font-mono focus:outline-none"
+                  />
+                </div>
+                {waFieldError ? (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">{waFieldError}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-text-secondary">10-digit India mobile number. Sends a WhatsApp Accept/Decline invite.</p>
+                )}
               </>
             ) : (
               <p className="text-xs text-amber-600 dark:text-amber-400">Connect a WhatsApp channel in Settings → Channels first.</p>
