@@ -107,6 +107,7 @@ const WA_PILL: Record<MemberWaStatus, { cls: string; label: string; Icon: typeof
   active:        { cls: 'bg-green-100/70 text-green-700 dark:bg-green-900/40 dark:text-green-300', label: 'WhatsApp verified', Icon: CheckCircle2 },
   pending:       { cls: 'bg-amber-100/70 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', label: 'WhatsApp pending',  Icon: Clock },
   declined:      { cls: 'bg-red-100/70 text-red-700 dark:bg-red-900/40 dark:text-red-300',         label: 'WhatsApp declined', Icon: XCircle },
+  failed:        { cls: 'bg-red-100/70 text-red-700 dark:bg-red-900/40 dark:text-red-300',         label: 'Invite failed',     Icon: AlertTriangle },
   inactive:      { cls: 'bg-bg-secondary text-text-secondary',                                     label: 'WhatsApp inactive', Icon: XCircle },
   not_connected: null,
 };
@@ -117,7 +118,7 @@ type StatusFilterKey = 'all' | 'active' | 'pending' | 'declined' | 'inactive';
 const STATUS_FILTERS: { key: StatusFilterKey; label: string; matches: (m: Member) => boolean }[] = [
   { key: 'all',      label: 'All',          matches: () => true },
   { key: 'active',   label: 'Active',       matches: (m) => m.is_active && m.status === 'active' },
-  { key: 'pending',  label: 'Invite pending', matches: (m) => m.is_active && (m.status === 'pending_acceptance' || m.status === 'pending') },
+  { key: 'pending',  label: 'Invite pending', matches: (m) => m.is_active && (m.status === 'pending_acceptance' || m.status === 'pending' || m.status === 'invite_failed') },
   { key: 'declined', label: 'Declined',     matches: (m) => m.is_active && (m.status === 'declined' || m.status === 'rejected') },
   { key: 'inactive', label: 'Deactivated',  matches: (m) => !m.is_active },
 ];
@@ -125,6 +126,7 @@ const STATUS_FILTERS: { key: StatusFilterKey; label: string; matches: (m: Member
 const STATUS_PILL: Record<string, string> = {
   active:             'bg-green-100/70 text-green-700 dark:bg-green-900/40 dark:text-green-300',
   pending_acceptance: 'bg-amber-100/70 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  invite_failed:      'bg-red-100/70 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   rejected:           'bg-red-100/70 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   declined:           'bg-red-100/70 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   inactive:           'bg-bg-secondary text-text-secondary',
@@ -139,6 +141,7 @@ export default function MembersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Member | null>(null);
   const [waSetup, setWaSetup] = useState<WaSetup>('loading');
+  const [selectedWaChannel, setSelectedWaChannel] = useState<{ name: string; phone_number: string } | null>(null);
   const [notice, setNotice] = useState<CreateNotice>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all');
 
@@ -146,13 +149,15 @@ export default function MembersPage() {
     getWaSettings()
       .then(s => {
         const connected = s.available_channels || [];
+        const chosen = connected.find(c => c.id === s.wa_employee_channel_id);
         if (connected.length === 0) setWaSetup('no_channels');
         // A saved id that isn't in the connected list is a deleted/disconnected
         // channel — same as never choosing one. The backend refuses both.
-        else if (!connected.some(c => c.id === s.wa_employee_channel_id)) setWaSetup('not_selected');
+        else if (!chosen) setWaSetup('not_selected');
         else setWaSetup('ready');
+        setSelectedWaChannel(chosen ? { name: chosen.name, phone_number: chosen.phone_number } : null);
       })
-      .catch(() => setWaSetup('no_channels'));
+      .catch(() => { setWaSetup('no_channels'); setSelectedWaChannel(null); });
   }, []);
 
   const load = useCallback(async () => {
@@ -182,6 +187,15 @@ export default function MembersPage() {
           <p className="text-sm text-text-secondary mt-0.5">
             One place for everyone — reachable on the portal, WhatsApp, or both.
           </p>
+          {selectedWaChannel && (
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-green-100/60 dark:bg-green-900/30 px-2.5 py-1 text-xs text-green-800 dark:text-green-300">
+              <MessageCircle className="w-3 h-3" />
+              <span>Sending invites &amp; tasks from</span>
+              <span className="font-semibold">{selectedWaChannel.name}</span>
+              <span className="font-mono opacity-80">+{selectedWaChannel.phone_number.replace(/\D+/g, '')}</span>
+              <a href="/settings/whatsapp" className="ml-1 underline opacity-70 hover:opacity-100">Change</a>
+            </div>
+          )}
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -682,7 +696,7 @@ function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
 
   // CONNECTED — show status + manage actions
   const badge = WA_PILL[member.wa_status];
-  const canResend = member.wa_status === 'pending' || member.wa_status === 'declined';
+  const canResend = member.wa_status === 'pending' || member.wa_status === 'declined' || member.wa_status === 'failed';
 
   return (
     <div className="mt-3 rounded-lg bg-bg-secondary/50 p-3">
@@ -693,10 +707,16 @@ function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
         {badge && (
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>
             <badge.Icon className="w-3 h-3" />
-            {member.wa_status === 'active' ? 'Verified' : member.wa_status === 'pending' ? 'Pending acceptance' : member.wa_status === 'declined' ? 'Declined' : 'Inactive'}
+            {member.wa_status === 'active' ? 'Verified' : member.wa_status === 'pending' ? 'Pending acceptance' : member.wa_status === 'declined' ? 'Declined' : member.wa_status === 'failed' ? 'Invite failed' : 'Inactive'}
           </span>
         )}
       </div>
+
+      {member.wa_status === 'failed' && member.wa_invite_error_detail && (
+        <div className="mb-2 rounded-md bg-red-100/60 dark:bg-red-950/30 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+          <span className="font-medium">Delivery failed:</span> {member.wa_invite_error_detail}
+        </div>
+      )}
 
       {editing ? (
         <>

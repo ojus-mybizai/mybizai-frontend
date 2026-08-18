@@ -1,7 +1,7 @@
 import { apiFetch } from '@/lib/api-client';
 
 export type MemberChannel = 'portal' | 'whatsapp';
-export type MemberWaStatus = 'not_connected' | 'pending' | 'declined' | 'active' | 'inactive';
+export type MemberWaStatus = 'not_connected' | 'pending' | 'declined' | 'active' | 'inactive' | 'failed';
 
 export interface Member {
   id: number;
@@ -32,6 +32,9 @@ export interface Member {
   portal_invite_status?: 'sent' | 'failed' | null;
   portal_invite_detail?: string | null;
   portal_invite_email?: string | null;
+  /** Persistent delivery error from Meta's webhook (populated async after create). */
+  wa_invite_error_code?: string | null;
+  wa_invite_error_detail?: string | null;
 }
 
 /** Error code the API returns when no team WhatsApp number is configured. */
