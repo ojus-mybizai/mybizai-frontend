@@ -394,6 +394,10 @@ function ActiveSummary({
     const w = options?.wa_employees?.find((x) => x.id === id);
     if (w) chips.push({ label: `Owner: ${w.name}`, clear: () => onClear({ assigned_wa_employee_ids: (value.assigned_wa_employee_ids ?? []).filter((x) => x !== id) }) });
   });
+  (value.assigned_member_ids ?? []).forEach((id) => {
+    const m = options?.members?.find((x) => x.id === id);
+    if (m) chips.push({ label: `Owner: ${m.name}`, clear: () => onClear({ assigned_member_ids: (value.assigned_member_ids ?? []).filter((x) => x !== id) }) });
+  });
   if (value.company_contains)
     chips.push({ label: `Company ~ "${value.company_contains}"`, clear: () => onClear({ company_contains: undefined }) });
   if (value.ad_platform)
@@ -445,7 +449,7 @@ function ActiveSummary({
           created_after: undefined,
           created_before: undefined,
           pipeline_stage_ids: [], exclude_pipeline_stage_ids: [],
-          assigned_to_ids: [], assigned_wa_employee_ids: [],
+          assigned_to_ids: [], assigned_wa_employee_ids: [], assigned_member_ids: [],
           company_contains: undefined,
           ad_platform: undefined, ad_campaign_names: [],
           has_email: undefined,
@@ -703,13 +707,16 @@ export function FilterBuilder({ value, onChange }: Props) {
       {/* ── Owner ────────────────────────────────────────────────────── */}
       <Section
         title="Assigned Owner"
-        badge={countActive(['assigned_to_ids', 'assigned_wa_employee_ids'])}
+        badge={countActive(['assigned_to_ids', 'assigned_wa_employee_ids', 'assigned_member_ids'])}
         defaultOpen={
           (value.assigned_to_ids?.length ?? 0) > 0 ||
-          (value.assigned_wa_employee_ids?.length ?? 0) > 0
+          (value.assigned_wa_employee_ids?.length ?? 0) > 0 ||
+          (value.assigned_member_ids?.length ?? 0) > 0
         }
       >
-        {((options?.owners?.length ?? 0) === 0 && (options?.wa_employees?.length ?? 0) === 0) ? (
+        {((options?.owners?.length ?? 0) === 0
+          && (options?.wa_employees?.length ?? 0) === 0
+          && (options?.members?.length ?? 0) === 0) ? (
           <p className="text-xs text-text-secondary italic">
             No assigned owners yet — assign contacts to team members to filter by owner.
           </p>
@@ -725,9 +732,22 @@ export function FilterBuilder({ value, onChange }: Props) {
                 />
               </div>
             )}
+            {/* P3 new-path — prefer this over WhatsApp employees below.
+                Both are still shown during Step 4 rollout. Delete the WA
+                section together with the column drop in Step 5. */}
+            {(options?.members?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-[11px] font-medium text-text-secondary mb-1.5">Members</p>
+                <IdPillList
+                  items={(options?.members ?? []).map((m) => ({ id: m.id, name: m.name }))}
+                  selectedIds={value.assigned_member_ids ?? []}
+                  onToggle={(id) => update({ assigned_member_ids: toggleId(value.assigned_member_ids, id) })}
+                />
+              </div>
+            )}
             {(options?.wa_employees?.length ?? 0) > 0 && (
               <div>
-                <p className="text-[11px] font-medium text-text-secondary mb-1.5">WhatsApp employees</p>
+                <p className="text-[11px] font-medium text-text-secondary mb-1.5">WhatsApp employees (legacy)</p>
                 <IdPillList
                   items={(options?.wa_employees ?? []).map((w) => ({ id: w.id, name: w.name }))}
                   selectedIds={value.assigned_wa_employee_ids ?? []}
