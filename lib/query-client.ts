@@ -32,6 +32,7 @@ export const queryKeys = {
   employees: () => ['employees'] as const,
   employee: (id: number) => ['employees', id] as const,
   waEmployees: () => ['wa-employees'] as const,
+  members: () => ['members'] as const,
   leadStats: () => ['lead-stats'] as const,
   datasheetModels: () => ['datasheet-models'] as const,
   channels: () => ['channels'] as const,

@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { listAgents } from '@/services/agents';
 import { listEmployees } from '@/services/employees';
 import { listEmployees as listWaEmployees } from '@/services/waEmployees';
+import { listMembers } from '@/services/members';
 import { getLeadStats, type LeadStats } from '@/services/customers';
 import { listModels } from '@/services/dynamic-data';
 import { listChannels } from '@/services/channels';
@@ -50,15 +51,31 @@ export function useEmployeeList() {
 
 // ---------------------------------------------------------------------------
 // WhatsApp employees list — stale after 10 minutes
-// The WhatsApp-native team (WaEmployee). This is the operational owner used for
-// contact assignment (Contact.assigned_wa_employee_id), distinct from the
-// platform BusinessUser list above.
+// The WhatsApp-native team (WaEmployee). P3 legacy — dropped in Step 5.
+// New callers should use useMemberList() below and read assigned_member_id
+// off Contact / ProcessEntry responses.
 // ---------------------------------------------------------------------------
 export function useWaEmployeeList() {
   return useQuery({
     queryKey: queryKeys.waEmployees(),
     queryFn: () => listWaEmployees(),
     staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Members list — stale after 10 minutes
+// The unified people table (Member+Task+Permissions Spec §10). This is the
+// P3 replacement for useWaEmployeeList — contacts and pipeline deals now
+// carry assigned_member_id, and every "assign to person" surface should
+// prefer this list.
+// ---------------------------------------------------------------------------
+export function useMemberList(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.members(),
+    queryFn: () => listMembers(),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    enabled: options?.enabled !== false,
   });
 }
 
