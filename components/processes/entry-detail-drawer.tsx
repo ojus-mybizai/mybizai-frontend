@@ -7,7 +7,7 @@ import {
   listEntryWaWork,
   type ProcessEntry, type ProcessStage, type EntryComment, type BusinessProcess,
 } from '@/services/processes';
-import { listEmployees as listWaEmployees, type WaEmployee } from '@/services/waEmployees';
+import { listMembers, type Member } from '@/services/members';
 import { formatDateTime } from '@/lib/format-date';
 import { DateField } from '@/components/ui/date-field';
 import {
@@ -31,10 +31,9 @@ export default function EntryDetailDrawer({ entry, process, stages, onClose, onU
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | ''>(entry.priority || '');
   const [expectedValue, setExpectedValue] = useState<string>(entry.expected_value?.toString() || '');
   const [expectedCloseDate, setExpectedCloseDate] = useState<string>(entry.expected_close_date || '');
-  // Deals are now owned by a WhatsApp-native employee (mirrors contacts).
-  // `assigneeId` holds a WaEmployee id, not a platform User id.
-  const [assigneeId, setAssigneeId] = useState<number | null>(entry.assigned_wa_employee_id);
-  const [waEmployees, setWaEmployees] = useState<WaEmployee[]>([]);
+  // Deals are owned by a Member (mirrors contacts).
+  const [assigneeId, setAssigneeId] = useState<number | null>(entry.assigned_member_id);
+  const [members, setMembers] = useState<Member[]>([]);
   const [stageId, setStageId] = useState<number | null>(entry.current_stage_id);
   const [saving, setSaving] = useState(false);
 
@@ -83,10 +82,10 @@ export default function EntryDetailDrawer({ entry, process, stages, onClose, onU
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry.id]);
 
-  // Load active WhatsApp employees for the assignee picker (once on mount).
+  // Load assignable members for the assignee picker (once on mount).
   useEffect(() => {
-    listWaEmployees({ status: 'active' })
-      .then(setWaEmployees)
+    listMembers()
+      .then(list => setMembers(list.filter(m => m.is_active && m.is_assignable)))
       .catch(() => {});
   }, []);
 
@@ -98,7 +97,7 @@ export default function EntryDetailDrawer({ entry, process, stages, onClose, onU
         priority: priority || null,
         expected_value: expectedValue.trim() === '' ? null : Number(expectedValue),
         expected_close_date: expectedCloseDate || null,
-        assigned_wa_employee_id: assigneeId,
+        assigned_member_id: assigneeId,
       });
       // A stage change must go through the move endpoint so stage-work spawns
       // and stage automations fire — exactly like a board drag. updateEntry
@@ -261,13 +260,12 @@ export default function EntryDetailDrawer({ entry, process, stages, onClose, onU
               className="w-full rounded-md border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
             >
               <option value="">Unassigned</option>
-              {/* Deals are owned by a WhatsApp employee — options key on the
-                  WaEmployee id. Keep the current value visible even if it's not
-                  in the active list (e.g. now inactive). */}
-              {assigneeId != null && !waEmployees.some(e => e.id === assigneeId) && (
-                <option value={assigneeId}>{entry.assigned_wa_employee_name || 'Assigned employee'}</option>
+              {/* Deals are owned by a Member — keep the current value visible
+                  even if the row isn't in the currently-assignable list. */}
+              {assigneeId != null && !members.some(m => m.id === assigneeId) && (
+                <option value={assigneeId}>{entry.assigned_member_name || 'Assigned member'}</option>
               )}
-              {waEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
 

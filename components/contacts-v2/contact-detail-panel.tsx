@@ -349,11 +349,11 @@ function OverviewTab({
       </div>
 
       {/* Assignment */}
-      {contact.assigned_wa_employee_id && (
+      {contact.assigned_member_id && (
         <div className="rounded-xl border border-border-color bg-bg-secondary px-4 py-3 flex items-center justify-between">
           <div>
             <p className="text-[10px] text-text-secondary uppercase tracking-wide">Assigned To</p>
-            <p className="text-sm font-medium text-text-primary mt-0.5">{contact.assigned_wa_employee_name ?? `Employee #${contact.assigned_wa_employee_id}`}</p>
+            <p className="text-sm font-medium text-text-primary mt-0.5">{contact.assigned_member_name ?? `Member #${contact.assigned_member_id}`}</p>
           </div>
           {contact.routing_mode === 'ai' && (
             <div className="text-right">

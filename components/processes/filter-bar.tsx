@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import type { WaEmployee } from '@/services/waEmployees';
+import type { Member } from '@/services/members';
 import type { CardDensity } from './process-card';
 import { Icon, formatCurrency } from './design-system';
 
@@ -22,7 +22,7 @@ export const DEFAULT_FILTERS: FilterState = {
 interface Props {
   filters: FilterState;
   onChange: (f: FilterState) => void;
-  employees: WaEmployee[];
+  employees: Member[];
   density: CardDensity;
   onDensityChange: (d: CardDensity) => void;
   selectionMode: boolean;
@@ -73,7 +73,7 @@ export default function FilterBar({
           >
             <option value="all">Anyone</option>
             <option value="unassigned">Unassigned</option>
-            {/* Filter compares to entry.assigned_wa_employee_id — key on the WaEmployee id. */}
+            {/* Filter compares to entry.assigned_member_id — key on the Member id. */}
             {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>

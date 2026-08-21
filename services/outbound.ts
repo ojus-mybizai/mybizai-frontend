@@ -93,8 +93,7 @@ export interface AudienceFilter {
   pipeline_stage_ids?: number[];        // ProcessStage IDs — contacts at ANY of these
   exclude_pipeline_stage_ids?: number[];// contacts NOT at any of these stages
   assigned_to_ids?: number[];           // platform User IDs (owner)
-  assigned_wa_employee_ids?: number[];  // WaEmployee IDs (owner) — P3 legacy
-  assigned_member_ids?: number[];       // P3 new-path Member IDs (owner)
+  assigned_member_ids?: number[];       // Member IDs (owner)
   company_contains?: string;            // Contact.company ILIKE %substr%
   ad_platform?: string;                 // e.g. "meta"
   ad_campaign_names?: string[];         // Contact.meta_campaign_name values
@@ -131,12 +130,7 @@ export interface OwnerOption {
   name: string;
   email?: string;
 }
-export interface WaEmployeeOption {
-  id: number;
-  name: string;
-}
-/** P3 Step 4 — the new-path owner facet. Same shape as WaEmployeeOption
- *  but keyed on Member id, matching Contact.assigned_member_id. */
+/** Owner facet keyed on Member id, matching Contact.assigned_member_id. */
 export interface MemberOption {
   id: number;
   name: string;
@@ -154,8 +148,7 @@ export interface FilterOptions {
   sources: SourceOption[];
   stages?: StageOption[];               // pipeline stages (T2)
   owners?: OwnerOption[];               // assigned platform users (T2)
-  wa_employees?: WaEmployeeOption[];    // assigned WhatsApp employees (T2) — P3 legacy
-  members?: MemberOption[];             // P3 new-path assigned members
+  members?: MemberOption[];             // assigned members (T2)
   ad_campaigns?: SourceOption[];        // distinct Meta campaign names (T2)
   custom_fields?: CustomFieldOption[];  // ContactFieldDef picklist (T2)
 }

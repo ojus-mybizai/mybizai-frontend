@@ -52,7 +52,7 @@ export default function ListView({
         case 'priority':av = PRIORITY_RANK[a.priority || ''] ?? 0; bv = PRIORITY_RANK[b.priority || ''] ?? 0; break;
         case 'days_in_stage': av = a.days_in_stage ?? -1; bv = b.days_in_stage ?? -1; break;
         case 'expected_close_date': av = a.expected_close_date ?? 'zzzz'; bv = b.expected_close_date ?? 'zzzz'; break;
-        case 'assignee':av = a.assigned_wa_employee_name ?? ''; bv = b.assigned_wa_employee_name ?? ''; break;
+        case 'assignee':av = a.assigned_member_name ?? ''; bv = b.assigned_member_name ?? ''; break;
       }
       if (av < bv) return sortDir === 'asc' ? -1 : 1;
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
@@ -67,7 +67,7 @@ export default function ListView({
     for (const e of sorted) {
       let key = '', label = '';
       if (groupBy === 'stage')    { key = String(e.current_stage_id ?? 'none'); label = e.current_stage_name || 'No stage'; }
-      if (groupBy === 'assignee') { key = String(e.assigned_wa_employee_id ?? 'none');   label = e.assigned_wa_employee_name || 'Unassigned'; }
+      if (groupBy === 'assignee') { key = String(e.assigned_member_id ?? 'none');   label = e.assigned_member_name || 'Unassigned'; }
       if (groupBy === 'priority') { key = e.priority || 'none';                  label = e.priority ? e.priority.charAt(0).toUpperCase() + e.priority.slice(1) : 'No priority'; }
       let g = map.get(key);
       if (!g) { g = { key, label, items: [] }; map.set(key, g); }
@@ -92,7 +92,7 @@ export default function ListView({
       'Expected Value': e.expected_value ?? '',
       'Expected Close': e.expected_close_date || '',
       'Days in Stage': e.days_in_stage ?? '',
-      Assignee: e.assigned_wa_employee_name || '',
+      Assignee: e.assigned_member_name || '',
       Status: e.status,
       Source: e.source || '',
       'Created At': e.created_at || '',
@@ -290,9 +290,9 @@ function Row({
         {e.days_in_stage != null ? `${e.days_in_stage}d` : '—'}
       </td>
       <td className="px-3 py-2 text-text-secondary text-xs">
-        {e.assigned_wa_employee_name ? (
+        {e.assigned_member_name ? (
           <span className="inline-flex items-center gap-1.5">
-            <Avatar name={e.assigned_wa_employee_name} size="xs" /> <span className="truncate max-w-[100px]">{e.assigned_wa_employee_name}</span>
+            <Avatar name={e.assigned_member_name} size="xs" /> <span className="truncate max-w-[100px]">{e.assigned_member_name}</span>
           </span>
         ) : '—'}
       </td>

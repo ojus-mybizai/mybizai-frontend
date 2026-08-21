@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMembers } from '@/hooks/use-members';
 import { taskKeys } from '@/lib/tasks/keys';
@@ -13,6 +13,10 @@ import { ConsoleSkeleton } from './shared/skeletons';
 export function TaskConsole({ memberId }: { memberId: number }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  // Namespace hop: /team pages route within /team, legacy /tasks stays in /tasks.
+  // Prevents an in-app navigation from re-entering the redirected old surface.
+  const base = pathname?.startsWith('/team') ? '/team' : '/tasks';
   const qc = useQueryClient();
   const { data: members, isLoading } = useMembers();
 
@@ -27,7 +31,7 @@ export function TaskConsole({ memberId }: { memberId: number }) {
       const next = order[(order.indexOf(cur) + (e.shiftKey ? -1 : 1) + order.length) % order.length];
       const params = new URLSearchParams(searchParams?.toString() ?? '');
       params.set('tab', next);
-      router.replace(`/tasks/${memberId}?${params.toString()}`, { scroll: false });
+      router.replace(`${base}/${memberId}?${params.toString()}`, { scroll: false });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -44,7 +48,7 @@ export function TaskConsole({ memberId }: { memberId: number }) {
 
   useEffect(() => {
     if (!isLoading && members && members.length > 0 && !active) {
-      router.replace(`/tasks/${members[0].id}`);
+      router.replace(`${base}/${members[0].id}`);
     }
   }, [isLoading, members, active, router]);
 
@@ -52,7 +56,7 @@ export function TaskConsole({ memberId }: { memberId: number }) {
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.delete('task');
     const qs = params.toString();
-    router.replace(`/tasks/${memberId}${qs ? `?${qs}` : ''}`, { scroll: false });
+    router.replace(`${base}/${memberId}${qs ? `?${qs}` : ''}`, { scroll: false });
   };
 
   if (isLoading) return <ConsoleSkeleton />;

@@ -170,8 +170,23 @@ const OWNER_NAV: NavEntry[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Inbox',     href: '/inbox',     icon: MessageSquare },
   { label: 'Contacts',  href: '/contacts',  icon: UserCheck, module: 'crm' },
-  { label: 'Tasks',     href: '/tasks',     icon: ListChecks },
-  { label: 'Members',   href: '/members',   icon: UsersRound },
+
+  // ── Team surface (Slice 4). Rolls up members, per-member console, task
+  // templates, attendance, roles, and WhatsApp settings under one expander so
+  // the sidebar isn't fighting itself for space at the top tier.
+  {
+    kind: 'group',
+    label: 'Team',
+    href: '/team',
+    icon: UsersRound,
+    children: [
+      { label: 'Members',           href: '/team/members',    icon: UsersRound },
+      { label: 'Tasks',             href: '/team',            icon: ListChecks },
+      { label: 'Task templates',    href: '/team/templates',  icon: MessageCircle },
+      { label: 'Attendance',        href: '/team/attendance', icon: Users },
+      { label: 'Roles & access',    href: '/team/roles',      icon: Users },
+    ],
+  },
 
   { kind: 'section', label: 'Your Systems' },
   { kind: 'systems' },
@@ -192,8 +207,6 @@ const OWNER_NAV: NavEntry[] = [
       { label: 'Memory',          href: '/memory',            icon: Database,       module: 'chat_agent' },
       { label: 'Automation',      href: '/automation',        icon: Zap,            module: 'follow_up' },
       { label: 'Processes',       href: '/processes',         icon: Workflow,       module: 'work_tasks' },
-      { label: 'Roles & Access',  href: '/settings/roles', icon: Users },
-      { label: 'WhatsApp Settings', href: '/settings/whatsapp', icon: MessageCircle, module: 'wa_employees' },
       { label: 'Settings',        href: '/settings',          icon: Settings },
       { label: 'Billing',         href: '/settings/billing',  icon: CreditCard },
       { label: 'AI Credits',      href: '/settings/credits',  icon: Coins },
@@ -207,7 +220,7 @@ const EMPLOYEE_NAV: NavEntry[] = [
 
   { kind: 'section', label: 'Work' },
   { label: 'Inbox',     href: '/inbox',     icon: MessageSquare },
-  { label: 'Tasks',     href: '/tasks',     icon: ListChecks },
+  { label: 'Tasks',     href: '/team',      icon: ListChecks },
   { label: 'Contacts',  href: '/contacts',  icon: UserCheck },
   { label: 'Processes', href: '/processes', icon: Workflow },
 
@@ -239,15 +252,20 @@ const TITLE_MAP: Record<string, string> = {
   '/memory':              'Memory',
   '/agent-chat':          'AI Chat',
   '/automation':          'Automation',
-  '/wa-work':             'Tasks',           // WhatsApp task dispatch (primary task system)
-  '/members':             'Members',         // Unified identity surface (Phase 4)
+  '/members':             'Members',         // Unified identity surface (Phase 4); legacy path — redirects to /team/members
   '/tasks':               'Tasks',           // Unified task surface over task_assignments (Phase 4, Slice 3)
+  // Team surface (Slice 4). Legacy /members and /settings/roles redirect here
+  // via next.config; the nav points at these directly.
+  '/team':                'Team',
+  '/team/members':        'Members',
+  '/team/attendance':     'Attendance',
+  '/team/roles':          'Roles & Access',
+  '/team/templates':      'Task Templates',
   '/work':                'Work Board',      // Platform internal kanban
   '/work/templates':      'Work Templates',
   '/processes':           'Processes',
   '/data-sheet':          'Data Sheets',
   '/settings':            'Settings',
-  '/settings/whatsapp':   'WhatsApp Settings',
   '/settings/billing':    'Billing & Plans',
   '/integrations/meta':   'Meta Ads',
   '/analytics':           'Analytics',
@@ -819,7 +837,7 @@ export default function AppShell({ children }: AppShellProps) {
           key={pathname}
           className={`${mounted ? 'animate-page-in' : ''} ${
             // Full-bleed app panels: manage their own scroll + header, no shell padding
-            pathname?.startsWith('/inbox') || pathname?.startsWith('/dashboard') || pathname?.startsWith('/wa-work') || pathname?.startsWith('/internal-chat') || pathname === '/contacts'
+            pathname?.startsWith('/inbox') || pathname?.startsWith('/dashboard') || pathname?.startsWith('/internal-chat') || pathname === '/contacts'
               ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
               : pathname?.match(/^\/data-sheet\/[^/]+(\/)?$/)
                 ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-2 md:px-3 py-4 md:py-5'

@@ -28,7 +28,7 @@ import type {
   SourceOption,
   StageOption,
   OwnerOption,
-  WaEmployeeOption,
+  MemberOption,
   CustomFieldOption,
   FilterOptions,
 } from './outbound';
@@ -40,7 +40,7 @@ export type {
   SourceOption,
   StageOption,
   OwnerOption,
-  WaEmployeeOption,
+  MemberOption,
   CustomFieldOption,
   FilterOptions,
 };

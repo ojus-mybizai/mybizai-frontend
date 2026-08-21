@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { MessageSquare, ListChecks, Activity, FilePlus2 } from 'lucide-react';
 import type { Member } from '@/services/members';
 import { useMemberTasks, useCompleteTask } from '@/hooks/use-tasks';
 import { MemberAvatar } from './shared/member-avatar';
+import { SessionWindowChip } from './shared/session-window-chip';
 import { ChatStream } from './chat-stream';
 import { TaskList } from './task-list';
 import { Composer } from './composer';
@@ -17,6 +18,8 @@ type Tab = 'chat' | 'tasks' | 'activity';
 export function MemberPane({ member }: { member: Member }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const base = pathname?.startsWith('/team') ? '/team' : '/tasks';
   const tab = (searchParams?.get('tab') as Tab) || 'tasks';
 
   const { data: tasks = [], isLoading } = useMemberTasks(member.id);
@@ -30,13 +33,13 @@ export function MemberPane({ member }: { member: Member }) {
   const setTab = (t: Tab) => {
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.set('tab', t);
-    router.replace(`/tasks/${member.id}?${params.toString()}`, { scroll: false });
+    router.replace(`${base}/${member.id}?${params.toString()}`, { scroll: false });
   };
 
   const openDrawer = (id: number) => {
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.set('task', String(id));
-    router.push(`/tasks/${member.id}?${params.toString()}`, { scroll: false });
+    router.push(`${base}/${member.id}?${params.toString()}`, { scroll: false });
   };
 
   return (
@@ -54,10 +57,22 @@ export function MemberPane({ member }: { member: Member }) {
             <span className="font-mono">
               {openCount} open task{openCount === 1 ? '' : 's'}
             </span>
+            {member.channels.includes('whatsapp') && (
+              <>
+                <span aria-hidden>·</span>
+                <SessionWindowChip
+                  expiresAt={member.session_window_expires_at}
+                  active={member.session_active}
+                  hasWhatsapp
+                  size="md"
+                  showIcon
+                />
+              </>
+            )}
           </div>
         </div>
         <Link
-          href="/tasks/templates/new"
+          href="/team/templates/new"
           className="inline-flex shrink-0 items-center gap-1.5 rounded-tc-chip border border-tc-rule-strong bg-tc-bg-ground px-3 py-1.5 text-xs font-medium text-tc-ink hover:border-tc-accent hover:text-tc-accent"
         >
           <FilePlus2 className="h-3.5 w-3.5" />

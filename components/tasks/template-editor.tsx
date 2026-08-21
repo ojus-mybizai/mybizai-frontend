@@ -19,6 +19,7 @@ import type {
   TaskTemplateCreatePayload,
   TemplateVariable,
   EntityKind,
+  SnoozePreset,
 } from '@/services/taskTemplates';
 import { listModels, type DynamicModel } from '@/services/dynamic-data';
 import { listRoles } from '@/services/roles';
@@ -65,6 +66,12 @@ function toDraft(t: TaskTemplate | null): Draft {
     reminder_interval_hours: t?.reminder_interval_hours ?? 4,
     snooze_hours: t?.snooze_hours ?? 2,
     max_reminders: t?.max_reminders ?? 3,
+
+    cadence_mode: t?.cadence_mode ?? 'delivery',
+    due_offsets_hours: t?.due_offsets_hours ?? [],
+    escalate_after_due_hours: t?.escalate_after_due_hours ?? 4,
+    snooze_presets: t?.snooze_presets ?? [],
+    max_self_reschedules: t?.max_self_reschedules ?? 3,
   };
 }
 
@@ -228,8 +235,20 @@ export function TemplateEditor({
 
   const saving = create.isPending || update.isPending;
 
+  const isDefault = template?.is_default === true;
+
   return (
     <div className="space-y-5">
+      {isDefault && (
+        <div className="rounded-tc-panel border border-tc-accent/40 bg-tc-accent-soft px-3 py-2 text-xs text-tc-ink-2">
+          <span className="mr-2 rounded-tc-chip bg-tc-accent px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
+            Free-text default
+          </span>
+          Applied to tasks created by typing in a member's chat. Edit the reminder,
+          snooze, and escalation settings here to change defaults for ad-hoc tasks.
+        </div>
+      )}
+
       <Section icon={Sparkles} label="Identity" hint="Name, description, icon">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Name" required>
@@ -483,17 +502,74 @@ export function TemplateEditor({
 
         {draft.reminder_enabled !== false && (
           <div className="mt-3 space-y-3 pl-6">
-            <Field label="Interval">
+            <Field label="Cadence mode">
+              <div className="flex flex-wrap gap-1">
+                {(['delivery', 'due', 'hybrid'] as const).map((m) => (
+                  <Chip
+                    key={m}
+                    active={(draft.cadence_mode ?? 'delivery') === m}
+                    onClick={() => patch({ cadence_mode: m })}
+                  >
+                    {m === 'delivery'
+                      ? 'Time from delivery'
+                      : m === 'due'
+                        ? 'Offsets from due date'
+                        : 'Hybrid (both)'}
+                  </Chip>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-tc-ink-muted">
+                {draft.cadence_mode === 'due'
+                  ? 'Fires only at the offsets you set from the task due date. Falls back to interval mode if the task has no due date.'
+                  : draft.cadence_mode === 'hybrid'
+                    ? 'Fires interval ticks AND due-date offsets. Escalates once the escalate window past due date is crossed.'
+                    : 'Fires every N hours from when the task is delivered, until max reminders reached.'}
+              </p>
+            </Field>
+            <Field label="Interval (delivery / hybrid)">
               <select
                 value={draft.reminder_interval_hours ?? 4}
                 onChange={(e) => patch({ reminder_interval_hours: Number(e.target.value) })}
                 className="rounded-tc-chip border border-tc-rule bg-tc-bg-card px-2 py-1 text-sm"
+                disabled={draft.cadence_mode === 'due'}
               >
                 {INTERVAL_HOUR_OPTIONS.map((h) => (
                   <option key={h} value={h}>{h} h</option>
                 ))}
               </select>
             </Field>
+            {(draft.cadence_mode === 'due' || draft.cadence_mode === 'hybrid') && (
+              <>
+                <Field label="Due-date offsets (hours; negative = before, positive = after)">
+                  <DueOffsetsEditor
+                    value={draft.due_offsets_hours ?? []}
+                    onChange={(v) => patch({ due_offsets_hours: v })}
+                  />
+                </Field>
+                <Field label="Escalate to owner (hours past due)">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={720}
+                      value={draft.escalate_after_due_hours ?? 4}
+                      onChange={(e) =>
+                        patch({
+                          escalate_after_due_hours: Math.max(
+                            0,
+                            Math.min(720, Number(e.target.value) || 0),
+                          ),
+                        })
+                      }
+                      className="w-20 rounded-tc-chip border border-tc-rule bg-tc-bg-card px-2 py-1 text-sm"
+                    />
+                    <span className="text-xs text-tc-ink-muted">
+                      hours after due_at → owner ping
+                    </span>
+                  </div>
+                </Field>
+              </>
+            )}
             <Field label='"Later" button snoozes for'>
               <select
                 value={draft.snooze_hours ?? 2}
@@ -516,6 +592,34 @@ export function TemplateEditor({
                   className="w-16 rounded-tc-chip border border-tc-rule bg-tc-bg-card px-2 py-1 text-sm"
                 />
                 <span className="text-xs text-tc-ink-muted">reminders</span>
+              </div>
+            </Field>
+            <Field label='"Later" button — snooze options shown on WhatsApp'>
+              <SnoozePresetsEditor
+                value={draft.snooze_presets ?? []}
+                onChange={(v) => patch({ snooze_presets: v })}
+              />
+            </Field>
+            <Field label="Max self-reschedules (Later + reply pushes)">
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={draft.max_self_reschedules ?? 3}
+                  onChange={(e) =>
+                    patch({
+                      max_self_reschedules: Math.max(
+                        1,
+                        Math.min(20, Number(e.target.value) || 1),
+                      ),
+                    })
+                  }
+                  className="w-16 rounded-tc-chip border border-tc-rule bg-tc-bg-card px-2 py-1 text-sm"
+                />
+                <span className="text-xs text-tc-ink-muted">
+                  before owner is pinged
+                </span>
               </div>
             </Field>
           </div>
@@ -546,7 +650,7 @@ export function TemplateEditor({
           {dirty && <span className="text-tc-alert">Unsaved</span>}
         </div>
         <div className="flex items-center gap-2">
-          {template && (
+          {template && !isDefault && (
             <button
               onClick={remove}
               disabled={del.isPending}
@@ -634,6 +738,256 @@ function Field({
       </div>
       {children}
     </label>
+  );
+}
+
+function DueOffsetsEditor({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (next: number[]) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const add = () => {
+    const n = Number(draft);
+    if (!Number.isFinite(n)) return;
+    if (value.includes(n)) {
+      setDraft('');
+      return;
+    }
+    onChange([...value, n].sort((a, b) => a - b));
+    setDraft('');
+  };
+  const remove = (h: number) => onChange(value.filter((v) => v !== h));
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1">
+        {value.length === 0 && (
+          <span className="text-[11px] italic text-tc-ink-muted">
+            No offsets — add some (e.g. -24, -2, 0, 2).
+          </span>
+        )}
+        {value.map((h) => (
+          <span
+            key={h}
+            className="inline-flex items-center gap-1 rounded-tc-chip border border-tc-rule bg-tc-bg-card px-2 py-0.5 font-mono text-[11px] text-tc-ink"
+          >
+            {h > 0 ? `+${h}h` : `${h}h`}
+            <button
+              type="button"
+              onClick={() => remove(h)}
+              className="text-tc-ink-muted hover:text-tc-alert"
+              aria-label={`Remove ${h}h offset`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+          placeholder="e.g. -2"
+          className="w-24 rounded-tc-chip border border-tc-rule bg-tc-bg-card px-2 py-1 font-mono text-xs"
+        />
+        <button
+          type="button"
+          onClick={add}
+          className="rounded-tc-chip border border-tc-rule px-2 py-1 text-xs text-tc-ink-2 hover:border-tc-accent hover:text-tc-accent"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type PresetKind = 'hours' | 'time' | 'custom';
+
+function presetKind(p: SnoozePreset): PresetKind {
+  if ('custom' in p && p.custom) return 'custom';
+  if ('hours' in p) return 'hours';
+  return 'time';
+}
+
+function SnoozePresetsEditor({
+  value,
+  onChange,
+}: {
+  value: SnoozePreset[];
+  onChange: (next: SnoozePreset[]) => void;
+}) {
+  const move = (from: number, dir: -1 | 1) => {
+    const to = from + dir;
+    if (to < 0 || to >= value.length) return;
+    const next = value.slice();
+    [next[from], next[to]] = [next[to], next[from]];
+    onChange(next);
+  };
+  const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i));
+  const update = (i: number, patch: Partial<SnoozePreset>) => {
+    const next = value.slice();
+    next[i] = { ...(next[i] as any), ...(patch as any) };
+    onChange(next);
+  };
+  const add = (kind: PresetKind) => {
+    if (value.length >= 10) return;
+    if (kind === 'hours') {
+      onChange([...value, { label: '1 hour', hours: 1 }]);
+    } else if (kind === 'time') {
+      onChange([...value, { label: 'Tomorrow 9am', day_offset: 1, time: '09:00' }]);
+    } else {
+      onChange([...value, { label: 'Custom time', custom: true }]);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {value.length === 0 && (
+        <p className="text-[11px] italic text-tc-ink-muted">
+          No snooze options — the assignee will get one fixed snooze based on
+          &ldquo;Later&rdquo; snoozes for above. Add options to show a WhatsApp menu.
+        </p>
+      )}
+      <ul className="space-y-1">
+        {value.map((p, i) => {
+          const kind = presetKind(p);
+          return (
+            <li
+              key={i}
+              className="flex flex-wrap items-center gap-2 rounded-tc-chip border border-tc-rule bg-tc-bg-card px-2 py-1.5"
+            >
+              <span className="w-6 font-mono text-[10px] text-tc-ink-muted">#{i + 1}</span>
+              <input
+                value={p.label ?? ''}
+                onChange={(e) => update(i, { label: e.target.value } as Partial<SnoozePreset>)}
+                placeholder="Label"
+                className="w-32 rounded border border-tc-rule bg-tc-bg-ground px-2 py-0.5 text-xs"
+                maxLength={24}
+              />
+              <span className="rounded-tc-chip bg-tc-bg-card-2 px-1.5 py-0.5 font-mono text-[10px] text-tc-ink-muted">
+                {kind}
+              </span>
+              {kind === 'hours' && (
+                <label className="inline-flex items-center gap-1 text-[11px] text-tc-ink-2">
+                  in
+                  <input
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={(p as { hours: number }).hours}
+                    onChange={(e) => update(i, { hours: Number(e.target.value) } as Partial<SnoozePreset>)}
+                    className="w-14 rounded border border-tc-rule bg-tc-bg-ground px-1 py-0.5 font-mono text-xs"
+                  />
+                  h
+                </label>
+              )}
+              {kind === 'time' && (
+                <>
+                  <label className="inline-flex items-center gap-1 text-[11px] text-tc-ink-2">
+                    +
+                    <input
+                      type="number"
+                      min={0}
+                      max={30}
+                      value={(p as { day_offset: number }).day_offset}
+                      onChange={(e) =>
+                        update(i, { day_offset: Number(e.target.value) } as Partial<SnoozePreset>)
+                      }
+                      className="w-12 rounded border border-tc-rule bg-tc-bg-ground px-1 py-0.5 font-mono text-xs"
+                    />
+                    d
+                  </label>
+                  <label className="inline-flex items-center gap-1 text-[11px] text-tc-ink-2">
+                    at
+                    <input
+                      type="time"
+                      value={(p as { time: string }).time}
+                      onChange={(e) => update(i, { time: e.target.value } as Partial<SnoozePreset>)}
+                      className="rounded border border-tc-rule bg-tc-bg-ground px-1 py-0.5 font-mono text-xs"
+                    />
+                  </label>
+                </>
+              )}
+              {kind === 'custom' && (
+                <span className="text-[11px] italic text-tc-ink-muted">
+                  Assignee replies with their own time (parsed).
+                </span>
+              )}
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => move(i, -1)}
+                  disabled={i === 0}
+                  className="rounded px-1 text-tc-ink-muted hover:text-tc-ink disabled:opacity-30"
+                  aria-label="Move up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(i, 1)}
+                  disabled={i === value.length - 1}
+                  className="rounded px-1 text-tc-ink-muted hover:text-tc-ink disabled:opacity-30"
+                  aria-label="Move down"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => remove(i)}
+                  className="rounded px-1 text-tc-ink-muted hover:text-tc-alert"
+                  aria-label="Remove"
+                >
+                  ×
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="flex items-center gap-1 pt-1">
+        <span className="text-[11px] text-tc-ink-muted">Add:</span>
+        <button
+          type="button"
+          onClick={() => add('hours')}
+          disabled={value.length >= 10}
+          className="rounded-tc-chip border border-tc-rule px-2 py-0.5 text-[11px] text-tc-ink-2 hover:border-tc-accent hover:text-tc-accent disabled:opacity-40"
+        >
+          + Hours
+        </button>
+        <button
+          type="button"
+          onClick={() => add('time')}
+          disabled={value.length >= 10}
+          className="rounded-tc-chip border border-tc-rule px-2 py-0.5 text-[11px] text-tc-ink-2 hover:border-tc-accent hover:text-tc-accent disabled:opacity-40"
+        >
+          + Time of day
+        </button>
+        <button
+          type="button"
+          onClick={() => add('custom')}
+          disabled={value.length >= 10 || value.some((p) => 'custom' in p && p.custom)}
+          className="rounded-tc-chip border border-tc-rule px-2 py-0.5 text-[11px] text-tc-ink-2 hover:border-tc-accent hover:text-tc-accent disabled:opacity-40"
+        >
+          + Custom time
+        </button>
+      </div>
+      {value.length >= 10 && (
+        <p className="text-[11px] italic text-tc-ink-muted">
+          WhatsApp limits list menus to 10 rows.
+        </p>
+      )}
+    </div>
   );
 }
 

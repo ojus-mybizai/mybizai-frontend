@@ -80,7 +80,20 @@ export interface TaskTemplate {
   reminder_interval_hours: number;
   snooze_hours: number;
   max_reminders: number;
+
+  // Task Reminder Config v2
+  is_default: boolean;
+  cadence_mode: 'delivery' | 'due' | 'hybrid';
+  due_offsets_hours: number[];
+  escalate_after_due_hours: number | null;
+  snooze_presets: SnoozePreset[];
+  max_self_reschedules: number;
 }
+
+export type SnoozePreset =
+  | { label: string; hours: number }
+  | { label: string; day_offset: number; time: string }
+  | { label: string; custom: true };
 
 export interface TaskTemplateCreatePayload {
   name: string;
@@ -114,6 +127,12 @@ export interface TaskTemplateCreatePayload {
   reminder_interval_hours?: number;
   snooze_hours?: number;
   max_reminders?: number;
+
+  cadence_mode?: 'delivery' | 'due' | 'hybrid';
+  due_offsets_hours?: number[];
+  escalate_after_due_hours?: number | null;
+  snooze_presets?: SnoozePreset[];
+  max_self_reschedules?: number;
 }
 
 export type TaskTemplateUpdatePayload = Partial<TaskTemplateCreatePayload>;

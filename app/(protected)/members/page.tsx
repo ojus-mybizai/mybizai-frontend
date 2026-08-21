@@ -11,15 +11,13 @@ import {
   type Member, type MemberCreatePayload, type MemberWaStatus,
 } from '@/services/members';
 import { listRoles, type Role } from '@/services/roles';
-import { getWaSettings } from '@/services/waEmployees';
+import { SessionWindowChip } from '@/components/tasks/shared/session-window-chip';
 
-/**
- * Whether the business can actually send to members over WhatsApp.
- *  - 'no_channels'  → nothing connected yet (Settings → Channels)
- *  - 'not_selected' → numbers connected, but none designated for the team
- *                     (Settings → WhatsApp). The backend refuses to guess.
- */
-type WaSetup = 'loading' | 'ready' | 'no_channels' | 'not_selected';
+// The team-WhatsApp-channel setting (`wa_employee_channel_id`) was retired
+// alongside the WaEmployee subsystem. Attaching WhatsApp to a member still
+// works if the backend can resolve *any* WA channel; otherwise the invite
+// fails loudly at attach-time. No pre-flight gate remains here.
+type WaSetup = 'ready';
 
 /**
  * India-only: user enters a 10-digit mobile number; we prefix +91 ourselves.
@@ -77,7 +75,7 @@ function buildCreateNotice(created: Member): CreateNotice {
   } else if (waStatus === 'no_channel') {
     parts.push(`WhatsApp invite not sent — ${created.wa_invite_detail ?? 'no team WhatsApp number is configured.'}`);
     severity = 'warning';
-    url = created.wa_invite_settings_url ?? '/settings/whatsapp';
+    url = created.wa_invite_settings_url ?? '/settings/channels';
   } else if (waStatus === 'failed') {
     parts.push(`WhatsApp rejected the invite: ${created.wa_invite_detail ?? 'unknown error'}`);
     severity = 'warning';
@@ -140,25 +138,9 @@ export default function MembersPage() {
   const [q, setQ] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Member | null>(null);
-  const [waSetup, setWaSetup] = useState<WaSetup>('loading');
-  const [selectedWaChannel, setSelectedWaChannel] = useState<{ name: string; phone_number: string } | null>(null);
+  const waSetup: WaSetup = 'ready';
   const [notice, setNotice] = useState<CreateNotice>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all');
-
-  useEffect(() => {
-    getWaSettings()
-      .then(s => {
-        const connected = s.available_channels || [];
-        const chosen = connected.find(c => c.id === s.wa_employee_channel_id);
-        if (connected.length === 0) setWaSetup('no_channels');
-        // A saved id that isn't in the connected list is a deleted/disconnected
-        // channel — same as never choosing one. The backend refuses both.
-        else if (!chosen) setWaSetup('not_selected');
-        else setWaSetup('ready');
-        setSelectedWaChannel(chosen ? { name: chosen.name, phone_number: chosen.phone_number } : null);
-      })
-      .catch(() => { setWaSetup('no_channels'); setSelectedWaChannel(null); });
-  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -187,15 +169,6 @@ export default function MembersPage() {
           <p className="text-sm text-text-secondary mt-0.5">
             One place for everyone — reachable on the portal, WhatsApp, or both.
           </p>
-          {selectedWaChannel && (
-            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-green-100/60 dark:bg-green-900/30 px-2.5 py-1 text-xs text-green-800 dark:text-green-300">
-              <MessageCircle className="w-3 h-3" />
-              <span>Sending invites &amp; tasks from</span>
-              <span className="font-semibold">{selectedWaChannel.name}</span>
-              <span className="font-mono opacity-80">+{selectedWaChannel.phone_number.replace(/\D+/g, '')}</span>
-              <a href="/settings/whatsapp" className="ml-1 underline opacity-70 hover:opacity-100">Change</a>
-            </div>
-          )}
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -281,39 +254,6 @@ export default function MembersPage() {
         </div>
       )}
 
-      {(waSetup === 'no_channels' || waSetup === 'not_selected') && (
-        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:bg-amber-900/20 dark:border-amber-700">
-          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium text-amber-800 dark:text-amber-300">
-              {waSetup === 'no_channels'
-                ? 'No WhatsApp number connected'
-                : 'No WhatsApp number chosen for your team'}
-            </p>
-            <p className="text-amber-700 dark:text-amber-400 mt-0.5">
-              {waSetup === 'no_channels' ? (
-                <>
-                  Connect a WhatsApp Business number in{' '}
-                  <a href="/settings/channels" className="underline font-medium hover:text-amber-900 dark:hover:text-amber-200">
-                    Settings → Channels
-                  </a>{' '}
-                  before adding members via WhatsApp.
-                </>
-              ) : (
-                <>
-                  Invites and tasks won&apos;t send until you pick which of your connected numbers
-                  reaches your team in{' '}
-                  <a href="/settings/whatsapp" className="underline font-medium hover:text-amber-900 dark:hover:text-amber-200">
-                    Settings → WhatsApp
-                  </a>
-                  .
-                </>
-              )}
-            </p>
-          </div>
-        </div>
-      )}
-
       <div className="rounded-lg overflow-hidden bg-bg-primary">
         <table className="w-full text-sm">
           <thead className="bg-bg-secondary/60 text-text-secondary">
@@ -360,6 +300,14 @@ export default function MembersPage() {
                           {(() => { const Icon = WA_PILL[m.wa_status]!.Icon; return <Icon className="w-3 h-3" />; })()}
                           {WA_PILL[m.wa_status]!.label}
                         </span>
+                      )}
+                      {m.wa_status === 'active' && (
+                        <SessionWindowChip
+                          expiresAt={m.session_window_expires_at}
+                          active={m.session_active}
+                          hasWhatsapp={m.channels.includes('whatsapp')}
+                          size="md"
+                        />
                       )}
                     </div>
                   </td>
@@ -634,18 +582,6 @@ function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
     } finally { setBusy(null); }
   }
 
-  const setupWarning = waSetup === 'no_channels' ? (
-    <p className="text-xs text-amber-600 dark:text-amber-400">
-      Connect a WhatsApp channel in{' '}
-      <a href="/settings/channels" className="underline font-medium">Settings → Channels</a> first.
-    </p>
-  ) : waSetup === 'not_selected' ? (
-    <p className="text-xs text-amber-600 dark:text-amber-400">
-      Pick the number that reaches your team in{' '}
-      <a href="/settings/whatsapp" className="underline font-medium">Settings → WhatsApp</a> first.
-    </p>
-  ) : null;
-
   // NOT CONNECTED — show input to add
   if (member.wa_status === 'not_connected') {
     return (
@@ -654,7 +590,7 @@ function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
           <MessageCircle className="w-4 h-4 text-green-600" /> WhatsApp
           <span className="text-xs font-normal text-text-secondary">— not connected</span>
         </div>
-        {setupWarning ? setupWarning : (
+        {(
           <>
             <div
               className={
@@ -720,7 +656,6 @@ function WhatsAppSection({ member, waSetup, onChanged, onNotice, onError }: {
 
       {editing ? (
         <>
-          {setupWarning}
           <div
             className={
               'flex items-stretch rounded-md border overflow-hidden focus-within:ring-1 ' +

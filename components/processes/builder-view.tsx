@@ -29,10 +29,7 @@ import {
   listTemplates as listWaTemplatesService, createTemplate as createWaTemplate,
   type WaTemplate, type ButtonDef,
 } from '@/services/waTemplates';
-import {
-  listEmployees as listWaEmployees,
-  type WaEmployee,
-} from '@/services/waEmployees';
+import { listMembers, type Member } from '@/services/members';
 import { randomStageColor } from './shared';
 
 interface Props {
@@ -66,7 +63,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
   // (those are Meta-approved HSMs for sending to contacts; these are
   // employee-facing task templates).
   const [waWorkTemplates, setWaWorkTemplates] = useState<WaTemplate[]>([]);
-  const [waEmployees, setWaEmployees] = useState<WaEmployee[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [pickersLoaded, setPickersLoaded] = useState(false);
   const [fieldOptions, setFieldOptions] = useState<ProcessFieldOptions | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -87,7 +84,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
         // WA-Work pickers — active templates (we filter lead_list out at
         // render time so the user can see if they ONLY have lead_list ones)
         listWaTemplatesService().catch(() => [] as WaTemplate[]),
-        listWaEmployees({ status: 'active' }).catch(() => [] as WaEmployee[]),
+        listMembers().then(list => list.filter(m => m.is_active && m.is_assignable)).catch(() => [] as Member[]),
         getProcessFieldOptions(process.id).catch(() => null),
       ])
         .then(([t, e, a, chs, tpls, waTpls, waEmps, fopts]) => {
@@ -97,7 +94,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
           setWaChannels(chs);
           setWaTemplates(tpls);
           setWaWorkTemplates(waTpls.filter(tpl => tpl.is_active));
-          setWaEmployees(waEmps.filter(emp => emp.is_active));
+          setMembers(waEmps);
           setFieldOptions(fopts);
           setPickersLoaded(true);
         })
@@ -158,7 +155,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
                   waChannels={waChannels}
                   waTemplates={waTemplates}
                   waWorkTemplates={waWorkTemplates}
-                  waEmployees={waEmployees}
+                  members={members}
                   pickersLoaded={pickersLoaded}
                   fieldOptions={fieldOptions}
                   // Only this stage's rules — `on_enter | on_exit | on_stuck`
@@ -209,7 +206,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
           waChannels={waChannels}
           waTemplates={waTemplates}
           employees={employees}
-          waEmployees={waEmployees}
+          members={members}
           pickersLoaded={pickersLoaded}
           onReload={reloadAutomations}
         />
@@ -222,7 +219,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
 
 function StageCard({
   process, stage, templates, employees,
-  waChannels, waTemplates, waWorkTemplates, waEmployees,
+  waChannels, waTemplates, waWorkTemplates, members,
   pickersLoaded, fieldOptions, stageRules,
   onReloadAutomations, onReload,
 }: {
@@ -233,7 +230,7 @@ function StageCard({
   waChannels: Channel[];
   waTemplates: MessageTemplate[];     // approved Meta HSMs — used by WhatsApp message action
   waWorkTemplates: WaTemplate[];      // WaTemplate (simple_task / whatsapp_form / checklist)
-  waEmployees: WaEmployee[];          // verified WA employees
+  members: Member[];          // verified WA employees
   pickersLoaded: boolean;
   fieldOptions: ProcessFieldOptions | null;
   stageRules: AutomationRule[];
@@ -524,7 +521,7 @@ function StageCard({
           {showAddWork ? (
             <WaWorkForm
               templates={waWorkTemplates}
-              employees={waEmployees}
+              employees={members}
               roles={agentRoles}
               messageTokens={fieldOptions?.message_tokens ?? []}
               templateId={waWorkTemplateId}
@@ -565,7 +562,7 @@ function StageCard({
             employees={employees}
             waChannels={waChannels}
             waTemplates={waTemplates}
-            waEmployees={waEmployees}
+            members={members}
             pickersLoaded={pickersLoaded}
             onReload={onReloadAutomations}
           />
@@ -661,7 +658,7 @@ function StageWorkRow({ work, onDelete }: {
 // ─── WA-Work Add Form ────────────────────────────────────────────────────────
 // Configures a single wa_work stage-work row: WaTemplate + assignees +
 // dispatch mode + due + auto_dispatch. The runtime behavior (creating a
-// WaWorkItem on stage-enter, dispatching to each WaEmployee) is handled by
+// WaWorkItem on stage-enter, dispatching to each Member) is handled by
 // the backend's `_spawn_wa_work_for_stage` helper.
 
 function WaWorkForm({
@@ -678,7 +675,7 @@ function WaWorkForm({
   loaded, onCancel, onSubmit,
 }: {
   templates: WaTemplate[];
-  employees: WaEmployee[];
+  employees: Member[];
   roles: AgentRoleOption[];
   messageTokens: ProcessMessageToken[];
   templateId: number | null;
@@ -1125,7 +1122,7 @@ const STAGE_TRIGGERS: { key: 'on_enter' | 'on_exit' | 'on_stuck'; label: string;
 
 function StageAutomationsSection({
   process, stage, rules, employees,
-  waChannels, waTemplates, waEmployees, pickersLoaded, onReload,
+  waChannels, waTemplates, members, pickersLoaded, onReload,
 }: {
   process: BusinessProcess;
   stage: ProcessStage;
@@ -1133,7 +1130,7 @@ function StageAutomationsSection({
   employees: Employee[];
   waChannels: Channel[];
   waTemplates: MessageTemplate[];
-  waEmployees: WaEmployee[];
+  members: Member[];
   pickersLoaded: boolean;
   onReload: () => void;
 }) {
@@ -1289,7 +1286,7 @@ function StageAutomationsSection({
                 )}
                 {actionKind === 'assign_deal' && (
                   <AssignDealEditor draft={assignDraft} onChange={setAssignDraft}
-                    waEmployees={waEmployees} />
+                    members={members} />
                 )}
                 {actionKind === 'reassign' && (
                   <div>
@@ -1429,10 +1426,10 @@ const DEFAULT_ASSIGN_DEAL: AssignDealDraft = {
 /** Editor for the "assign deal to WhatsApp employee" action — a dispatch method
  *  (round-robin across everyone) or a specific employee. Shared by the per-stage
  *  and process-wide automation panels. */
-function AssignDealEditor({ draft, onChange, waEmployees }: {
+function AssignDealEditor({ draft, onChange, members }: {
   draft: AssignDealDraft;
   onChange: (d: AssignDealDraft) => void;
-  waEmployees: WaEmployee[];
+  members: Member[];
 }) {
   return (
     <div className="space-y-2">
@@ -1462,7 +1459,7 @@ function AssignDealEditor({ draft, onChange, waEmployees }: {
             className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
           >
             <option value="">Pick an employee…</option>
-            {waEmployees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+            {members.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
           </select>
         </div>
       )}
@@ -1536,7 +1533,7 @@ function actionSummary(action: Record<string, any>): string {
 // inside each StageCard above. This panel only handles cross-stage events.
 function AutomationsPanel({
   process, stages, rules,
-  waChannels, waTemplates, employees, waEmployees, pickersLoaded,
+  waChannels, waTemplates, employees, members, pickersLoaded,
   onReload,
 }: {
   process: BusinessProcess;
@@ -1545,7 +1542,7 @@ function AutomationsPanel({
   waChannels: Channel[];
   waTemplates: MessageTemplate[];
   employees: Employee[];
-  waEmployees: WaEmployee[];
+  members: Member[];
   pickersLoaded: boolean;
   onReload: () => void;
 }) {
@@ -1672,7 +1669,7 @@ function AutomationsPanel({
           )}
           {actionKind === 'assign_deal' && (
             <AssignDealEditor draft={assignDraft} onChange={setAssignDraft}
-              waEmployees={waEmployees} />
+              members={members} />
           )}
           {actionKind === 'reassign' && (
             <div>

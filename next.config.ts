@@ -42,12 +42,21 @@ const nextConfig: NextConfig = {
       // Legacy /conversations route renamed to /inbox (kept for bookmarks & deep links)
       { source: "/conversations", destination: "/inbox", permanent: false },
       { source: "/conversations/:path*", destination: "/inbox/:path*", permanent: false },
-      // Identity screens consolidated into /members (Employee+Task Redesign V2, Slice 5b).
-      // Permanent (308) — the old screens are deleted; bookmarks & deep links land on /members.
-      { source: "/wa-employees", destination: "/members", permanent: true },
-      { source: "/wa-employees/:path*", destination: "/members", permanent: true },
+      // Identity screens consolidated into /members. Permanent (308) — the old
+      // screens are deleted; bookmarks & deep links land on /members.
       { source: "/employees", destination: "/members", permanent: true },
       { source: "/employees/:path*", destination: "/members", permanent: true },
+
+      // Team surface unification (Slice 4). All member/task/whatsapp-settings
+      // /roles surfaces fold under /team. Temporary (307) for one release so we
+      // can revert cleanly if a downstream deep-link relies on the old path;
+      // flip to permanent once telemetry shows no stragglers.
+      { source: "/members", destination: "/team/members", permanent: false },
+      { source: "/tasks", destination: "/team", permanent: false },
+      { source: "/tasks/templates", destination: "/team/templates", permanent: false },
+      { source: "/tasks/templates/:path*", destination: "/team/templates/:path*", permanent: false },
+      { source: "/tasks/:memberId", destination: "/team/:memberId", permanent: false },
+      { source: "/settings/roles", destination: "/team/roles", permanent: false },
     ];
   },
 

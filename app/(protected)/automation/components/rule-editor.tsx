@@ -208,11 +208,11 @@ function getParamHint(actionType: string, paramName: string): string | undefined
     },
     assign_contact_to_employee: {
       method: 'round_robin / least_loaded pick the employee with fewest contacts',
-      employee_id: 'WaEmployee ID — only needed when method is "specific"',
+      employee_id: 'Member ID — only needed when method is "specific"',
     },
     dispatch_wa_work: {
       wa_template_id: 'Optional WhatsApp work template (simple_task / checklist / form)',
-      employee_ids: 'Comma-separated WaEmployee IDs (and/or use a group)',
+      employee_ids: 'Comma-separated Member IDs (and/or use a group)',
       group_id: 'Employee group ID to dispatch to all members',
     },
     move_stage: {

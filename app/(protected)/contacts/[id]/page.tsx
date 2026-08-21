@@ -18,8 +18,8 @@ import { formatDate as fmtDate, formatDateTime as fmtDateTime } from '@/lib/form
 import { DateField } from '@/components/ui/date-field';
 import { useContactV2Store, type ContactV2State } from '@/lib/contact-v2-store';
 import { useAuthStore } from '@/lib/auth-store';
-import { useAgentList, useWaEmployeeList } from '@/lib/hooks/use-reference-data';
-import type { WaEmployee } from '@/services/waEmployees';
+import { useAgentList, useMemberList } from '@/lib/hooks/use-reference-data';
+import type { Member } from '@/services/members';
 import {
   contactsV2Service,
   type Contact,
@@ -193,7 +193,7 @@ function ContactDetailInner() {
   const business = useAuthStore(s => (s.user as { businesses?: Array<{ agents_enabled?: boolean }> } | null)?.businesses?.[0]);
   const agentsEnabled = business?.agents_enabled !== false;
 
-  const { data: waEmployees = [] } = useWaEmployeeList();
+  const { data: members = [] } = useMemberList();
   const { data: agents = [] } = useAgentList({ enabled: agentsEnabled });
 
   const [tab, setTab] = useState<TabId>('overview');
@@ -344,7 +344,7 @@ function ContactDetailInner() {
           onPriority={handlePriority}
           onRouting={handleRouting}
           onAssign={handleAssign}
-          waEmployees={waEmployees}
+          members={members}
           agents={agents}
           agentsEnabled={agentsEnabled}
           activeDealsCount={activeDeals.length}
@@ -485,15 +485,15 @@ function ContactDetailInner() {
 // ────────────────────────────────────────────────────────────────
 
 function ContactHeader({
-  contact: c, canManage, onPriority, onRouting, onAssign, waEmployees, agents, agentsEnabled, activeDealsCount,
+  contact: c, canManage, onPriority, onRouting, onAssign, members, agents, agentsEnabled, activeDealsCount,
 }: {
   contact: Contact;
   canManage: boolean;
   onPriority: (p: Priority) => void;
   onRouting: (mode: RoutingMode, agentId?: number | null) => void;
-  // Assigns the WhatsApp-native owner (Contact.assigned_wa_employee_id).
-  onAssign: (waEmployeeId: number | null) => void;
-  waEmployees: WaEmployee[];
+  // Assigns the owning Member (Contact.assigned_member_id).
+  onAssign: (memberId: number | null) => void;
+  members: Member[];
   agents: Array<{ id: string | number; name: string }>;
   agentsEnabled: boolean;
   activeDealsCount: number;
@@ -677,17 +677,17 @@ function ContactHeader({
             onChange={(v) => onRouting('ai', v === '' ? null : Number(v))}
           />
         )}
-        {/* Assignee — WhatsApp employee (operational owner), matches the inbox */}
+        {/* Assignee — Member (operational owner), matches the inbox */}
         <ChipDropdown
           label="Assigned"
-          value={c.assigned_wa_employee_name ?? 'Unassigned'}
+          value={c.assigned_member_name ?? 'Unassigned'}
           styleClass="bg-bg-primary text-text-primary border-border-color"
           disabled={!canManage}
           options={[
             { value: '', label: 'Unassigned' },
-            ...waEmployees
-              .filter(e => e.is_active && e.status === 'active')
-              .map(e => ({ value: String(e.id), label: e.name || e.whatsapp_number })),
+            ...members
+              .filter(m => m.is_active && m.is_assignable)
+              .map(m => ({ value: String(m.id), label: m.name || m.whatsapp_number || `Member #${m.id}` })),
           ]}
           onChange={(v) => onAssign(v === '' ? null : Number(v))}
         />

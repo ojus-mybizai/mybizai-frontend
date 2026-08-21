@@ -14,6 +14,7 @@ import {
 import { listMembers, type Member } from '@/services/members';
 import { useToastStore } from '@/lib/toast-store';
 import { MemberAvatar } from './shared/member-avatar';
+import { SessionWindowChip } from './shared/session-window-chip';
 import { TaskStatusPill } from './shared/task-status-pill';
 import { ReminderStatusPill } from './shared/reminder-status-pill';
 import { DueChip } from './shared/due-chip';
@@ -256,7 +257,12 @@ export function TaskDrawer({
                           className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-tc-ink hover:bg-tc-bg-card-2 disabled:opacity-40"
                         >
                           <MemberAvatar name={m.name} size={20} />
-                          {m.name}
+                          <span className="flex-1 truncate">{m.name}</span>
+                          <SessionWindowChip
+                            expiresAt={m.session_window_expires_at}
+                            active={m.session_active}
+                            hasWhatsapp={m.channels.includes('whatsapp')}
+                          />
                         </button>
                       ))}
                     </div>

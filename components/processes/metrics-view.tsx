@@ -184,7 +184,7 @@ export default function MetricsView({ processId }: Props) {
                   <div className="min-w-0">
                     <p className="font-medium truncate">{s.entry.title || s.entry.entity_name}</p>
                     <p className="text-text-secondary truncate">
-                      {s.entry.current_stage_name} · {s.entry.assigned_wa_employee_name || 'unassigned'}
+                      {s.entry.current_stage_name} · {s.entry.assigned_member_name || 'unassigned'}
                     </p>
                   </div>
                   <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${s.sla_status === 'breach' ? 'bg-red-200 text-red-800 dark:bg-red-900/40 dark:text-red-200' : 'bg-amber-200 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'}`}>

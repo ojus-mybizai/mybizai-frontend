@@ -31,7 +31,6 @@ export const queryKeys = {
   agent: (id: number) => ['agents', id] as const,
   employees: () => ['employees'] as const,
   employee: (id: number) => ['employees', id] as const,
-  waEmployees: () => ['wa-employees'] as const,
   members: () => ['members'] as const,
   leadStats: () => ['lead-stats'] as const,
   datasheetModels: () => ['datasheet-models'] as const,

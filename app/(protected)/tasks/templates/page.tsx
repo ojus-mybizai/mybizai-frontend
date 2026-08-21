@@ -141,6 +141,11 @@ function TemplateRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium text-tc-ink">{template.name}</span>
+            {template.is_default && (
+              <span className="rounded-tc-chip bg-tc-accent px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
+                Default
+              </span>
+            )}
             <span className="rounded-tc-chip bg-tc-bg-card-2 px-1.5 py-0.5 font-mono text-[10px] text-tc-ink-muted">
               {template.entity_kind}·{template.row_count}
             </span>

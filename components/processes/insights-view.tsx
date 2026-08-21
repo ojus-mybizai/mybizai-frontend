@@ -332,7 +332,7 @@ function StuckPanel({ stuck }: { stuck: Stuck | null }) {
             <div className="min-w-0">
               <p className="font-medium text-text-primary truncate">{s.entry.title || s.entry.entity_name}</p>
               <p className="text-xs text-text-secondary truncate">
-                {s.entry.current_stage_name} · {s.entry.assigned_wa_employee_name || 'Unassigned'}
+                {s.entry.current_stage_name} · {s.entry.assigned_member_name || 'Unassigned'}
               </p>
             </div>
             <Pill tone={s.sla_status === 'breach' ? 'danger' : 'warn'} size="sm">

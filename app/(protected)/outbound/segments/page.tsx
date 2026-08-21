@@ -207,8 +207,8 @@ function FilterSummaryBadges({ filter }: { filter: AudienceFilter }) {
   if (filter.created_before) parts.push(`before ${filter.created_before}`);
   if ((filter.pipeline_stage_ids ?? []).length) parts.push(`${filter.pipeline_stage_ids!.length} stage(s)`);
   if ((filter.exclude_pipeline_stage_ids ?? []).length) parts.push(`exclude ${filter.exclude_pipeline_stage_ids!.length} stage(s)`);
-  if ((filter.assigned_to_ids ?? []).length || (filter.assigned_wa_employee_ids ?? []).length)
-    parts.push(`${(filter.assigned_to_ids ?? []).length + (filter.assigned_wa_employee_ids ?? []).length} owner(s)`);
+  if ((filter.assigned_to_ids ?? []).length || (filter.assigned_member_ids ?? []).length)
+    parts.push(`${(filter.assigned_to_ids ?? []).length + (filter.assigned_member_ids ?? []).length} owner(s)`);
   if (filter.company_contains) parts.push(`company ~ ${filter.company_contains}`);
   if (filter.ad_platform) parts.push(`ad: ${filter.ad_platform}`);
   if ((filter.ad_campaign_names ?? []).length) parts.push(`${filter.ad_campaign_names!.length} campaign(s)`);

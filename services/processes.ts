@@ -4,7 +4,7 @@ import type { WaWorkItem } from '@/services/waWork';
 // ---------- Types ----------
 
 /** Discriminator selecting the runtime path for a stage-bound task.
- *  - 'wa_work'       → WhatsApp dispatch to WaEmployees (new default).
+ *  - 'wa_work'       → WhatsApp dispatch to Members (new default).
  *  - 'internal_work' → legacy Work row pointed at a platform User. Kept so
  *                      pre-migration rows still render (read-only chip) and
  *                      keep firing until the owner removes them. */
@@ -114,8 +114,8 @@ export interface ProcessEntry {
   entity_phone: string | null;
   assigned_to_id: number | null;
   assigned_to_name: string | null;
-  assigned_wa_employee_id: number | null;
-  assigned_wa_employee_name: string | null;
+  assigned_member_id: number | null;
+  assigned_member_name: string | null;
   status: string;
   entered_at?: string;
   stage_entered_at?: string;
@@ -324,7 +324,7 @@ export async function removeEntry(processId: number, entryId: number): Promise<v
 export async function updateEntry(entryId: number, payload: {
   notes?: string | null;
   assigned_to_id?: number | null;
-  assigned_wa_employee_id?: number | null;
+  assigned_member_id?: number | null;
   status?: 'active' | 'completed' | 'dropped';
   title?: string | null;
   priority?: EntryPriority | null;
@@ -358,7 +358,7 @@ export async function bulkMoveEntries(processId: number, entry_ids: number[], st
 export async function bulkAssignEntries(
   processId: number,
   entry_ids: number[],
-  assignee: { assigned_wa_employee_id: number | null } | { assigned_to_id: number | null },
+  assignee: { assigned_member_id: number | null } | { assigned_to_id: number | null },
 ): Promise<{ updated: number }> {
   return apiFetch(`/processes/${processId}/entries/bulk-assign`, {
     method: 'POST', auth: true,

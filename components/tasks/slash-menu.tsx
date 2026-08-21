@@ -153,7 +153,7 @@ export function SlashMenu({
       <button
         onClick={() => {
           onClose();
-          router.push('/tasks/templates');
+          router.push('/team/templates');
         }}
         className="w-full border-t border-tc-rule px-3 py-2 text-left text-[11px] text-tc-ink-muted hover:bg-tc-bg-card-2 hover:text-tc-ink"
       >

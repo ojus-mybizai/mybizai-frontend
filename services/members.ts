@@ -35,6 +35,15 @@ export interface Member {
   /** Persistent delivery error from Meta's webhook (populated async after create). */
   wa_invite_error_code?: string | null;
   wa_invite_error_detail?: string | null;
+  /**
+   * WhatsApp 24-hour session window. Derived from the last inbound message on
+   * the member's contact (via the designated employee channel when configured).
+   *   session_active === true  → free-form messages send instantly.
+   *   session_active === false → outside the 24h window; use a template to reopen.
+   * Both null/false when the member has no WA number or no inbound history.
+   */
+  session_window_expires_at?: string | null;
+  session_active?: boolean;
 }
 
 /** Error code the API returns when no team WhatsApp number is configured. */
@@ -52,7 +61,7 @@ export function waChannelSetupError(
       return {
         message: typeof d.message === 'string' ? d.message : 'WhatsApp is not configured.',
         settings_url:
-          typeof d.settings_url === 'string' ? d.settings_url : '/settings/whatsapp',
+          typeof d.settings_url === 'string' ? d.settings_url : '/settings/channels',
       };
     }
   }
@@ -192,6 +201,39 @@ export async function sendMemberMessage(id: number, text: string): Promise<Membe
 
 export async function markMemberChatRead(id: number): Promise<void> {
   await apiFetch(`/members/${id}/chat/read`, { method: 'POST', auth: true });
+}
+
+/**
+ * Reopen the WhatsApp 24-hour session window by sending the business's
+ * configured task template to a member. Throws with `code:
+ * wa_task_template_not_configured` when no template is set — surface that as a
+ * link to /settings/whatsapp.
+ */
+export async function reopenMemberWindow(id: number): Promise<MemberChatMessage> {
+  return apiFetch<MemberChatMessage>(`/members/${id}/messages/reopen-window`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export const WA_TASK_TEMPLATE_NOT_CONFIGURED = 'wa_task_template_not_configured';
+
+/** Pull the structured error off a reopen-window failure, if that's what it is. */
+export function waTaskTemplateSetupError(
+  err: unknown,
+): { message: string; settings_url: string } | null {
+  const data = (err as { data?: { detail?: unknown } })?.data;
+  const detail = data?.detail;
+  if (detail && typeof detail === 'object') {
+    const d = detail as Record<string, unknown>;
+    if (d.code === WA_TASK_TEMPLATE_NOT_CONFIGURED) {
+      return {
+        message: typeof d.message === 'string' ? d.message : 'No task template configured.',
+        settings_url: typeof d.settings_url === 'string' ? d.settings_url : '/settings/channels',
+      };
+    }
+  }
+  return null;
 }
 
 export async function deactivateMember(

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Search, Megaphone, UserPlus } from 'lucide-react';
 import type { Member } from '@/services/members';
 import type { Task } from '@/services/tasks';
@@ -9,6 +9,7 @@ import { useMembers } from '@/hooks/use-members';
 import { useDebounce } from '@/lib/use-debounce';
 import { MemberAvatar } from './shared/member-avatar';
 import { MemberListSkeleton } from './shared/skeletons';
+import { SessionWindowChip } from './shared/session-window-chip';
 
 interface MemberListProps {
   selectedId: number | null;
@@ -18,6 +19,10 @@ interface MemberListProps {
 export function MemberList({ selectedId }: MemberListProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  // Stay in whichever namespace we entered from; the /team surface should not
+  // hand navigation back to the legacy /tasks route on every click.
+  const base = pathname?.startsWith('/team') ? '/team' : '/tasks';
   const [q, setQ] = useState('');
   const debounced = useDebounce(q, 200);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -46,7 +51,7 @@ export function MemberList({ selectedId }: MemberListProps) {
 
   const go = (memberId: number) => {
     const tab = searchParams?.get('tab');
-    router.push(`/tasks/${memberId}${tab ? `?tab=${tab}` : ''}`);
+    router.push(`${base}/${memberId}${tab ? `?tab=${tab}` : ''}`);
   };
 
   return (
@@ -139,6 +144,11 @@ function MemberRow({
             <span className={`truncate text-sm ${selected ? 'font-semibold text-tc-ink' : 'text-tc-ink-2'}`}>
               {member.name}
             </span>
+            <SessionWindowChip
+              expiresAt={member.session_window_expires_at}
+              active={member.session_active}
+              hasWhatsapp={member.channels.includes('whatsapp')}
+            />
           </div>
           <div className="truncate text-[11px] text-tc-ink-muted">
             {member.role_name ?? 'Member'}

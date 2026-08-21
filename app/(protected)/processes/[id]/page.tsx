@@ -9,7 +9,7 @@ import {
   bulkMoveEntries, bulkAssignEntries, bulkUpdateEntries,
   type BusinessProcess, type ProcessEntry, type ProcessStage,
 } from '@/services/processes';
-import { listEmployees as listWaEmployees, type WaEmployee } from '@/services/waEmployees';
+import { listMembers, type Member } from '@/services/members';
 import BoardView from '@/components/processes/board-view';
 import ListView from '@/components/processes/list-view';
 import SettingsView from '@/components/processes/settings-view';
@@ -187,8 +187,8 @@ export default function ProcessDetailPage() {
 
   const [process, setProcess] = useState<BusinessProcess | null>(null);
   const [entries, setEntries] = useState<ProcessEntry[]>([]);
-  // Deals are owned by WhatsApp employees — this backs the assignee picker/filter.
-  const [waEmployees, setWaEmployees] = useState<WaEmployee[]>([]);
+  // Deals are owned by Members — this backs the assignee picker/filter.
+  const [members, setMembers] = useState<Member[]>([]);
   const [tab, setTab] = useState<Tab>('pipeline');
   const [layout, setLayout] = useState<PipelineLayout>('board');
   const [fit, setFit] = useState(false);
@@ -210,14 +210,14 @@ export default function ProcessDetailPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [proc, ents, waEmps] = await Promise.all([
+      const [proc, ents, mems] = await Promise.all([
         getProcess(processId),
         listEntries(processId),
-        listWaEmployees({ status: 'active' }).catch(() => []),
+        listMembers().then(list => list.filter(m => m.is_active && m.is_assignable)).catch(() => [] as Member[]),
       ]);
       setProcess(proc);
       setEntries(ents);
-      setWaEmployees(waEmps);
+      setMembers(mems);
       setError('');
     } catch (err: any) {
       setError(err?.message || 'Failed to load process');
@@ -261,9 +261,9 @@ export default function ProcessDetailPage() {
       if (!hay.includes(q)) return false;
     }
     if (filters.assigneeId === 'unassigned') {
-      if (e.assigned_wa_employee_id !== null) return false;
+      if (e.assigned_member_id !== null) return false;
     } else if (filters.assigneeId !== 'all') {
-      if (e.assigned_wa_employee_id !== filters.assigneeId) return false;
+      if (e.assigned_member_id !== filters.assigneeId) return false;
     }
     if (filters.priority !== 'all' && e.priority !== filters.priority) return false;
     if (filters.stuckOnly && e.sla_status !== 'warn' && e.sla_status !== 'breach') return false;
@@ -340,8 +340,8 @@ export default function ProcessDetailPage() {
     }
     clearSelection(); loadData();
   }
-  async function handleBulkAssign(waEmployeeId: number | null) {
-    try { await bulkAssignEntries(processId, Array.from(selectedIds), { assigned_wa_employee_id: waEmployeeId }); pushToast('success', 'Reassigned'); }
+  async function handleBulkAssign(memberId: number | null) {
+    try { await bulkAssignEntries(processId, Array.from(selectedIds), { assigned_member_id: memberId }); pushToast('success', 'Reassigned'); }
     catch { pushToast('danger', 'Failed'); }
     clearSelection(); loadData();
   }
@@ -522,7 +522,7 @@ export default function ProcessDetailPage() {
                 <FilterBar
                   filters={filters}
                   onChange={setFilters}
-                  employees={waEmployees}
+                  employees={members}
                   density={density}
                   onDensityChange={setDensity}
                   selectionMode={selectionMode}
@@ -578,7 +578,7 @@ export default function ProcessDetailPage() {
         <BulkActionBar
           selectedCount={selectedIds.size}
           stages={stages}
-          employees={waEmployees}
+          employees={members}
           onMove={handleBulkMove}
           onAssign={handleBulkAssign}
           onSetPriority={handleBulkPriority}
