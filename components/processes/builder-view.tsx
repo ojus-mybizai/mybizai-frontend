@@ -30,6 +30,7 @@ import {
   type WaTemplate, type ButtonDef,
 } from '@/services/waTemplates';
 import { listMembers, type Member } from '@/services/members';
+import { listTaskTemplates, type TaskTemplate as TaskTemplateT } from '@/services/taskTemplates';
 import { randomStageColor } from './shared';
 
 interface Props {
@@ -64,6 +65,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
   // employee-facing task templates).
   const [waWorkTemplates, setWaWorkTemplates] = useState<WaTemplate[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [taskTemplates, setTaskTemplates] = useState<TaskTemplateT[]>([]);
   const [pickersLoaded, setPickersLoaded] = useState(false);
   const [fieldOptions, setFieldOptions] = useState<ProcessFieldOptions | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -86,8 +88,9 @@ export default function BuilderView({ process, stages, onReload }: Props) {
         listWaTemplatesService().catch(() => [] as WaTemplate[]),
         listMembers().then(list => list.filter(m => m.is_active && m.is_assignable)).catch(() => [] as Member[]),
         getProcessFieldOptions(process.id).catch(() => null),
+        listTaskTemplates(true).catch(() => [] as TaskTemplateT[]),
       ])
-        .then(([t, e, a, chs, tpls, waTpls, waEmps, fopts]) => {
+        .then(([t, e, a, chs, tpls, waTpls, waEmps, fopts, ttpls]) => {
           setTemplates(t.filter(tpl => tpl.is_active));
           setEmployees(e.filter(emp => emp.is_active));
           setAutomations(a);
@@ -96,6 +99,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
           setWaWorkTemplates(waTpls.filter(tpl => tpl.is_active));
           setMembers(waEmps);
           setFieldOptions(fopts);
+          setTaskTemplates(ttpls);
           setPickersLoaded(true);
         })
         .catch(() => {})
@@ -156,6 +160,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
                   waTemplates={waTemplates}
                   waWorkTemplates={waWorkTemplates}
                   members={members}
+                  taskTemplates={taskTemplates}
                   pickersLoaded={pickersLoaded}
                   fieldOptions={fieldOptions}
                   // Only this stage's rules — `on_enter | on_exit | on_stuck`
@@ -219,7 +224,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
 
 function StageCard({
   process, stage, templates, employees,
-  waChannels, waTemplates, waWorkTemplates, members,
+  waChannels, waTemplates, waWorkTemplates, members, taskTemplates,
   pickersLoaded, fieldOptions, stageRules,
   onReloadAutomations, onReload,
 }: {
@@ -231,6 +236,7 @@ function StageCard({
   waTemplates: MessageTemplate[];     // approved Meta HSMs — used by WhatsApp message action
   waWorkTemplates: WaTemplate[];      // WaTemplate (simple_task / whatsapp_form / checklist)
   members: Member[];          // verified WA employees
+  taskTemplates: TaskTemplateT[];     // B4e — TaskTemplate picker options
   pickersLoaded: boolean;
   fieldOptions: ProcessFieldOptions | null;
   stageRules: AutomationRule[];
@@ -260,11 +266,20 @@ function StageCard({
   const [winProb, setWinProb] = useState<string>(stage.win_probability?.toString() || '');
   const [autoAdv, setAutoAdv] = useState(stage.auto_advance_on_complete);
   const [requiredFields, setRequiredFields] = useState<string[]>(stage.required_fields || []);
+  const [entryRequiredFields, setEntryRequiredFields] = useState<string[]>(stage.entry_required_fields || []);
+
+  // ── Add Task draft (B4e — new default) ───────────────────────────────────
+  // Rows spawn a Task via TaskTemplateService when a deal enters this stage.
+  const [taskTemplateId, setTaskTemplateId] = useState<number | null>(null);
+  const [taskAssigneeMemberId, setTaskAssigneeMemberId] = useState<number | null>(null);
+  const [taskDueIn, setTaskDueIn] = useState<string>('');
+  const [taskTitleOverride, setTaskTitleOverride] = useState<string>('');
 
   // ── Add WA-Work draft ────────────────────────────────────────────────────
-  // The form is WA-Work only — no Internal Task path. Legacy internal_work
-  // rows still render in the list (read-only chip) but nothing creates new
-  // ones from this UI.
+  // Legacy — the backend rejects wa_work payloads on create in B4e. This
+  // state is kept only because the WA form component is still in the file
+  // and the surrounding types would need surgery to remove; the form is
+  // no longer reachable from the UI.
   const [waWorkTemplateId, setWaWorkTemplateId] = useState<number | null>(null);
   const [waWorkTitle, setWaWorkTitle] = useState('');
   // Slice 3c: dispatch to a ROLE pool (or hand-picked employees). Groups retired.
@@ -304,6 +319,7 @@ function StageCard({
       win_probability: winProb.trim() === '' ? null : Number(winProb),
       auto_advance_on_complete: autoAdv,
       required_fields: requiredFields.length ? requiredFields : null,
+      entry_required_fields: entryRequiredFields.length ? entryRequiredFields : null,
     });
     setShowSettings(false);
     onReload();
@@ -312,6 +328,30 @@ function StageCard({
   async function handleDelete() {
     if (!confirm(`Delete stage "${stage.name}"? Entries will be moved to the first remaining stage.`)) return;
     await deleteStage(process.id, stage.id);
+    onReload();
+  }
+
+  function resetTaskDraft() {
+    setTaskTemplateId(null);
+    setTaskAssigneeMemberId(null);
+    setTaskDueIn('');
+    setTaskTitleOverride('');
+  }
+
+  async function handleAddTaskWork() {
+    if (!taskTemplateId) {
+      alert('Pick a task template.');
+      return;
+    }
+    await addStageWork(process.id, stage.id, {
+      dispatch_kind: 'task',
+      task_template_id: taskTemplateId,
+      default_assignee_member_id: taskAssigneeMemberId ?? undefined,
+      title: taskTitleOverride.trim() || undefined,
+      due_in_days: taskDueIn.trim() === '' ? undefined : Number(taskDueIn),
+    });
+    setShowAddWork(false);
+    resetTaskDraft();
     onReload();
   }
 
@@ -494,6 +534,51 @@ function StageCard({
               An entry can’t be moved out of this stage until these fields are filled (a “lost” stage is exempt).
             </p>
           </div>
+          <div>
+            <label className="block text-[10px] font-medium text-text-secondary uppercase tracking-wide mb-1">
+              Required before entering this stage
+            </label>
+            {(() => {
+              const toggle = (key: string) =>
+                setEntryRequiredFields(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]);
+              const Chip = ({ k, label }: { k: string; label: string }) => {
+                const on = entryRequiredFields.includes(k);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => toggle(k)}
+                    className={`px-2 py-0.5 text-[11px] rounded-full border transition-quick
+                      ${on ? 'border-accent bg-accent/10 text-accent' : 'border-border-color bg-bg-primary text-text-secondary hover:bg-bg-secondary'}`}
+                  >
+                    {label}
+                  </button>
+                );
+              };
+              const dealFields = fieldOptions?.deal_fields ?? REQUIRED_FIELD_OPTIONS.map(o => ({ key: o.key, label: o.label }));
+              const entityFields = fieldOptions?.entity_fields ?? [];
+              return (
+                <>
+                  <p className="text-[10px] text-text-secondary/70 mb-1">Deal fields</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {dealFields.map(o => <Chip key={o.key} k={o.key} label={o.label} />)}
+                  </div>
+                  {entityFields.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-[10px] text-text-secondary/70 mb-1">
+                        {fieldOptions?.entity_label || 'Entity fields'}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {entityFields.map(o => <Chip key={o.key} k={o.key} label={o.label} />)}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            <p className="mt-1.5 text-[10px] text-text-secondary/70">
+              An entry can’t be moved INTO this stage until these fields are filled (a “lost” stage is exempt).
+            </p>
+          </div>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={() => setShowSettings(false)} className="px-3 py-1 text-xs rounded border border-border-color bg-bg-primary">Cancel</button>
             <button onClick={saveSettings} className="px-3 py-1 text-xs rounded bg-accent text-white">Save</button>
@@ -519,36 +604,24 @@ function StageCard({
           )}
 
           {showAddWork ? (
-            <WaWorkForm
-              templates={waWorkTemplates}
-              employees={members}
-              roles={agentRoles}
-              messageTokens={fieldOptions?.message_tokens ?? []}
-              templateId={waWorkTemplateId}
-              onTemplateIdChange={setWaWorkTemplateId}
-              title={waWorkTitle}
-              onTitleChange={setWaWorkTitle}
-              assigneeMode={waWorkAssigneeMode}
-              onAssigneeModeChange={setWaWorkAssigneeMode}
-              role={waWorkRole}
-              onRoleChange={setWaWorkRole}
-              employeeIds={waWorkEmployeeIds}
-              onEmployeeIdsChange={setWaWorkEmployeeIds}
-              dispatchMode={waWorkDispatchMode}
-              onDispatchModeChange={setWaWorkDispatchMode}
-              strategy={waWorkStrategy}
-              onStrategyChange={setWaWorkStrategy}
-              dueIn={waWorkDueIn}
-              onDueInChange={setWaWorkDueIn}
-              autoDispatch={waWorkAutoDispatch}
-              onAutoDispatchChange={setWaWorkAutoDispatch}
+            <TaskWorkForm
+              taskTemplates={taskTemplates}
+              members={members}
+              templateId={taskTemplateId}
+              onTemplateIdChange={setTaskTemplateId}
+              assigneeMemberId={taskAssigneeMemberId}
+              onAssigneeMemberIdChange={setTaskAssigneeMemberId}
+              dueIn={taskDueIn}
+              onDueInChange={setTaskDueIn}
+              titleOverride={taskTitleOverride}
+              onTitleOverrideChange={setTaskTitleOverride}
               loaded={pickersLoaded}
-              onCancel={() => { setShowAddWork(false); resetWaWorkDraft(); }}
-              onSubmit={handleAddWork}
+              onCancel={() => { setShowAddWork(false); resetTaskDraft(); }}
+              onSubmit={handleAddTaskWork}
             />
           ) : (
             <button onClick={() => setShowAddWork(true)} className="inline-flex items-center gap-1 text-xs text-accent hover:underline font-medium">
-              <span aria-hidden>📱</span> + Add WhatsApp task
+              <span aria-hidden>✅</span> + Add task
             </button>
           )}
 
@@ -588,6 +661,7 @@ function StageWorkRow({ work, onDelete }: {
   work: ProcessStageWork;
   onDelete: () => void;
 }) {
+  const isTask = work.dispatch_kind === 'task';
   const isWa = work.dispatch_kind === 'wa_work';
 
   // Build a one-line summary derived from the chosen template + assignees.
@@ -595,7 +669,11 @@ function StageWorkRow({ work, onDelete }: {
   let assignee: string | null = null;
   let kindBadge: { icon: string; label: string };
 
-  if (isWa) {
+  if (isTask) {
+    kindBadge = { icon: '✅', label: 'Task' };
+    primary = work.task_template_name || work.title || 'Task';
+    assignee = work.default_assignee_member_name || null;
+  } else if (isWa) {
     const typ = work.wa_template_type || 'simple_task';
     kindBadge = WA_TYPE_LABEL[typ] || { icon: '📱', label: typ };
     primary = work.title || work.wa_template_name || 'WhatsApp task';
@@ -619,9 +697,14 @@ function StageWorkRow({ work, onDelete }: {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-xs text-text-primary truncate">{primary}</span>
-          {!isWa && (
+          {(!isTask && !isWa) && (
             <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 flex-shrink-0">
               Legacy
+            </span>
+          )}
+          {isWa && (
+            <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 flex-shrink-0">
+              Legacy WA
             </span>
           )}
           {isWa && work.wa_dispatch_mode === 'broadcast' && (
@@ -655,11 +738,136 @@ function StageWorkRow({ work, onDelete }: {
   );
 }
 
+// ─── Task Add Form (B4e — new default) ───────────────────────────────────────
+// Configures a single task-kind stage-work row. When a deal enters the stage,
+// the backend spawns a Task via TaskTemplateService — assignee, delivery
+// channel, reminder cadence all come from the picked TaskTemplate. The optional
+// "Override assignee" pins the Task to a specific Member instead.
+
+function TaskWorkForm({
+  taskTemplates, members,
+  templateId, onTemplateIdChange,
+  assigneeMemberId, onAssigneeMemberIdChange,
+  dueIn, onDueInChange,
+  titleOverride, onTitleOverrideChange,
+  loaded, onCancel, onSubmit,
+}: {
+  taskTemplates: TaskTemplateT[];
+  members: Member[];
+  templateId: number | null;
+  onTemplateIdChange: (v: number | null) => void;
+  assigneeMemberId: number | null;
+  onAssigneeMemberIdChange: (v: number | null) => void;
+  dueIn: string;
+  onDueInChange: (v: string) => void;
+  titleOverride: string;
+  onTitleOverrideChange: (v: string) => void;
+  loaded: boolean;
+  onCancel: () => void;
+  onSubmit: () => void | Promise<void>;
+}) {
+  const selected = taskTemplates.find(t => t.id === templateId) || null;
+
+  // Show what the resolver will do — "Specific: Rita" / "Role: Sales (round-robin)".
+  let assigneeSummary: string;
+  if (assigneeMemberId) {
+    const m = members.find(mm => mm.id === assigneeMemberId);
+    assigneeSummary = m ? `Override → ${m.name}` : 'Override';
+  } else if (!selected) {
+    assigneeSummary = 'Pick a template to see who this goes to.';
+  } else if (selected.assignee_mode === 'specific') {
+    assigneeSummary = 'Fixed to the template’s Member.';
+  } else if (selected.assignee_mode === 'role') {
+    assigneeSummary = selected.round_robin_within_role
+      ? 'Round-robin across the template’s role.'
+      : 'Anyone in the template’s role.';
+  } else {
+    assigneeSummary = 'Prompt at spawn time.';
+  }
+
+  return (
+    <div className="rounded-lg border border-border-color bg-bg-secondary p-3 space-y-2">
+      <div>
+        <label className="text-[10px] uppercase tracking-wide text-text-secondary">Task template</label>
+        <select
+          value={templateId ?? ''}
+          onChange={(e) => onTemplateIdChange(e.target.value ? Number(e.target.value) : null)}
+          className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
+          disabled={!loaded}
+        >
+          <option value="">{loaded ? 'Pick a template…' : 'Loading…'}</option>
+          {taskTemplates.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+        {loaded && taskTemplates.length === 0 && (
+          <p className="text-[10px] text-text-secondary mt-1">
+            No task templates yet. Create one in Team &rarr; Task templates.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label className="text-[10px] uppercase tracking-wide text-text-secondary">
+          Override assignee (optional)
+        </label>
+        <select
+          value={assigneeMemberId ?? ''}
+          onChange={(e) => onAssigneeMemberIdChange(e.target.value ? Number(e.target.value) : null)}
+          className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
+        >
+          <option value="">Use the template’s assignee</option>
+          {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        <p className="text-[10px] text-text-secondary mt-1">{assigneeSummary}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] uppercase tracking-wide text-text-secondary">Due (days)</label>
+          <input
+            type="number"
+            value={dueIn}
+            onChange={(e) => onDueInChange(e.target.value)}
+            placeholder={selected?.due_in_days != null ? String(selected.due_in_days) : 'from template'}
+            className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-wide text-text-secondary">Row title (optional)</label>
+          <input
+            type="text"
+            value={titleOverride}
+            onChange={(e) => onTitleOverrideChange(e.target.value)}
+            placeholder={selected?.name || ''}
+            className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1">
+        <button
+          onClick={onCancel}
+          className="px-2.5 py-1 text-[11px] rounded border border-border-color bg-bg-primary"
+        >Cancel</button>
+        <button
+          onClick={onSubmit}
+          className="px-2.5 py-1 text-[11px] rounded bg-accent text-white"
+        >Add task</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── WA-Work Add Form ────────────────────────────────────────────────────────
-// Configures a single wa_work stage-work row: WaTemplate + assignees +
-// dispatch mode + due + auto_dispatch. The runtime behavior (creating a
-// WaWorkItem on stage-enter, dispatching to each Member) is handled by
-// the backend's `_spawn_wa_work_for_stage` helper.
+// LEGACY (B4e): backend now rejects wa_work payloads on create. The form is
+// no longer reachable from the UI. Keeping the component here avoids surgery
+// on shared types; delete when B6 wipes the wa_work code paths.
+//
+// Historical comment: Configures a single wa_work stage-work row: WaTemplate +
+// assignees + dispatch mode + due + auto_dispatch. The runtime behavior
+// (creating a WaWorkItem on stage-enter, dispatching to each Member) was
+// handled by the backend's `_spawn_wa_work_for_stage` helper — now a no-op.
 
 function WaWorkForm({
   templates, employees, roles, messageTokens,
@@ -1138,14 +1346,14 @@ function StageAutomationsSection({
   const [actionKind, setActionKind] = useState<ActionKind>('send_whatsapp');
   const [waDraft, setWaDraft] = useState<SendWhatsAppDraft>(DEFAULT_SEND_WA);
   const [notifyMessage, setNotifyMessage] = useState('');
-  const [reassignUserId, setReassignUserId] = useState<number | null>(null);
+  const [reassignMemberId, setReassignMemberId] = useState<number | null>(null);
   const [tagName, setTagName] = useState('');
   const [assignDraft, setAssignDraft] = useState<AssignDealDraft>(DEFAULT_ASSIGN_DEAL);
   const [conditions, setConditions] = useState<AutomationCondition[]>([]);
 
   function resetDrafts() {
     setWaDraft(DEFAULT_SEND_WA);
-    setNotifyMessage(''); setReassignUserId(null); setTagName('');
+    setNotifyMessage(''); setReassignMemberId(null); setTagName('');
     setAssignDraft(DEFAULT_ASSIGN_DEAL);
     setActionKind('send_whatsapp');
     setConditions([]);
@@ -1157,7 +1365,7 @@ function StageAutomationsSection({
       kind: actionKind,
       wa: waDraft,
       notify: notifyMessage,
-      reassignUserId,
+      reassignMemberId,
       tag: tagName,
       assign: assignDraft,
       ruleName: `Process #${process.id} stage "${stage.name}" ${adding}`,
@@ -1292,13 +1500,12 @@ function StageAutomationsSection({
                   <div>
                     <label className="text-[10px] uppercase tracking-wide text-text-secondary">Reassign to</label>
                     <select
-                      value={reassignUserId ?? ''}
-                      onChange={(e) => setReassignUserId(e.target.value ? Number(e.target.value) : null)}
+                      value={reassignMemberId ?? ''}
+                      onChange={(e) => setReassignMemberId(e.target.value ? Number(e.target.value) : null)}
                       className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
                     >
-                      <option value="">Pick a user…</option>
-                      {/* assign_lead action needs a USER id — key on user_id. */}
-                      {employees.map(emp => <option key={emp.user_id} value={emp.user_id}>{emp.name}</option>)}
+                      <option value="">Pick a member…</option>
+                      {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                   </div>
                 )}
@@ -1334,12 +1541,12 @@ function buildActionFromDrafts(opts: {
   kind: ActionKind;
   wa: SendWhatsAppDraft;
   notify: string;
-  reassignUserId: number | null;
+  reassignMemberId: number | null;
   tag: string;
   assign?: AssignDealDraft;
   ruleName: string;
 }): { type: string; params: Record<string, any> } | null {
-  const { kind, wa, notify, reassignUserId, tag, assign, ruleName } = opts;
+  const { kind, wa, notify, reassignMemberId, tag, assign, ruleName } = opts;
   if (kind === 'assign_deal') {
     const a = assign || DEFAULT_ASSIGN_DEAL;
     if (a.method === 'specific' && !a.employee_id) {
@@ -1379,8 +1586,8 @@ function buildActionFromDrafts(opts: {
     return { type: 'notify', params: { message: notify.trim() } };
   }
   if (kind === 'reassign') {
-    if (!reassignUserId) { alert('Pick a user to reassign to.'); return null; }
-    return { type: 'assign_lead', params: { user_id: reassignUserId } };
+    if (!reassignMemberId) { alert('Pick a member to reassign to.'); return null; }
+    return { type: 'assign_contact_to_employee', params: { method: 'specific', member_id: reassignMemberId } };
   }
   if (kind === 'add_tag') {
     if (!tag.trim()) { alert('Enter a tag name.'); return null; }
@@ -1398,7 +1605,7 @@ function buildActionFromDrafts(opts: {
 // Actions exposed (mapped to backend ECA handlers):
 //   • send_whatsapp     → schedule_followup w/ template + channel + delay + variables
 //   • notify_user       → notify
-//   • reassign          → assign_lead
+//   • reassign          → assign_contact_to_employee (Member-native; B4e)
 //   • add_tag           → add_note (tag note for now; future: structured tag op)
 //
 // The "send_whatsapp" action requires picking a verified WhatsApp business
@@ -1523,7 +1730,7 @@ function actionSummary(action: Record<string, any>): string {
     return parts.join(' · ');
   }
   if (t === 'notify') return `🔔 Notify: ${p.message || ''}`;
-  if (t === 'assign_lead') return `👤 Reassign → user #${p.user_id ?? '?'}`;
+  if (t === 'assign_contact_to_employee') return `👤 Reassign → member #${p.member_id ?? '?'}`;
   if (t === 'add_note') return `🏷  Add tag: ${p.tag || p.note || ''}`;
   // Fallback
   return `${t || 'action'} ${Object.entries(p).map(([k, v]) => `${k}=${v}`).join(' ')}`;
@@ -1552,7 +1759,7 @@ function AutomationsPanel({
 
   const [waDraft, setWaDraft] = useState<SendWhatsAppDraft>(DEFAULT_SEND_WA);
   const [notifyMessage, setNotifyMessage] = useState('');
-  const [reassignUserId, setReassignUserId] = useState<number | null>(null);
+  const [reassignMemberId, setReassignMemberId] = useState<number | null>(null);
   const [tagName, setTagName] = useState('');
   const [assignDraft, setAssignDraft] = useState<AssignDealDraft>(DEFAULT_ASSIGN_DEAL);
   const [conditions, setConditions] = useState<AutomationCondition[]>([]);
@@ -1562,7 +1769,7 @@ function AutomationsPanel({
 
   function resetDrafts() {
     setWaDraft(DEFAULT_SEND_WA);
-    setNotifyMessage(''); setReassignUserId(null); setTagName('');
+    setNotifyMessage(''); setReassignMemberId(null); setTagName('');
     setAssignDraft(DEFAULT_ASSIGN_DEAL);
     setActionKind('send_whatsapp');
     setConditions([]);
@@ -1573,7 +1780,7 @@ function AutomationsPanel({
       kind: actionKind,
       wa: waDraft,
       notify: notifyMessage,
-      reassignUserId,
+      reassignMemberId,
       tag: tagName,
       assign: assignDraft,
       ruleName: `Process #${process.id} ${trigger}`,
@@ -1675,13 +1882,12 @@ function AutomationsPanel({
             <div>
               <label className="text-[10px] uppercase tracking-wide text-text-secondary">Reassign to</label>
               <select
-                value={reassignUserId ?? ''}
-                onChange={(e) => setReassignUserId(e.target.value ? Number(e.target.value) : null)}
+                value={reassignMemberId ?? ''}
+                onChange={(e) => setReassignMemberId(e.target.value ? Number(e.target.value) : null)}
                 className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
               >
-                <option value="">Pick a user…</option>
-                {/* assign_lead action needs a USER id — key on user_id. */}
-                {employees.map(emp => <option key={emp.user_id} value={emp.user_id}>{emp.name}</option>)}
+                <option value="">Pick a member…</option>
+                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </div>
           )}

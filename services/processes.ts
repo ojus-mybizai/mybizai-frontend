@@ -4,11 +4,12 @@ import type { WaWorkItem } from '@/services/waWork';
 // ---------- Types ----------
 
 /** Discriminator selecting the runtime path for a stage-bound task.
- *  - 'wa_work'       → WhatsApp dispatch to Members (new default).
+ *  - 'task'          → NEW DEFAULT (B4e). Spawns a Task via a TaskTemplate.
+ *  - 'wa_work'       → retired WhatsApp dispatch; existing rows are inert.
  *  - 'internal_work' → legacy Work row pointed at a platform User. Kept so
  *                      pre-migration rows still render (read-only chip) and
- *                      keep firing until the owner removes them. */
-export type StageWorkDispatchKind = 'wa_work' | 'internal_work';
+ *                      keep firing until B6 wipes Work. */
+export type StageWorkDispatchKind = 'task' | 'wa_work' | 'internal_work';
 
 /** How a WA task picks recipient(s) from its pool (group members / employees):
  *  all = everyone · random = one at random · round_robin = rotate through the
@@ -19,6 +20,12 @@ export interface ProcessStageWork {
   id: number;
   stage_id: number;
   dispatch_kind: StageWorkDispatchKind;
+
+  // ── task (B4e — new default) ──────────────────────────────────────────
+  task_template_id: number | null;
+  task_template_name: string | null;
+  default_assignee_member_id: number | null;
+  default_assignee_member_name: string | null;
 
   // ── internal_work (legacy) ───────────────────────────────────────────
   work_template_id: number | null;
@@ -60,6 +67,7 @@ export interface ProcessStage {
   wip_limit: number | null;
   win_probability: number | null;
   required_fields: string[] | null;
+  entry_required_fields: string[] | null;
   entry_count: number;
   stage_works: ProcessStageWork[];
 }
@@ -205,6 +213,7 @@ export async function addStage(processId: number, payload: {
   sla_days?: number | null; warn_days?: number | null;
   wip_limit?: number | null; win_probability?: number | null;
   required_fields?: string[] | null;
+  entry_required_fields?: string[] | null;
   stage_works?: Array<{ work_template_id?: number | null; title?: string; default_assigned_to_id?: number | null; due_in_days?: number | null }>;
 }): Promise<ProcessStage> {
   return apiFetch<ProcessStage>(`/processes/${processId}/stages`, {
@@ -220,6 +229,7 @@ export async function updateStage(processId: number, stageId: number, payload: {
   sla_days?: number | null; warn_days?: number | null;
   wip_limit?: number | null; win_probability?: number | null;
   required_fields?: string[] | null;
+  entry_required_fields?: string[] | null;
 }): Promise<ProcessStage> {
   return apiFetch<ProcessStage>(`/processes/${processId}/stages/${stageId}`, {
     method: 'PUT', auth: true,
@@ -235,8 +245,13 @@ export async function deleteStage(processId: number, stageId: number): Promise<v
 // ---------- Stage Works ----------
 
 export interface AddStageWorkPayload {
-  /** Defaults server-side to 'wa_work' if omitted — the UI sends it explicitly. */
+  /** Defaults server-side to 'task' if omitted (B4e). Only 'task' is
+   *  accepted on create — legacy kinds are rejected 400. */
   dispatch_kind?: StageWorkDispatchKind;
+
+  // Task (B4e — new default)
+  task_template_id?: number | null;
+  default_assignee_member_id?: number | null;
 
   // Internal-work (legacy — not produced by the rebuilt UI, kept for API parity).
   work_template_id?: number | null;
