@@ -142,11 +142,26 @@ export function TablePage() {
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [addRowData, setAddRowData] = useState<Record<string, unknown>>({});
   const [addRowSaving, setAddRowSaving] = useState(false);
+  const [addRowError, setAddRowError] = useState<string | null>(null);
   const [cellErrors, setCellErrors] = useState<Record<string, Record<string, string>>>({});
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false);
   const [automationDrawerOpen, setAutomationDrawerOpen] = useState(false);
   const [automationCount, setAutomationCount] = useState(0);
   const [tasksDrawerOpen, setTasksDrawerOpen] = useState(false);
+  const [viewSwitcherOpen, setViewSwitcherOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const viewSwitcherRef = useRef<HTMLDivElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!viewSwitcherOpen && !moreMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (viewSwitcherOpen && viewSwitcherRef.current && !viewSwitcherRef.current.contains(t)) setViewSwitcherOpen(false);
+      if (moreMenuOpen && moreMenuRef.current && !moreMenuRef.current.contains(t)) setMoreMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [viewSwitcherOpen, moreMenuOpen]);
   const [visibleColumns, setVisibleColumns] = useState<Set<string> | null>(null);
   const [views, setViews] = useState<Array<{ id: number; name: string; config: Record<string, unknown>; is_default?: boolean }>>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -438,7 +453,7 @@ export function TablePage() {
     const fieldList = ctx?.fields ?? [];
     if (!ctx || !fieldList.length) return;
     setAddRowSaving(true);
-    setError(null);
+    setAddRowError(null);
     try {
       const data: Record<string, unknown> = {};
       for (const f of fieldList) {
@@ -476,7 +491,7 @@ export function TablePage() {
       setAddRowData({});
       void refetch({ background: true });
     } catch (e) {
-      setError(normalizeApiError(e).message);
+      setAddRowError(normalizeApiError(e).message);
     } finally {
       setAddRowSaving(false);
     }
@@ -653,66 +668,129 @@ export function TablePage() {
           )}
         </button>
 
-        {/* Reports */}
-        <Link
-          href={`/data-sheet/${ctx.modelId}/reports`}
-          className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0 2.77-.693a9 9 0 0 1 6.208.682l.108.054a9 9 0 0 0 6.086.71l3.114-.732a48.524 48.524 0 0 1-.005-10.499l-3.11.732a9 9 0 0 1-6.085-.711l-.108-.054a9 9 0 0 0-6.208-.682L3 4.5M3 15V4.5" /></svg>
-          <span className="hidden sm:inline">Reports</span>
-        </Link>
-
-        {/* Automations */}
-        <button
-          type="button"
-          onClick={() => setAutomationDrawerOpen(true)}
-          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-            automationCount > 0
-              ? 'border-accent/60 bg-accent-soft text-accent'
-              : 'border-border-color bg-card-bg text-text-secondary hover:bg-bg-secondary'
-          }`}
-          title="Automations for this datasheet"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
-          <span className="hidden sm:inline">Automations</span>
-          {automationCount > 0 && (
+        {/* Automations — kept visible because it may show an active-count badge */}
+        {automationCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setAutomationDrawerOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-accent/60 bg-accent-soft px-3 py-2 text-sm font-medium text-accent transition-colors"
+            title="Automations for this datasheet"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+            <span className="hidden sm:inline">Automations</span>
             <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">{automationCount}</span>
+          </button>
+        )}
+
+        {/* Compact view switcher — single button, dropdown to pick */}
+        <div className="relative" ref={viewSwitcherRef}>
+          <button
+            type="button"
+            onClick={() => { setViewSwitcherOpen((v) => !v); setMoreMenuOpen(false); }}
+            className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+            title="Change view"
+          >
+            {viewMode === 'table' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M3 12h18M3 18h18" /></svg>}
+            {viewMode === 'card' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>}
+            {viewMode === 'list' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.008v.008H3.75V6.75zm0 5.25h.008v.008H3.75V12zm0 5.25h.008v.008H3.75v-.008z" /></svg>}
+            {viewMode === 'calendar' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5A2.25 2.25 0 015.25 5.25h13.5A2.25 2.25 0 0121 7.5v11.25A2.25 2.25 0 0118.75 21H5.25A2.25 2.25 0 013 18.75z" /></svg>}
+            {viewMode === 'kanban' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15M4.125 4.5h15.75c.621 0 1.125.504 1.125 1.125v12.75c0 .621-.504 1.125-1.125 1.125H4.125A1.125 1.125 0 013 18.375V5.625c0-.621.504-1.125 1.125-1.125z" /></svg>}
+            <span className="hidden sm:inline capitalize">{viewMode}</span>
+            <svg className="h-3 w-3 opacity-60" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" /></svg>
+          </button>
+          {viewSwitcherOpen && (
+            <div className="absolute right-0 top-full z-40 mt-1 w-40 rounded-lg border border-border-color bg-card-bg py-1 shadow-lg">
+              {(['table', 'card', 'list', 'calendar', 'kanban'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => { setViewMode(mode); setViewSwitcherOpen(false); }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
+                    viewMode === mode ? 'bg-accent/10 text-accent font-medium' : 'text-text-primary hover:bg-bg-secondary'
+                  }`}
+                >
+                  <span className="capitalize">{mode}</span>
+                  {viewMode === mode && (
+                    <svg className="ml-auto h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  )}
+                </button>
+              ))}
+            </div>
           )}
-        </button>
+        </div>
 
-        {/* Tasks */}
-        <button
-          type="button"
-          onClick={() => setTasksDrawerOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-          title="Tasks for this datasheet"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          <span className="hidden sm:inline">Tasks</span>
-        </button>
+        {/* More dropdown — Reports / Automations / Tasks / Import / Settings / View settings */}
+        <div className="relative" ref={moreMenuRef}>
+          <button
+            type="button"
+            onClick={() => { setMoreMenuOpen((v) => !v); setViewSwitcherOpen(false); }}
+            className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
+            title="More actions"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>
+            <span className="hidden sm:inline">More</span>
+          </button>
+          {moreMenuOpen && (
+            <div className="absolute right-0 top-full z-40 mt-1 w-52 overflow-hidden rounded-lg border border-border-color bg-card-bg py-1 shadow-lg">
+              <Link
+                href={`/data-sheet/${ctx.modelId}/reports`}
+                onClick={() => setMoreMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                <svg className="h-4 w-4 text-text-secondary" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18M7 15l4-4 4 4 5-6" /></svg>
+                Reports
+              </Link>
+              <button
+                type="button"
+                onClick={() => { setAutomationDrawerOpen(true); setMoreMenuOpen(false); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                <svg className="h-4 w-4 text-text-secondary" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+                <span className="flex-1">Automations</span>
+                {automationCount > 0 && (
+                  <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold text-white">{automationCount}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setTasksDrawerOpen(true); setMoreMenuOpen(false); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                <svg className="h-4 w-4 text-text-secondary" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Tasks
+              </button>
+              <Link
+                href={`/data-sheet/${ctx.modelId}/import`}
+                onClick={() => setMoreMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                <svg className="h-4 w-4 text-text-secondary" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 7.5L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+                Import
+              </Link>
+              <div className="my-1 border-t border-border-color" />
+              <button
+                type="button"
+                onClick={() => { setSettingsOpen(true); void loadViews(); setMoreMenuOpen(false); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                <svg className="h-4 w-4 text-text-secondary" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-9.75 0h9.75" /></svg>
+                View settings
+              </button>
+              <Link
+                href={`/data-sheet/${ctx.modelId}/settings`}
+                onClick={() => setMoreMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+              >
+                <svg className="h-4 w-4 text-text-secondary" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                Datasheet settings
+              </Link>
+            </div>
+          )}
+        </div>
 
-        {/* Import */}
-        <Link
-          href={`/data-sheet/${ctx.modelId}/import`}
-          className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
-          <span className="hidden sm:inline">Import</span>
-        </Link>
+        <div className="ml-auto" />
 
-        {/* Settings — navigates to /data-sheet/{id}/settings */}
-        <Link
-          href={`/data-sheet/${ctx.modelId}/settings`}
-          className="flex items-center gap-1.5 rounded-lg border border-border-color bg-card-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          <span className="hidden sm:inline">Settings</span>
-        </Link>
-
-        {/* Add Record */}
+        {/* Add Record — primary CTA on the right */}
         <button
           type="button"
           onClick={() => setAddRowOpen(true)}
@@ -727,43 +805,6 @@ export function TablePage() {
             return name;
           })()}</span>
         </button>
-
-        {/* View Mode Switcher + View Settings gear */}
-        <div className="ml-auto flex items-center gap-1">
-          <div className="flex items-center rounded-lg border border-border-color bg-card-bg p-0.5">
-            {(['table', 'card', 'list', 'calendar', 'kanban'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setViewMode(mode)}
-                className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                  viewMode === mode
-                    ? 'bg-accent text-white shadow-sm'
-                    : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
-                }`}
-                title={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
-              >
-                {mode === 'table' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M10.875 12h-7.5m8.625 0h7.5m-8.625 0c.621 0 1.125.504 1.125 1.125" /></svg>}
-                {mode === 'card' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>}
-                {mode === 'list' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>}
-                {mode === 'calendar' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" /></svg>}
-                {mode === 'kanban' && <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" /></svg>}
-                <span className="hidden sm:inline">{mode.charAt(0).toUpperCase() + mode.slice(1)}</span>
-              </button>
-            ))}
-          </div>
-          {/* View settings gear (columns, saved views, display) */}
-          <button
-            type="button"
-            onClick={() => { setSettingsOpen(true); void loadViews(); }}
-            className={`rounded-lg p-2 transition-colors ${settingsOpen ? 'bg-accent/10 text-accent' : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'}`}
-            title="View settings"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
-            </svg>
-          </button>
-        </div>
       </div>
 
       <DataSheetFilterBuilder
@@ -1117,9 +1158,11 @@ export function TablePage() {
           fields={fields}
           addRowData={addRowData}
           setAddRowData={setAddRowData}
-          onClose={() => setAddRowOpen(false)}
+          onClose={() => { setAddRowOpen(false); setAddRowError(null); }}
           onSave={() => void handleAddRow()}
           saving={addRowSaving}
+          error={addRowError}
+          onDismissError={() => setAddRowError(null)}
           modelDisplayName={ctx?.model?.display_name}
         />
       )}
@@ -1624,6 +1667,8 @@ function AddRowModal({
   onClose,
   onSave,
   saving,
+  error,
+  onDismissError,
   modelDisplayName,
 }: {
   fields: DynamicField[];
@@ -1632,6 +1677,8 @@ function AddRowModal({
   onClose: () => void;
   onSave: () => void;
   saving: boolean;
+  error?: string | null;
+  onDismissError?: () => void;
   modelDisplayName?: string;
 }) {
   const [relationOptions, setRelationOptions] = useState<Record<string, Array<{ id: number; label: string }>>>({});
@@ -1665,104 +1712,202 @@ function AddRowModal({
     });
   }, [fields]);
 
-  const inputClass = 'mt-1 w-full rounded border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary';
+  const inputClass = 'mt-1 w-full rounded-lg border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition';
+
+  const titleText = modelDisplayName
+    ? `Add ${modelDisplayName.endsWith('ies') ? modelDisplayName.slice(0, -3) + 'y' : modelDisplayName.endsWith('s') && !modelDisplayName.endsWith('ss') ? modelDisplayName.slice(0, -1) : modelDisplayName}`
+    : 'Add row';
+
+  const isWide = (f: DynamicField) =>
+    f.field_type === 'long_text' || f.field_type === 'image' || f.field_type === 'file';
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-hidden />
-      <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 max-h-[90vh] overflow-y-auto rounded-xl border border-border-color bg-card-bg p-4 shadow-xl sm:p-6">
-        <h3 className="text-lg font-semibold text-text-primary">
-          {modelDisplayName ? `Add ${modelDisplayName.endsWith('ies') ? modelDisplayName.slice(0, -3) + 'y' : modelDisplayName.endsWith('s') && !modelDisplayName.endsWith('ss') ? modelDisplayName.slice(0, -1) : modelDisplayName}` : 'Add row'}
-        </h3>
-        <div className="mt-4 space-y-3">
-          {fields.map((f) => {
-            const value = addRowData[f.name];
-            const setValue = (v: unknown) => setAddRowData((prev) => ({ ...prev, [f.name]: v }));
+      <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 max-h-[90vh] flex flex-col rounded-2xl border border-border-color bg-card-bg shadow-2xl overflow-hidden">
+        {/* Sticky header */}
+        <div className="flex items-center justify-between border-b border-border-color px-5 py-3.5 bg-card-bg/95 backdrop-blur">
+          <div>
+            <h3 className="text-base font-semibold text-text-primary">{titleText}</h3>
+            <p className="text-xs text-text-secondary mt-0.5">Fill in the details below.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-lg p-1.5 text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
 
-            // Relation fields use a dedicated searchable async picker.
-            if (f.field_type === 'relation') {
+        {/* Scrollable body — 2-col grid on md+ */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 flex items-start gap-3 overflow-hidden rounded-lg border border-red-500/30 bg-red-500/[0.08] px-3.5 py-2.5 text-sm shadow-sm ring-1 ring-red-500/10 relative"
+            >
+              <span aria-hidden className="absolute left-0 top-0 h-full w-1 bg-red-500" />
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-red-500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div className="flex-1 pt-0.5">
+                <div className="font-medium text-red-600 dark:text-red-400">Couldn’t save</div>
+                <div className="mt-0.5 text-red-700/90 dark:text-red-300/90">{error}</div>
+              </div>
+              {onDismissError && (
+                <button
+                  type="button"
+                  onClick={onDismissError}
+                  aria-label="Dismiss error"
+                  className="shrink-0 rounded-md p-1 text-red-500/70 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 transition"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
+            {fields.map((f) => {
+              const value = addRowData[f.name];
+              const setValue = (v: unknown) => setAddRowData((prev) => ({ ...prev, [f.name]: v }));
+              const wide = isWide(f);
+              const colClass = wide ? 'md:col-span-2' : '';
+
+              if (f.field_type === 'relation') {
+                return (
+                  <div key={f.id} className={colClass}>
+                    <AddRowRelationField
+                      field={f}
+                      value={value}
+                      onChange={setValue}
+                      allOptions={relationOptions[f.name] ?? []}
+                    />
+                  </div>
+                );
+              }
+
+              if (f.field_type === 'image' || f.field_type === 'file') {
+                const allowMultiple = f.config?.multiple === true || f.config?.multiple === 'true';
+                const files: File[] = Array.isArray(value)
+                  ? (value as File[]).filter((x): x is File => x instanceof File)
+                  : value instanceof File
+                    ? [value]
+                    : [];
+                const isImage = f.field_type === 'image';
+                const fileInputId = `add-row-file-${f.id}`;
+                const addFiles = (chosen: FileList | null) => {
+                  if (!chosen?.length) return;
+                  const newFiles = Array.from(chosen);
+                  const list = allowMultiple ? [...files, ...newFiles] : newFiles.length > 0 ? [newFiles[0]] : [];
+                  setValue(list);
+                };
+                return (
+                  <div key={f.id} className={colClass}>
+                    <label className="block text-xs font-medium text-text-secondary mb-1.5">{f.display_name}</label>
+                    <label
+                      htmlFor={fileInputId}
+                      onDragOver={(e) => { e.preventDefault(); }}
+                      onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+                      className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border-color bg-bg-primary/50 px-4 py-6 text-center cursor-pointer hover:border-accent hover:bg-bg-primary transition"
+                    >
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-text-secondary">
+                        {isImage ? (
+                          <>
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                          </>
+                        ) : (
+                          <>
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                          </>
+                        )}
+                      </svg>
+                      <span className="text-sm text-text-primary font-medium">
+                        {isImage ? 'Drop images or click to upload' : 'Drop files or click to upload'}
+                      </span>
+                      <span className="text-[11px] text-text-secondary">
+                        {allowMultiple ? 'Multiple files allowed' : 'One file only'}
+                      </span>
+                      <input
+                        id={fileInputId}
+                        type="file"
+                        multiple={allowMultiple}
+                        accept={isImage ? 'image/*' : undefined}
+                        className="hidden"
+                        onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+                      />
+                    </label>
+                    {files.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {files.map((file, i) => (
+                          <div key={i} className="group relative flex items-center gap-2 rounded-lg border border-border-color bg-bg-primary px-2 py-1.5">
+                            {isImage ? (
+                              <img
+                                src={URL.createObjectURL(file)}
+                                alt={file.name}
+                                className="h-10 w-10 rounded object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-10 w-10 items-center justify-center rounded bg-bg-secondary text-text-secondary">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                              </div>
+                            )}
+                            <div className="flex flex-col text-left max-w-[140px]">
+                              <span className="truncate text-xs font-medium text-text-primary">{file.name}</span>
+                              <span className="text-[10px] text-text-secondary">{(file.size / 1024).toFixed(1)} KB</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setValue(files.filter((_, idx) => idx !== i))}
+                              className="ml-1 rounded p-1 text-text-secondary hover:bg-bg-secondary hover:text-error"
+                              aria-label="Remove"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               return (
-                <AddRowRelationField
-                  key={f.id}
-                  field={f}
-                  value={value}
-                  onChange={setValue}
-                  allOptions={relationOptions[f.name] ?? []}
-                />
-              );
-            }
-            if (f.field_type === 'image' || f.field_type === 'file') {
-              const allowMultiple = f.config?.multiple === true || f.config?.multiple === 'true';
-              const files: File[] = Array.isArray(value)
-                ? (value as File[]).filter((x): x is File => x instanceof File)
-                : value instanceof File
-                  ? [value]
-                  : [];
-              const fileInputId = `add-row-file-${f.id}`;
-              return (
-                <div key={f.id}>
-                  <label className="block text-xs font-medium text-text-secondary">{f.display_name}</label>
-                  <input
-                    id={fileInputId}
-                    type="file"
-                    multiple
-                    accept={f.field_type === 'image' ? 'image/*' : undefined}
-                    className="mt-1 block w-full text-sm text-text-secondary file:mr-2 file:rounded file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
-                    onChange={(e) => {
-                      const chosen = e.target.files;
-                      if (!chosen?.length) return;
-                      const newFiles = Array.from(chosen);
-                      const list = allowMultiple ? [...files, ...newFiles] : newFiles.length > 0 ? [newFiles[0]] : [];
-                      setValue(list);
-                      e.target.value = '';
-                    }}
-                  />
-                  {files.length > 0 && (
-                    <div className="mt-1 flex flex-wrap items-center gap-1">
-                      {files.map((file, i) => (
-                        <span key={i} className="rounded bg-bg-secondary px-2 py-0.5 text-xs text-text-primary">
-                          {file.name}
-                        </span>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setValue([])}
-                        className="text-xs text-red-600 hover:underline"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  )}
+                <div key={f.id} className={colClass}>
+                  <label className="block text-xs font-medium text-text-secondary">
+                    {f.display_name}
+                    {f.field_type === 'computed' && (
+                      <span className="ml-1 inline-block rounded bg-bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">fx auto</span>
+                    )}
+                  </label>
+                  <DatasheetFieldInput field={f} value={value} onChange={setValue} className={inputClass} />
                 </div>
               );
-            }
-            // Every scalar type (text, number, currency, date, time, phone,
-            // enum, multi_select, boolean, long_text, computed) is rendered by
-            // the shared input so all record forms stay in lockstep.
-            return (
-              <div key={f.id}>
-                <label className="block text-xs font-medium text-text-secondary">
-                  {f.display_name}
-                  {f.field_type === 'computed' && (
-                    <span className="ml-1 inline-block rounded bg-bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">fx auto</span>
-                  )}
-                </label>
-                <DatasheetFieldInput field={f} value={value} onChange={setValue} className={inputClass} />
-              </div>
-            );
-          })}
+            })}
+          </div>
         </div>
-        <div className="mt-4 flex gap-2">
+
+        {/* Sticky footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-border-color px-5 py-3 bg-card-bg/95 backdrop-blur">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border-color px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-secondary transition"
+          >
+            Cancel
+          </button>
           <button
             type="button"
             disabled={saving}
             onClick={onSave}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white shadow-sm hover:brightness-110 disabled:opacity-50 transition"
           >
             {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg border border-border-color px-4 py-2 text-sm">
-            Cancel
           </button>
         </div>
       </div>

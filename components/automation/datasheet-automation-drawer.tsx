@@ -42,7 +42,7 @@ import {
 const DATASHEET_ACTION_TYPES = new Set([
   'notify', 'send_whatsapp_template', 'send_whatsapp', 'schedule_followup',
   'add_tag', 'remove_tag', 'add_note', 'update_record', 'create_record',
-  'dispatch_wa_work', 'log_activity',
+  'create_task', 'log_activity',
 ]);
 
 const TRIGGER_OPTIONS: { value: TriggerType; label: string }[] = [

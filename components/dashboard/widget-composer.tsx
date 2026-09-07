@@ -53,7 +53,8 @@ interface PipelineSource { id: number; name: string; }
 // as a generic card — the composer must let the user pick WHICH pipeline.
 const CORE_SOURCES: { key: string; name: string }[] = [
   { key: 'contacts', name: 'Contacts' },
-  { key: 'work', name: 'Work / Tasks' },
+  { key: 'tasks', name: 'Tasks' },
+  { key: 'members', name: 'Team members' },
   { key: 'conversations', name: 'Conversations' },
 ];
 
