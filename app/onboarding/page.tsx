@@ -26,10 +26,13 @@ function OnboardingRouter() {
   const [hasBusiness, setHasBusiness] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // openSession is gate-exempt; it 404s only when the user has no business yet.
+    // openSession is gate-exempt; it 404s (or 403 "No business found." — the
+    // `require_lms` gate returns that when the user's business row is missing)
+    // only when the user has no business yet. Either status routes to the
+    // plain business-onboarding form.
     openSession()
       .then(() => setHasBusiness(true))
-      .catch((e: { status?: number }) => setHasBusiness(e?.status === 404 ? false : true));
+      .catch((e: { status?: number }) => setHasBusiness(e?.status === 404 || e?.status === 403 ? false : true));
   }, []);
 
   if (hasBusiness === null) return <LoadingScreen />;

@@ -64,7 +64,7 @@ const REGISTRY: Record<string, SkillDisplay> = {
   qualify_lead:           { label: 'Qualify the lead',        bucket: 'capture',  iconName: 'CheckCircle2' },
   score_lead:             { label: 'Score the lead',          bucket: 'capture',  iconName: 'Gauge' },
   assign_contact:         { label: 'Assign contact to user',  bucket: 'capture',  iconName: 'UserPlus' },
-  assign_lead:            { label: 'Assign lead to user',     bucket: 'capture',  iconName: 'UserPlus' },
+  assign_contact_owner:   { label: 'Assign contact owner',    bucket: 'capture',  iconName: 'UserPlus' },
   switch_lead_agent:      { label: 'Switch lead\'s agent',    bucket: 'capture',  iconName: 'ArrowRightLeft' },
   add_contact_to_group:   { label: 'Add contact to group',    bucket: 'capture',  iconName: 'UserPlus' },
 

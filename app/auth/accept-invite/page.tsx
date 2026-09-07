@@ -3,10 +3,10 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  acceptEmployeeInvite,
-  validateEmployeeInvite,
-  type EmployeeInviteValidateResult,
-} from '@/services/employees';
+  acceptMemberInvite,
+  validateMemberInvite,
+  type MemberInviteValidateResult,
+} from '@/services/members';
 import { useAuthStore } from '@/lib/auth-store';
 import { broadcastAuthEvent } from '@/lib/auth-events';
 import { resolvePostAuthRedirect } from '@/lib/post-auth-redirect';
@@ -23,7 +23,7 @@ function AcceptInviteContent() {
   const setDefaultRole = useAuthStore((s) => s.setDefaultRole);
   const setHasActiveBusinessAccess = useAuthStore((s) => s.setHasActiveBusinessAccess);
 
-  const [validation, setValidation] = useState<EmployeeInviteValidateResult | null>(null);
+  const [validation, setValidation] = useState<MemberInviteValidateResult | null>(null);
   const [validating, setValidating] = useState(true);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,21 +36,37 @@ function AcceptInviteContent() {
 
     async function runValidation() {
       if (!token) {
-        setValidation({ valid: false, email: null, name: null, role: null, expires_at: null, status: null });
+        setValidation({
+          valid: false,
+          business_name: null,
+          member_name: null,
+          email: null,
+          role_name: null,
+          expires_at: null,
+          status: null,
+        });
         setValidating(false);
         return;
       }
       setValidating(true);
       setError(null);
       try {
-        const result = await validateEmployeeInvite(token);
+        const result = await validateMemberInvite(token);
         if (!cancelled) {
           setValidation(result);
-          if (result.name) setName(result.name);
+          if (result.member_name) setName(result.member_name);
         }
       } catch (err) {
         if (!cancelled) {
-          setValidation({ valid: false, email: null, name: null, role: null, expires_at: null, status: null });
+          setValidation({
+            valid: false,
+            business_name: null,
+            member_name: null,
+            email: null,
+            role_name: null,
+            expires_at: null,
+            status: null,
+          });
           setError(err instanceof Error ? err.message : 'Could not validate invite token.');
         }
       } finally {
@@ -73,7 +89,7 @@ function AcceptInviteContent() {
     setSubmitLoading(true);
     setError(null);
     try {
-      const result = await acceptEmployeeInvite({
+      const result = await acceptMemberInvite({
         token,
         password,
         name: name.trim() || undefined,
@@ -141,7 +157,7 @@ function AcceptInviteContent() {
                 <span className="font-medium text-text-primary">Email:</span> {validation.email}
               </div>
               <div>
-                <span className="font-medium text-text-primary">Role:</span> {validation.role}
+                <span className="font-medium text-text-primary">Role:</span> {validation.role_name}
               </div>
             </div>
 

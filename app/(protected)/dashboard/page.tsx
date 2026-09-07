@@ -173,7 +173,7 @@ interface ListPipeline { id: number; name: string; }
 interface ListSources {
   datasheets: ListDatasheet[];
   pipelines: ListPipeline[];
-  work_statuses: string[];
+  task_statuses: string[];
   conversation_modes: string[];
 }
 const fetchListSources = () => apiFetch<ListSources>('/widgets/list-sources');
@@ -670,7 +670,7 @@ function WidgetSettings({
               <div className="mt-1 grid grid-cols-3 gap-1">
                 {[
                   { value: 'datasheet',     label: 'Datasheet' },
-                  { value: 'work',          label: 'Tasks' },
+                  { value: 'tasks',         label: 'Tasks' },
                   { value: 'conversations', label: 'Chats' },
                 ].map((o) => (
                   <button
@@ -765,8 +765,8 @@ function WidgetSettings({
               </>
             )}
 
-            {/* Work: status filter */}
-            {kind === 'work' && (
+            {/* Tasks: status filter */}
+            {kind === 'tasks' && (
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Status</label>
                 <select
@@ -775,7 +775,7 @@ function WidgetSettings({
                   className="mt-1 w-full px-2.5 py-1.5 text-sm rounded-lg bg-bg-secondary border border-border-color text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
                 >
                   <option value="">All statuses</option>
-                  {(sources?.work_statuses ?? []).map((s) => (
+                  {(sources?.task_statuses ?? []).map((s) => (
                     <option key={s} value={s}>{s.replace('_', ' ')}</option>
                   ))}
                 </select>

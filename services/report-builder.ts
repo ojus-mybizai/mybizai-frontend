@@ -4,7 +4,7 @@ import type { DatasheetReport } from './reports';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ReportSpec {
-  data_source: 'datasheet' | 'leads' | 'work';
+  data_source: 'datasheet' | 'leads' | 'tasks';
   model_id?: number | null;
   aggregation: string;
   group_by?: string | null;

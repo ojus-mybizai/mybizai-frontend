@@ -162,6 +162,50 @@ export async function resendPortalInvite(id: number): Promise<{ status: string; 
   return apiFetch(`/members/${id}/channels/portal/resend`, { method: 'POST', auth: true });
 }
 
+export async function revokePortalInvite(
+  id: number,
+): Promise<{ member_id: number; status: string }> {
+  return apiFetch(`/members/${id}/channels/portal/revoke`, { method: 'POST', auth: true });
+}
+
+// ── Portal invite validate + accept (public, used by /auth/accept-invite) ───
+
+export interface MemberInviteValidateResult {
+  valid: boolean;
+  business_name: string | null;
+  member_name: string | null;
+  email: string | null;
+  role_name: string | null;
+  expires_at: string | null;
+  status: string | null;
+}
+
+export interface MemberInviteAcceptResult {
+  message: string;
+  access_token: string;
+  token_type: string;
+  refresh_token: string;
+  role: string;
+}
+
+export async function validateMemberInvite(token: string): Promise<MemberInviteValidateResult> {
+  return apiFetch<MemberInviteValidateResult>(
+    `/members/invites/validate?token=${encodeURIComponent(token)}`,
+    { method: 'GET' },
+  );
+}
+
+export async function acceptMemberInvite(payload: {
+  token: string;
+  password: string;
+  name?: string;
+}): Promise<MemberInviteAcceptResult> {
+  return apiFetch<MemberInviteAcceptResult>('/members/invites/accept', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 // ── Chat (Path A: delegates to WA-employee chat backend) ────────────────────
 
 export interface MemberChatMessage {
