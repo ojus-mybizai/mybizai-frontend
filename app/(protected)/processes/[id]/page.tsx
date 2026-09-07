@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import PermissionGuard from '@/components/permission-guard';
 import {
@@ -183,6 +183,7 @@ function FunnelRibbon({ stages, entries, activeStageId, onStageClick }: FunnelRi
 export default function ProcessDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const processId = Number(params.id);
 
   const [process, setProcess] = useState<BusinessProcess | null>(null);
@@ -194,7 +195,16 @@ export default function ProcessDetailPage() {
   const [fit, setFit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [focusStageId, setFocusStageId] = useState<number | 'all'>('all');
+  // A widget deep-link ("?stage=123", from the dashboard funnel/breakdown) should
+  // land already filtered to that stage — read it once at mount. `useState`'s
+  // lazy initializer only ever runs on first render, so navigating client-side
+  // between two `?stage=` links on the same processId won't remount and won't
+  // re-apply; that's an acceptable gap for how these links are actually used.
+  const [focusStageId, setFocusStageId] = useState<number | 'all'>(() => {
+    const raw = searchParams.get('stage');
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) ? n : 'all';
+  });
   const [showFunnel, setShowFunnel] = useState(false);
 
   // Board / list controls
