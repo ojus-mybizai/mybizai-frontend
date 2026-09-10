@@ -40,7 +40,7 @@ export interface EventOption {
   description: string;
   category: string;
   has_filters: boolean;
-  filter_fields: Array<{ name: string; label: string; options?: string[] }>;
+  filter_fields: Array<{ name: string; label: string; options?: string[]; widget?: string }>;
   /** Condition-field groups that apply to this trigger (keys into condition_fields). */
   condition_roots: string[];
   /** False = listed but not yet executable; render disabled / "coming soon". */

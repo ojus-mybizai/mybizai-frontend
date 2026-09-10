@@ -42,7 +42,13 @@ import {
 } from './types';
 import { ToggleSwitch, Select, Input, Textarea, FieldLabel } from './shared';
 import { ConditionBuilder, type Condition } from '@/components/automation/condition-builder';
-import { fieldDefsFromEcaMetadata } from '@/components/automation/condition-builder-adapters';
+import { fieldDefsFromEcaMetadata, fieldDefsFromDatasheetSchema } from '@/components/automation/condition-builder-adapters';
+import {
+  ChannelPicker, WaTemplatePicker, RecipientPicker, DatasheetPicker,
+  RecordFieldPicker, RecordValuePicker, MemberPicker, RolePicker,
+  RecordFieldValuesEditor, useDatasheetFieldsByName,
+} from '@/components/automation/action-widgets';
+import type { DynamicField } from '@/services/dynamic-data';
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* STEP DEFINITIONS                                                          */
@@ -58,6 +64,122 @@ const STEPS = [
 type StepKey = (typeof STEPS)[number]['key'];
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
+/* WIDGET-AWARE ACTION PARAM RENDERER                                        */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+type ActionParamSchema = ActionOption['param_schema'][number];
+
+/** Mirrors backend `_CONTACT_WRITABLE_FIELDS` (minus FK/back-compat aliases) for the update_field picker. */
+const CONTACT_WRITABLE_FIELDS = ['name', 'phone', 'email', 'company', 'source', 'priority', 'routing_mode', 'notes'];
+
+/**
+ * Renders one action-parameter control, honoring the backend's `widget` hint
+ * (channel / wa_message_template / recipient / record_field / record_value /
+ * datasheet / record_field_values / member / role) before falling back to the
+ * generic options/number/json/text rendering. This is what makes "Datasheet
+ * name" a real picker instead of a free-text box the user has to get exactly
+ * right.
+ */
+function renderActionParamField(
+  param: ActionParamSchema,
+  action: ActionDraft,
+  index: number,
+  onUpdateParam: (idx: number, key: string, val: string) => void,
+  actionType: string,
+  triggerRecordFields: DynamicField[],
+) {
+  const val = action.params[param.name] || '';
+  const set = (v: string) => onUpdateParam(index, param.name, v);
+
+  // update_field has no static widget hints (its "field"/"value" pair depends
+  // on the sibling "entity" choice), so branch on it explicitly here.
+  if (actionType === 'update_field') {
+    const entity = action.params['entity'];
+    if (param.name === 'field') {
+      if (entity === 'record') return <RecordFieldPicker value={val} onChange={set} fields={triggerRecordFields} />;
+      if (entity === 'contact') {
+        return (
+          <Select value={val} onChange={set}>
+            <option value="">Select field...</option>
+            {CONTACT_WRITABLE_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
+          </Select>
+        );
+      }
+    }
+    if (param.name === 'value' && entity === 'record') {
+      return (
+        <RecordValuePicker value={val} onChange={set} fields={triggerRecordFields} fieldName={action.params['field'] || ''} />
+      );
+    }
+  }
+
+  switch (param.widget) {
+    case 'channel':
+      return <ChannelPicker value={val} onChange={set} />;
+    case 'wa_message_template':
+      return <WaTemplatePicker value={val} onChange={set} />;
+    case 'recipient':
+      return <RecipientPicker value={val} onChange={set} />;
+    case 'datasheet':
+      return <DatasheetPicker value={val} onChange={set} />;
+    case 'member':
+      return <MemberPicker value={val} onChange={set} />;
+    case 'role':
+      return <RolePicker value={val} onChange={set} />;
+    case 'record_field':
+      // update_record edits the triggering record — scope options to its datasheet's schema.
+      return <RecordFieldPicker value={val} onChange={set} fields={triggerRecordFields} />;
+    case 'record_value':
+      return (
+        <RecordValuePicker
+          value={val}
+          onChange={set}
+          fields={triggerRecordFields}
+          fieldName={action.params['field'] || ''}
+        />
+      );
+    case 'record_field_values':
+      // create_record targets whatever datasheet was picked in its own "datasheet" param.
+      return (
+        <RecordFieldValuesEditor
+          datasheetName={action.params['datasheet'] || ''}
+          value={val}
+          onChange={set}
+        />
+      );
+    default:
+      break;
+  }
+
+  if (param.options && param.options.length > 0) {
+    return (
+      <Select value={val} onChange={set}>
+        <option value="">Select...</option>
+        {param.options.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </Select>
+    );
+  }
+  if (param.type === 'number') {
+    return <Input type="number" value={val} onChange={set} placeholder={param.label} />;
+  }
+  if (param.type === 'textarea' || param.type === 'json') {
+    return (
+      <Textarea
+        value={val}
+        onChange={set}
+        placeholder={param.type === 'json' ? '{"key": "value"}' : param.label}
+        rows={param.type === 'json' ? 3 : 2}
+      />
+    );
+  }
+  return (
+    <Input value={val} onChange={set} placeholder={getParamPlaceholder(actionType, param.name) || param.label} />
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
 /* SORTABLE ACTION ITEM                                                      */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -69,6 +191,7 @@ function SortableActionItem({
   onUpdate,
   onUpdateParam,
   onRemove,
+  triggerRecordFields,
 }: {
   id: string;
   action: ActionDraft;
@@ -77,6 +200,8 @@ function SortableActionItem({
   onUpdate: (idx: number, patch: Partial<ActionDraft>) => void;
   onUpdateParam: (idx: number, key: string, val: string) => void;
   onRemove: (idx: number) => void;
+  /** Schema of the datasheet selected in the trigger's filters (record.* triggers only). */
+  triggerRecordFields: DynamicField[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -139,41 +264,15 @@ function SortableActionItem({
             <div key={param.name}>
               <FieldLabel
                 required={param.required}
-                hint={getParamHint(selectedAction.type, param.name)}
+                hint={
+                  selectedAction.type === 'update_field' && param.name === 'field' && action.params['entity'] === 'record'
+                    ? undefined
+                    : getParamHint(selectedAction.type, param.name)
+                }
               >
                 {param.label}
               </FieldLabel>
-              {param.options && param.options.length > 0 ? (
-                <Select
-                  value={action.params[param.name] || ''}
-                  onChange={(v) => onUpdateParam(index, param.name, v)}
-                >
-                  <option value="">Select...</option>
-                  {param.options.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </Select>
-              ) : param.type === 'number' ? (
-                <Input
-                  type="number"
-                  value={action.params[param.name] || ''}
-                  onChange={(v) => onUpdateParam(index, param.name, v)}
-                  placeholder={param.label}
-                />
-              ) : param.type === 'textarea' || param.type === 'json' ? (
-                <Textarea
-                  value={action.params[param.name] || ''}
-                  onChange={(v) => onUpdateParam(index, param.name, v)}
-                  placeholder={param.type === 'json' ? '{"key": "value"}' : param.label}
-                  rows={param.type === 'json' ? 3 : 2}
-                />
-              ) : (
-                <Input
-                  value={action.params[param.name] || ''}
-                  onChange={(v) => onUpdateParam(index, param.name, v)}
-                  placeholder={getParamPlaceholder(selectedAction.type, param.name) || param.label}
-                />
-              )}
+              {renderActionParamField(param, action, index, onUpdateParam, selectedAction.type, triggerRecordFields)}
             </div>
           ))}
         </div>
@@ -214,7 +313,7 @@ function getParamHint(actionType: string, paramName: string): string | undefined
       to_stage: 'Exact stage name within the entry\'s pipeline',
     },
     create_record: {
-      field_values: 'JSON object mapping field names to values',
+      field_values: 'One input per field of the selected datasheet',
     },
   };
   return hints[actionType]?.[paramName];
@@ -309,13 +408,29 @@ export default function RuleEditor({
   const eventGroups = useMemo(() => groupEventsByCategory(events), [events]);
   const selectedEvent = events.find((e) => e.event === form.trigger_event);
   const isScheduleEvent = selectedEvent?.event.startsWith('schedule.');
+  const isRecordEvent = form.trigger_event.startsWith('record.');
+  // For record.* triggers, "which datasheet" is picked in the trigger filters
+  // (form.trigger_filters.datasheet). Once known, fetch its schema so the
+  // Conditions step and the update_record/create_record action params can
+  // offer real field pickers instead of raw text.
+  const selectedDatasheetName = isRecordEvent ? (form.trigger_filters.datasheet || '') : '';
+  const { fields: triggerRecordFields } = useDatasheetFieldsByName(selectedDatasheetName);
+
   // Schema-aware condition fields for the current trigger (the fix for the old
-  // raw "entity.field" text box). For record.* the datasheet drawer supplies a
-  // richer schema; here we drive off the ECA metadata roots.
-  const conditionFields = useMemo(
+  // raw "entity.field" text box). Most triggers get theirs from the static ECA
+  // metadata roots; record.* triggers have no static schema, so once a
+  // datasheet is picked we derive fields from its live schema instead.
+  const ecaConditionFields = useMemo(
     () => fieldDefsFromEcaMetadata(form.trigger_event, metadata),
     [form.trigger_event, metadata],
   );
+  const conditionFields = useMemo(() => {
+    if (ecaConditionFields.length > 0) return ecaConditionFields;
+    if (isRecordEvent && triggerRecordFields.length > 0) {
+      return fieldDefsFromDatasheetSchema(triggerRecordFields, { valuePrefix: 'record.' });
+    }
+    return ecaConditionFields;
+  }, [ecaConditionFields, isRecordEvent, triggerRecordFields]);
 
   /* ── Step index ────────────────────────────────────────────────────── */
   const stepIdx = STEPS.findIndex((s) => s.key === step);
@@ -574,32 +689,34 @@ export default function RuleEditor({
                 <p className="text-[11px] text-text-secondary/60">
                   Narrow down when this trigger fires by specifying filter values
                 </p>
-                {selectedEvent.filter_fields.map((ff) => (
-                  <div key={ff.name}>
-                    <FieldLabel>{ff.label}</FieldLabel>
-                    {ff.options && ff.options.length > 0 ? (
-                      <Select
-                        value={form.trigger_filters[ff.name] || ''}
-                        onChange={(v) =>
-                          updateForm({ trigger_filters: { ...form.trigger_filters, [ff.name]: v } })
-                        }
-                      >
-                        <option value="">Any {ff.label.toLowerCase()}...</option>
-                        {ff.options.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </Select>
-                    ) : (
-                      <Input
-                        value={form.trigger_filters[ff.name] || ''}
-                        onChange={(v) =>
-                          updateForm({ trigger_filters: { ...form.trigger_filters, [ff.name]: v } })
-                        }
-                        placeholder={`Filter by ${ff.label.toLowerCase()}...`}
-                      />
-                    )}
-                  </div>
-                ))}
+                {selectedEvent.filter_fields.map((ff) => {
+                  const ffVal = form.trigger_filters[ff.name] || '';
+                  const setFf = (v: string) =>
+                    updateForm({ trigger_filters: { ...form.trigger_filters, [ff.name]: v } });
+                  return (
+                    <div key={ff.name}>
+                      <FieldLabel>{ff.label}</FieldLabel>
+                      {ff.widget === 'datasheet' ? (
+                        <DatasheetPicker value={ffVal} onChange={setFf} />
+                      ) : ff.widget === 'record_field' ? (
+                        <RecordFieldPicker value={ffVal} onChange={setFf} fields={triggerRecordFields} />
+                      ) : ff.options && ff.options.length > 0 ? (
+                        <Select value={ffVal} onChange={setFf}>
+                          <option value="">Any {ff.label.toLowerCase()}...</option>
+                          {ff.options.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <Input
+                          value={ffVal}
+                          onChange={setFf}
+                          placeholder={`Filter by ${ff.label.toLowerCase()}...`}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -700,6 +817,8 @@ export default function RuleEditor({
               emptyHint={
                 isScheduleEvent
                   ? 'Scheduled triggers have no entity context — pair with a scan action instead.'
+                  : isRecordEvent && !selectedDatasheetName
+                  ? 'Pick a datasheet in the trigger filters (step 1) to filter on its fields.'
                   : 'This trigger has no filterable fields. The rule runs every time it fires.'
               }
             />
@@ -772,6 +891,7 @@ export default function RuleEditor({
                           onUpdate={updateAction}
                           onUpdateParam={updateActionParam}
                           onRemove={removeAction}
+                          triggerRecordFields={triggerRecordFields}
                         />
                         {idx < form.actions.length - 1 && (
                           <div className="flex justify-center py-1">

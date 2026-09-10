@@ -1,8 +1,11 @@
 'use client';
 
+import type { ElementType } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { X, ArrowUpRight, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { X, ArrowUpRight, TrendingUp, TrendingDown, BarChart3, Table as TableIcon } from 'lucide-react';
+import { formatDate } from '@/lib/format-date';
 
 const LineChartBox = dynamic(() => import('../line-chart'), {
   ssr: false,
@@ -11,6 +14,8 @@ const LineChartBox = dynamic(() => import('../line-chart'), {
 
 interface SeriesPoint { date: string; value: number; }
 interface WidgetItem  { label: string; count: number; color?: string; href?: string; subtitle?: string; }
+interface WidgetColumn { key: string; label: string; type: string; }
+interface WidgetRow { href?: string; cells: Record<string, unknown>; }
 export interface AdvancedWidgetData {
   widget_id: number;
   title: string;
@@ -25,6 +30,8 @@ export interface AdvancedWidgetData {
   unit?: string;
   prev_value?: number | null;
   delta_pct?: number | null;
+  columns?: WidgetColumn[];
+  rows?: WidgetRow[];
 }
 
 // ── Shared card chrome ──────────────────────────────────────────────────────
@@ -47,11 +54,11 @@ function DeleteBtn({ onClick }: { onClick: () => void }) {
   );
 }
 
-function Header({ title, href, editing, accentClass }: { title: string; href?: string; editing: boolean; accentClass: string }) {
+function Header({ title, href, editing, accentClass, Icon = BarChart3 }: { title: string; href?: string; editing: boolean; accentClass: string; Icon?: ElementType }) {
   return (
     <div className="flex items-center gap-2.5 mb-4">
       <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${accentClass}`}>
-        <BarChart3 size={17} />
+        <Icon size={17} />
       </div>
       <p className="text-[15px] font-semibold text-text-primary flex-1 min-w-0 truncate">{title}</p>
       {href && !editing && (
@@ -234,6 +241,76 @@ export function TableCard({ data, editing, onDelete }: { data: AdvancedWidgetDat
               ? <Link key={idx} href={it.href!} className="block hover:bg-bg-secondary -mx-2 px-2 rounded-lg">{row}</Link>
               : <div key={idx}>{row}</div>;
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TableGridCard: real multi-column table (spec.columns projected per row) ─
+function formatCell(value: unknown, type: string): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+  if (type === 'boolean') return value ? 'Yes' : 'No';
+  if (type === 'date') {
+    return formatDate(String(value), String(value));
+  }
+  if (type === 'currency') {
+    const n = Number(value);
+    return Number.isNaN(n) ? String(value) : `₹${n.toLocaleString()}`;
+  }
+  if (type === 'number') {
+    const n = Number(value);
+    return Number.isNaN(n) ? String(value) : n.toLocaleString();
+  }
+  return String(value);
+}
+
+export function TableGridCard({ data, editing, onDelete }: { data: AdvancedWidgetData; editing: boolean; onDelete: () => void }) {
+  const router = useRouter();
+  const cols = data.columns ?? [];
+  const rows = data.rows ?? [];
+
+  return (
+    <div className={`relative p-5 h-full ${cardCls(editing)}`}>
+      {editing && <DeleteBtn onClick={onDelete} />}
+      <Header title={data.title} href={data.href} editing={editing} Icon={TableIcon}
+        accentClass="bg-amber-100 dark:bg-amber-500/15 text-amber-500" />
+      {rows.length === 0 || cols.length === 0 ? (
+        <div className="flex items-center justify-center h-20 text-text-secondary text-sm text-center px-4">
+          {cols.length === 0 ? 'Open customize and pick columns to display' : 'No matching records'}
+        </div>
+      ) : (
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border-color">
+                {cols.map((c) => (
+                  <th key={c.key} className="whitespace-nowrap px-3 py-2 text-xs font-semibold text-text-secondary">
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-color/60">
+              {rows.map((r, idx) => {
+                const clickable = !!r.href && !editing;
+                return (
+                  <tr
+                    key={idx}
+                    onClick={clickable ? () => router.push(r.href!) : undefined}
+                    className={clickable ? 'cursor-pointer hover:bg-bg-secondary transition-colors' : ''}
+                  >
+                    {cols.map((c) => (
+                      <td key={c.key} className="whitespace-nowrap px-3 py-2 text-text-primary">
+                        {formatCell(r.cells[c.key], c.type)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

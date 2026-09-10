@@ -108,6 +108,8 @@ export function getSkillDisplay(name: string, fallbackCategory?: string): SkillD
   const cat = (fallbackCategory || '').toLowerCase();
   let bucket: SkillBucketKey = 'other';
   if (name.startsWith('create_') && name.endsWith('_record')) bucket = 'data';
+  else if (name.startsWith('update_') && name.endsWith('_record')) bucket = 'data';
+  else if (name.startsWith('aggregate_')) bucket = 'data';
   else if (name.startsWith('search_') || name.startsWith('get_')) bucket = 'lookup';
   else if (name.startsWith('update_')) bucket = 'capture';
   else if (cat === 'communication') bucket = 'talk';

@@ -37,7 +37,8 @@ const PLAN_ACCENT: Record<string, string> = {
   enterprise: 'bg-amber-600',
 };
 
-function formatLimit(v: number): string {
+function formatLimit(v: number | null | undefined): string {
+  if (v === null || v === undefined) return '—';
   return v === -1 ? 'Unlimited' : v.toLocaleString();
 }
 

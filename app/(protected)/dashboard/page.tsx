@@ -35,7 +35,7 @@ import { listInternalAgents } from '@/services/internal-chat';
 import type { AgentSummary } from '@/lib/agent-blocks';
 import { useDateRangeStore } from '@/lib/stores/date-range-store';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { TrendCard, TimeSeriesCard, GaugeCard, FunnelCard, TableCard } from './components/AdvancedWidgets';
+import { TrendCard, TimeSeriesCard, GaugeCard, FunnelCard, TableCard, TableGridCard } from './components/AdvancedWidgets';
 import { LayoutSwitcher, type Layout } from './components/LayoutSwitcher';
 import { useDashboardStream } from './hooks/useDashboardStream';
 
@@ -117,6 +117,9 @@ interface WidgetDataItem {
 
 interface SeriesPoint { date: string; value: number; }
 
+interface WidgetColumn { key: string; label: string; type: string; }
+interface WidgetRow { href?: string; cells: Record<string, unknown>; }
+
 interface WidgetData {
   widget_id: number;
   title: string;
@@ -131,6 +134,8 @@ interface WidgetData {
   series_label?: string;
   target?: number;
   unit?: string;
+  columns?: WidgetColumn[];
+  rows?: WidgetRow[];
 }
 
 interface WidgetOption {
@@ -917,7 +922,7 @@ const COL_CLASS: Record<number, string> = {
 };
 
 // display_types that always claim the full row — `size` is moot for them.
-const FULL_WIDTH_TYPES = new Set(['timeseries', 'table']);
+const FULL_WIDTH_TYPES = new Set(['timeseries', 'table', 'table_grid']);
 // Tall card shapes (charts / lists / funnels) — half width by default.
 const WIDE_TYPES = new Set(['breakdown', 'funnel', 'list']);
 
@@ -1020,6 +1025,7 @@ function SortableWidget({
       {data.display_type === 'gauge'      && <GaugeCard       data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
       {data.display_type === 'funnel'     && <FunnelCard      data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
       {data.display_type === 'table'      && <TableCard       data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
+      {data.display_type === 'table_grid' && <TableGridCard   data={data} editing={editing} onDelete={() => onDelete(meta.id)} />}
     </div>
   );
 }

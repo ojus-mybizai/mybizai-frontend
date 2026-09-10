@@ -470,10 +470,8 @@ export default function AppShell({ children }: AppShellProps) {
       <div key={group.href}>
         <button
           type="button"
-          onClick={() => {
-            handleNavigate(group.href);
-            toggleGroup(group.href);
-          }}
+          onClick={() => toggleGroup(group.href)}
+          aria-expanded={isOpen}
           className={`group flex w-full items-center rounded-lg px-2.5 py-2 text-sm text-left transition-all
             ${highlighted
               ? 'bg-accent/10 text-accent font-medium'

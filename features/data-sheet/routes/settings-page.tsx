@@ -399,6 +399,7 @@ export function SettingsPage() {
               modelId={modelId}
               onClose={() => setAddFieldOpen(false)}
               onFieldAdded={ctx?.refetchFields ?? (async () => {})}
+              existingFields={fields}
             />
           </div>
         ) : (
@@ -430,6 +431,7 @@ export function SettingsPage() {
                 modelId={modelId}
                 onClose={() => setAddFieldOpen(false)}
                 onFieldAdded={ctx?.refetchFields ?? (async () => {})}
+                existingFields={fields}
               />
             ) : (
               <button
@@ -568,6 +570,7 @@ export function SettingsPage() {
             setEditFieldId(null);
           }}
           saving={saving}
+          existingFields={fields}
         />
       )}
 
@@ -646,11 +649,16 @@ function InlineAddField({
   modelId,
   onClose,
   onFieldAdded,
+  existingFields,
 }: {
   modelId: string | number;
   onClose: () => void;
   onFieldAdded: () => Promise<void>;
+  existingFields?: Array<{ name: string; display_name: string; field_type: string }>;
 }) {
+  const availableDateFields = (existingFields ?? [])
+    .filter((f) => f.field_type === 'date')
+    .map((f) => ({ name: f.name, display_name: f.display_name }));
   const [displayName, setDisplayName] = useState('');
   const [customName, setCustomName] = useState('');
   const [fieldType, setFieldType] = useState<string>('text');
@@ -863,6 +871,7 @@ function InlineAddField({
               excludeModelId={typeof modelId === 'number' ? modelId : null}
               defaultValue={defaultValue}
               onDefaultValueChange={setDefaultValue}
+              availableDateFields={availableDateFields}
             />
           </div>
         )}
@@ -929,13 +938,18 @@ function EditFieldModal({
   onSubmit,
   onRequestDelete,
   saving,
+  existingFields,
 }: {
   field: DynamicField;
   onClose: () => void;
   onSubmit: (p: Partial<DynamicField>) => void;
   onRequestDelete: (f: DynamicField) => void;
   saving: boolean;
+  existingFields?: Array<{ name: string; display_name: string; field_type: string }>;
 }) {
+  const availableDateFields = (existingFields ?? [])
+    .filter((f) => f.field_type === 'date' && f.name !== field.name)
+    .map((f) => ({ name: f.name, display_name: f.display_name }));
   const [displayName, setDisplayName] = useState(field.display_name);
   const [isRequired, setIsRequired] = useState(field.is_required);
   const [isUnique, setIsUnique] = useState(field.is_unique);
@@ -1012,6 +1026,7 @@ function EditFieldModal({
             relationReadOnly
             defaultValue={defaultValue}
             onDefaultValueChange={setDefaultValue}
+            availableDateFields={availableDateFields}
           />
 
           {/* Field properties — styled toggle grid */}

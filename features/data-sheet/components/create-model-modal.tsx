@@ -51,13 +51,18 @@ function SortableFieldCard({
   setField,
   removeField,
   fieldsLength,
+  allFields,
 }: {
   field: DraftField;
   index: number;
   setField: (i: number, u: Partial<DraftField>) => void;
   removeField: (i: number) => void;
   fieldsLength: number;
+  allFields?: DraftField[];
 }) {
+  const availableDateFields = (allFields ?? [])
+    .filter((ff, i) => i !== index && ff.field_type === 'date' && ff.name)
+    .map((ff) => ({ name: ff.name, display_name: ff.display_name || ff.name }));
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(index),
   });
@@ -164,6 +169,7 @@ function SortableFieldCard({
           onRelationKindChange={(kind) => setField(index, { relation_kind: kind as 'many_to_one' | 'one_to_many' | 'many_to_many' | null })}
           defaultValue={field.default_value}
           onDefaultValueChange={(v) => setField(index, { default_value: v })}
+          availableDateFields={availableDateFields}
         />
       </div>
     </div>
@@ -399,6 +405,7 @@ export function CreateModelModal({ onClose, onSuccess }: CreateModelModalProps) 
                         setField={setField}
                         removeField={removeField}
                         fieldsLength={fields.length}
+                        allFields={fields}
                       />
                     ))}
                   </div>

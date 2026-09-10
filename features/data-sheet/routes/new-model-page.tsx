@@ -322,6 +322,9 @@ export function NewModelPage() {
                     onRelationKindChange={(kind) => setField(index, { relation_kind: kind as 'many_to_one' | 'one_to_many' | 'many_to_many' | null })}
                     defaultValue={f.default_value}
                     onDefaultValueChange={(v) => setField(index, { default_value: v })}
+                    availableDateFields={fields
+                      .filter((ff, i) => i !== index && ff.field_type === 'date' && ff.name)
+                      .map((ff) => ({ name: ff.name, display_name: ff.display_name || ff.name }))}
                   />
                 </div>
               </div>

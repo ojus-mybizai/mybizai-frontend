@@ -18,6 +18,11 @@ const BUILTIN_RELATION_OPTIONS = [
   { value: '__builtin_work', label: 'Work Items' },
 ] as const;
 
+export interface AvailableDateField {
+  name: string;
+  display_name: string;
+}
+
 export interface FieldConfigPanelProps {
   fieldType: string;
   config: Record<string, unknown>;
@@ -33,6 +38,9 @@ export interface FieldConfigPanelProps {
   onDefaultValueChange?: (value: unknown) => void;
   /** When adding a relation field, exclude this model ID (e.g. current model) from the list */
   excludeModelId?: number | null;
+  /** Date/datetime fields on the current model — powers the computed date-calc picker.
+   *  When omitted (or empty), the picker falls back to a plain text input. */
+  availableDateFields?: AvailableDateField[];
 }
 
 export function FieldConfigPanel({
@@ -49,6 +57,7 @@ export function FieldConfigPanel({
   defaultValue,
   onDefaultValueChange,
   excludeModelId,
+  availableDateFields,
 }: FieldConfigPanelProps) {
   const [models, setModels] = useState<DynamicModel[]>([]);
 
@@ -152,44 +161,13 @@ export function FieldConfigPanel({
     );
   }
 
-  // ── Computed: formula editor ──
+  // ── Computed: date-calc picker OR custom formula ──
   if (fieldType === 'computed') {
-    return (
-      <div className="space-y-3">
-        <div>
-          <label className="block text-sm font-medium text-text-secondary">Formula</label>
-          <textarea
-            value={(config.formula as string) ?? ''}
-            onChange={(e) => onConfigChange({ ...config, formula: e.target.value })}
-            placeholder="fields.price * fields.quantity"
-            rows={3}
-            className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 font-mono text-sm text-text-primary focus:border-accent focus:outline-none"
-          />
-          <p className="mt-1 text-xs text-text-secondary">
-            Use <code className="rounded bg-bg-secondary px-1">fields.field_name</code> to reference other fields.
-          </p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-text-secondary">Result type</label>
-          <select
-            value={(config.result_type as string) ?? 'number'}
-            onChange={(e) => onConfigChange({ ...config, result_type: e.target.value })}
-            className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
-          >
-            <option value="number">Number</option>
-            <option value="text">Text</option>
-          </select>
-        </div>
-        <div className="rounded bg-bg-secondary p-3 text-xs text-text-secondary">
-          <p className="font-medium text-text-primary">Available functions:</p>
-          <p className="mt-1">ROUND(x, decimals), ABS(x), MIN(a, b), MAX(a, b), IF(condition, true_val, false_val), CONCAT(a, b, ...), SUM(a, b, ...), UPPER(text), LOWER(text), COALESCE(a, b, ...)</p>
-          <p className="mt-2 font-medium text-text-primary">Examples:</p>
-          <p className="mt-1 font-mono">fields.price * fields.quantity</p>
-          <p className="font-mono">ROUND(fields.total * 0.18, 2)</p>
-          <p className="font-mono">IF(fields.amount &gt; 1000, &quot;Premium&quot;, &quot;Standard&quot;)</p>
-        </div>
-      </div>
-    );
+    return <ComputedFieldEditor
+      config={config}
+      onConfigChange={onConfigChange}
+      availableDateFields={availableDateFields ?? []}
+    />;
   }
 
   if (fieldType === 'enum') {
@@ -459,6 +437,264 @@ function NestedDisplayFieldsPicker({ modelId, selected, onChange }: { modelId: n
       </div>
       {selected.length > 0 && (
         <p className="mt-1 text-xs text-text-muted">{selected.length} field{selected.length > 1 ? 's' : ''} selected</p>
+      )}
+    </div>
+  );
+}
+
+type DateCalcOperation = 'days_since' | 'days_until' | 'days_between' | 'add_days';
+
+interface DateCalcBuilder {
+  kind: 'date_calc';
+  operation: DateCalcOperation;
+  field_a: string | null;
+  field_b: string | null;
+  delta: number | null;
+}
+
+function buildFormulaFromBuilder(b: DateCalcBuilder): string {
+  const refA = b.field_a
+    ? (b.field_a === 'created_at' || b.field_a === 'updated_at' ? b.field_a : `fields.${b.field_a}`)
+    : '';
+  if (!refA) return '';
+  if (b.operation === 'days_since') return `DAYS_SINCE(${refA})`;
+  if (b.operation === 'days_until') return `DAYS_UNTIL(${refA})`;
+  if (b.operation === 'days_between') {
+    const refB = b.field_b
+      ? (b.field_b === 'created_at' || b.field_b === 'updated_at' ? b.field_b : `fields.${b.field_b}`)
+      : '';
+    return refB ? `DAYS_BETWEEN(${refA}, ${refB})` : '';
+  }
+  if (b.operation === 'add_days') {
+    const n = Number.isFinite(b.delta) ? Number(b.delta) : NaN;
+    return Number.isFinite(n) ? `ADD_DAYS(${refA}, ${n})` : '';
+  }
+  return '';
+}
+
+function ComputedFieldEditor({
+  config,
+  onConfigChange,
+  availableDateFields,
+}: {
+  config: Record<string, unknown>;
+  onConfigChange: (c: Record<string, unknown>) => void;
+  availableDateFields: AvailableDateField[];
+}) {
+  const existingBuilder = (config.builder as DateCalcBuilder | undefined) ?? null;
+  const hasFormula = typeof config.formula === 'string' && (config.formula as string).length > 0;
+  const [mode, setMode] = useState<'date_calc' | 'custom'>(
+    existingBuilder?.kind === 'date_calc' ? 'date_calc'
+      : hasFormula ? 'custom'
+      : 'date_calc'
+  );
+
+  const builder: DateCalcBuilder = existingBuilder ?? {
+    kind: 'date_calc',
+    operation: 'days_since',
+    field_a: null,
+    field_b: null,
+    delta: null,
+  };
+
+  const dateOptions = [
+    ...availableDateFields.map((f) => ({ value: f.name, label: f.display_name })),
+    { value: 'created_at', label: 'Created at (system)' },
+    { value: 'updated_at', label: 'Updated at (system)' },
+  ];
+
+  const commitBuilder = (patch: Partial<DateCalcBuilder>) => {
+    const next: DateCalcBuilder = { ...builder, ...patch };
+    const formula = buildFormulaFromBuilder(next);
+    onConfigChange({
+      ...config,
+      builder: next,
+      formula,
+      result_type: next.operation === 'add_days' ? 'date' : 'number',
+    });
+  };
+
+  const setOperation = (op: DateCalcOperation) => {
+    commitBuilder({
+      operation: op,
+      // clear irrelevant slots when switching op
+      field_b: op === 'days_between' ? builder.field_b : null,
+      delta: op === 'add_days' ? (builder.delta ?? 0) : null,
+    });
+  };
+
+  const setCustomFormula = (formula: string) => {
+    // Custom mode drops the builder entirely so we don't round-trip stale UI state.
+    const next: Record<string, unknown> = { ...config, formula };
+    delete next.builder;
+    if (!next.result_type) next.result_type = 'number';
+    onConfigChange(next);
+  };
+
+  const setResultType = (rt: string) => {
+    onConfigChange({ ...config, result_type: rt });
+  };
+
+  const renderPicker = (val: string | null, onChange: (v: string) => void, placeholder = 'Pick a date field') => {
+    if (dateOptions.length === 0) {
+      // Fallback: raw text so the editor still works without model context.
+      return (
+        <input
+          type="text"
+          value={val ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="field name"
+          className="w-full rounded border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary"
+        />
+      );
+    }
+    return (
+      <select
+        value={val ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded border border-border-color bg-bg-primary px-2 py-1.5 text-sm text-text-primary"
+      >
+        <option value="">{placeholder}</option>
+        {dateOptions.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Mode toggle */}
+      <div className="inline-flex rounded-md border border-border-color bg-bg-primary p-0.5 text-xs">
+        <button
+          type="button"
+          onClick={() => setMode('date_calc')}
+          className={`rounded px-2.5 py-1 ${mode === 'date_calc' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
+        >
+          Date calculation
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('custom')}
+          className={`rounded px-2.5 py-1 ${mode === 'custom' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
+        >
+          Custom formula
+        </button>
+      </div>
+
+      {mode === 'date_calc' ? (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-text-secondary">Operation</label>
+            <select
+              value={builder.operation}
+              onChange={(e) => setOperation(e.target.value as DateCalcOperation)}
+              className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+            >
+              <option value="days_since">Days since a date</option>
+              <option value="days_until">Days until a date</option>
+              <option value="days_between">Days between two dates</option>
+              <option value="add_days">A date offset by N days</option>
+            </select>
+          </div>
+
+          {(builder.operation === 'days_since' || builder.operation === 'days_until') && (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary">Date field</label>
+              <div className="mt-1">
+                {renderPicker(builder.field_a, (v) => commitBuilder({ field_a: v || null }))}
+              </div>
+            </div>
+          )}
+
+          {builder.operation === 'days_between' && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary">From</label>
+                <div className="mt-1">
+                  {renderPicker(builder.field_a, (v) => commitBuilder({ field_a: v || null }))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary">To</label>
+                <div className="mt-1">
+                  {renderPicker(builder.field_b, (v) => commitBuilder({ field_b: v || null }))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {builder.operation === 'add_days' && (
+            <div className="grid grid-cols-2 gap-2 items-end">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary">Date field</label>
+                <div className="mt-1">
+                  {renderPicker(builder.field_a, (v) => commitBuilder({ field_a: v || null }))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary">
+                  {(builder.delta ?? 0) < 0 ? 'Minus N days' : 'Plus N days'}
+                </label>
+                <input
+                  type="number"
+                  value={builder.delta ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' || raw === '-' ? 0 : Number(raw);
+                    commitBuilder({ delta: Number.isFinite(n) ? n : 0 });
+                  }}
+                  placeholder="e.g. 14 or -30"
+                  className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="rounded bg-bg-secondary p-2.5 text-xs">
+            <div className="text-text-secondary">Preview</div>
+            <div className="mt-1 font-mono text-text-primary">
+              {buildFormulaFromBuilder(builder) || <span className="text-text-secondary">Pick a field to see the formula</span>}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-text-secondary">Formula</label>
+            <textarea
+              value={(config.formula as string) ?? ''}
+              onChange={(e) => setCustomFormula(e.target.value)}
+              placeholder="fields.price * fields.quantity"
+              rows={3}
+              className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 font-mono text-sm text-text-primary focus:border-accent focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-text-secondary">
+              Use <code className="rounded bg-bg-secondary px-1">fields.field_name</code> to reference other fields.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary">Result type</label>
+            <select
+              value={(config.result_type as string) ?? 'number'}
+              onChange={(e) => setResultType(e.target.value)}
+              className="mt-1 w-full rounded border border-border-color bg-bg-primary px-3 py-2 text-sm text-text-primary"
+            >
+              <option value="number">Number</option>
+              <option value="text">Text</option>
+              <option value="date">Date</option>
+            </select>
+          </div>
+          <div className="rounded bg-bg-secondary p-3 text-xs text-text-secondary">
+            <p className="font-medium text-text-primary">Available functions:</p>
+            <p className="mt-1">ROUND, ABS, MIN, MAX, IF, CONCAT, SUM, UPPER, LOWER, COALESCE</p>
+            <p className="mt-1">TODAY(), DAYS_SINCE(x), DAYS_UNTIL(x), DAYS_BETWEEN(a, b), ADD_DAYS(x, n)</p>
+            <p className="mt-2 font-medium text-text-primary">Examples:</p>
+            <p className="mt-1 font-mono">fields.price * fields.quantity</p>
+            <p className="font-mono">DAYS_UNTIL(fields.due_date)</p>
+            <p className="font-mono">ADD_DAYS(fields.start_date, 30)</p>
+          </div>
+        </div>
       )}
     </div>
   );

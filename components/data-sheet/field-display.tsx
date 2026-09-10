@@ -478,7 +478,15 @@ export function FieldDisplay({
 
   // ── Computed ──
   if (ft === 'computed') {
-    const text = isEmpty(value) ? EMPTY : String(value);
+    const resultType = (field.config as { result_type?: string } | undefined)?.result_type;
+    let text: string;
+    if (isEmpty(value)) {
+      text = EMPTY;
+    } else if (resultType === 'date') {
+      text = fmtDate(String(value));
+    } else {
+      text = String(value);
+    }
     return (
       <span className={`inline-flex items-center gap-1 ${density === 'compact' ? 'text-xs' : 'text-sm'} ${containerCls}`}>
         <Calculator className="h-3 w-3 text-blue-500" />

@@ -19,6 +19,7 @@ import {
   TrendingUp, Activity, Filter as FilterIcon, Database, GitBranch,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { formatDate } from '@/lib/format-date';
 
 // ── Types mirroring the backend composer shapes ──────────────────────────────
 interface ComposerField {
@@ -40,9 +41,12 @@ interface FieldsResp {
 interface FilterClause { field: string; operator: string; value?: unknown; value2?: unknown; }
 interface WidgetDataItem { label: string; count: number; color?: string; subtitle?: string; }
 interface SeriesPoint { date: string; value: number; }
+interface WidgetColumn { key: string; label: string; type: string; }
+interface WidgetRow { href?: string; cells: Record<string, unknown>; }
 interface WidgetData {
   display_type: string; value?: number; unit?: string; href?: string;
   items?: WidgetDataItem[]; series?: SeriesPoint[];
+  columns?: WidgetColumn[]; rows?: WidgetRow[];
 }
 interface PreviewResp { view: string; available_views: string[]; data: WidgetData; }
 interface DatasheetSource { id: number; name: string; }
@@ -65,8 +69,8 @@ const VIEW_META: Record<string, { label: string; icon: React.ElementType }> = {
   pie: { label: 'Pie', icon: PieChart },
   breakdown: { label: 'Breakdown', icon: BarChart3 },
   funnel: { label: 'Funnel', icon: FilterIcon },
-  table: { label: 'Table', icon: TableIcon },
   list: { label: 'List', icon: ListIcon },
+  table_grid: { label: 'Table', icon: TableIcon },
   trend: { label: 'Trend', icon: TrendingUp },
   timeseries: { label: 'Timeline', icon: Activity },
 };
@@ -148,6 +152,8 @@ export default function WidgetComposer({
   const [dimension, setDimension] = useState<string>('');
   const [dateField, setDateField] = useState<string>('');
   const [timeMode, setTimeMode] = useState<'windowed' | 'snapshot'>('windowed');
+  const [columns, setColumns] = useState<string[]>([]);
+  const [rowLimit, setRowLimit] = useState<number>(25);
   const [view, setView] = useState<string>('');
   const [title, setTitle] = useState<string>('');
 
@@ -219,7 +225,7 @@ export default function WidgetComposer({
         || resp.fields.find(f => f.roles.includes('date'));
       setDateField(df ? df.key : '');
       setFilters([]); setMeasureFn('count'); setMeasureField(''); setDimension('');
-      setTimeMode('windowed'); setView('');
+      setTimeMode('windowed'); setColumns([]); setRowLimit(25); setView('');
       // contacts: preload global custom fields; reset any prior group slice
       setGroupCustom([]);
       if (sourceKey === 'contacts') {
@@ -248,8 +254,10 @@ export default function WidgetComposer({
       dimension: dimension || null,
       date_field: dateField || null,
       time_mode: timeMode,
+      columns,
+      row_limit: columns.length ? rowLimit : null,
     };
-  }, [source, filters, measureFn, measureField, dimension, dateField, timeMode]);
+  }, [source, filters, measureFn, measureField, dimension, dateField, timeMode, columns, rowLimit]);
 
   // ── live preview (debounced) whenever the spec or view changes on step 3 ───
   useEffect(() => {
@@ -267,7 +275,10 @@ export default function WidgetComposer({
         });
         setAvailableViews(resp.available_views);
         setPreview(resp.data);
-        if (!resp.available_views.includes(view)) setView(resp.view);
+        // Table is user-pinned: the backend can't include it in available_views
+        // until at least one column is picked, so don't let this reconciliation
+        // bounce the user back out of Table while they're still picking columns.
+        if (view !== 'table_grid' && !resp.available_views.includes(view)) setView(resp.view);
       } catch (e) {
         setError(`${e}`); setPreview(null);
       } finally {
@@ -354,6 +365,8 @@ export default function WidgetComposer({
                 dimension={dimension} setDimension={setDimension} groupFields={groupFields}
                 dateField={dateField} setDateField={setDateField} dateFields={dateFields}
                 timeMode={timeMode} setTimeMode={setTimeMode}
+                columns={columns} setColumns={setColumns} columnFields={filterFields}
+                rowLimit={rowLimit} setRowLimit={setRowLimit}
                 view={view} setView={setView} availableViews={availableViews}
                 title={title} setTitle={setTitle}
               />
@@ -389,7 +402,7 @@ export default function WidgetComposer({
               </button>
             )}
             {step === 3 && (
-              <button onClick={create} disabled={saving || !view}
+              <button onClick={create} disabled={saving || !view || (view === 'table_grid' && !columns.length)}
                 className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-40">
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Add to dashboard
               </button>
@@ -563,9 +576,14 @@ function Step3(p: {
   dimension: string; setDimension: (v: string) => void; groupFields: ComposerField[];
   dateField: string; setDateField: (v: string) => void; dateFields: ComposerField[];
   timeMode: 'windowed' | 'snapshot'; setTimeMode: (v: 'windowed' | 'snapshot') => void;
+  columns: string[]; setColumns: (v: string[]) => void; columnFields: ComposerField[];
+  rowLimit: number; setRowLimit: (v: number) => void;
   view: string; setView: (v: string) => void; availableViews: string[];
   title: string; setTitle: (v: string) => void;
 }) {
+  const toggleColumn = (key: string) =>
+    p.setColumns(p.columns.includes(key) ? p.columns.filter(c => c !== key) : [...p.columns, key]);
+
   return (
     <div className="space-y-6">
       {/* measure */}
@@ -624,7 +642,10 @@ function Step3(p: {
           {Object.keys(VIEW_META).map(v => {
             const meta = VIEW_META[v];
             const Icon = meta.icon;
-            const ok = p.availableViews.includes(v);
+            // Table is always clickable — picking columns (below) is what makes
+            // it resolvable, so it can't be gated on the backend's compatible
+            // list the way the other views are (that list can't include it yet).
+            const ok = v === 'table_grid' ? true : p.availableViews.includes(v);
             const active = p.view === v;
             return (
               <button key={v} onClick={() => ok && p.setView(v)} disabled={!ok}
@@ -639,6 +660,37 @@ function Step3(p: {
           })}
         </div>
       </div>
+
+      {/* table columns — only relevant once Table is the chosen view */}
+      {p.view === 'table_grid' && (
+        <div>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-text-secondary">Table columns</label>
+          <div className="flex flex-wrap gap-2">
+            {p.columnFields.map(f => {
+              const checked = p.columns.includes(f.key);
+              return (
+                <button key={f.key} onClick={() => toggleColumn(f.key)}
+                  className={`rounded-lg border px-3 py-1.5 text-sm ${
+                    checked ? 'border-accent bg-accent/10 text-accent' : 'border-border-color text-text-primary hover:bg-bg-secondary'}`}>
+                  {f.label}
+                </button>
+              );
+            })}
+            {!p.columnFields.length && <p className="text-xs text-text-secondary">No fields available.</p>}
+          </div>
+          <p className="mt-1 text-xs text-text-secondary">Pick at least one field to show as a column.</p>
+          <div className="mt-3 flex items-center gap-2">
+            <label className="text-xs font-medium text-text-secondary">Rows to show</label>
+            <input type="number" min={1} max={100} value={p.rowLimit}
+              onChange={e => {
+                const n = parseInt(e.target.value, 10);
+                p.setRowLimit(Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 25);
+              }}
+              className={`${inputBase} w-20`} />
+            <span className="text-xs text-text-secondary">(max 100)</span>
+          </div>
+        </div>
+      )}
 
       {/* title */}
       <div>
@@ -662,6 +714,38 @@ function PreviewRender({ data, view }: { data: WidgetData | null; view: string }
           {data.unit ? `${data.unit} ` : ''}{(data.value ?? 0).toLocaleString()}
         </div>
         <div className="mt-1 text-xs text-text-secondary">{VIEW_META[view]?.label ?? dt}</div>
+      </div>
+    );
+  }
+  if (dt === 'table_grid' || view === 'table_grid') {
+    // While Table is picked but the backend hasn't resolved it yet (no columns
+    // chosen, so `dt` may still be whatever fallback view the backend used),
+    // fall back to empty columns/rows and show the "pick columns" hint below.
+    const cols = dt === 'table_grid' ? (data.columns ?? []) : [];
+    const rows = dt === 'table_grid' ? (data.rows ?? []) : [];
+    return (
+      <div className="rounded-xl border border-border-color bg-card-bg p-3 overflow-x-auto">
+        {rows.length === 0 && (
+          <div className="py-6 text-center text-sm text-text-secondary">
+            {cols.length === 0 ? 'Pick at least one column to preview the table' : 'No matching records'}
+          </div>
+        )}
+        {rows.length > 0 && (
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-border-color">
+                {cols.map(c => <th key={c.key} className="whitespace-nowrap px-2 py-1.5 font-semibold text-text-secondary">{c.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-b border-border-color/60 last:border-0">
+                  {cols.map(c => <td key={c.key} className="whitespace-nowrap px-2 py-1.5 text-text-primary">{formatPreviewCell(r.cells[c.key], c.type)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     );
   }
@@ -702,6 +786,14 @@ function PreviewRender({ data, view }: { data: WidgetData | null; view: string }
       </div>
     </div>
   );
+}
+
+function formatPreviewCell(v: unknown, type?: string): string {
+  if (v === null || v === undefined || v === '') return '—';
+  if (Array.isArray(v)) return v.length ? v.join(', ') : '—';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (type === 'date') return formatDate(String(v), String(v));
+  return String(v);
 }
 
 // ── value encoding: turn UI inputs into the spec's leaf value ─────────────────

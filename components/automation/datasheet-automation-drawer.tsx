@@ -10,12 +10,13 @@
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { X, Plus, Zap, Clock, Trash2 } from 'lucide-react';
+import { X, Plus, Zap, Clock, Trash2, Pencil } from 'lucide-react';
 import type { DynamicField } from '@/services/dynamic-data';
 import {
   getAutomationMetadata,
   listAutomationRules,
   createAutomationRule,
+  updateAutomationRule,
   deleteAutomationRule,
   type AutomationMetadata,
   type ActionOption,
@@ -26,6 +27,7 @@ import { fieldDefsFromDatasheetSchema } from './condition-builder-adapters';
 import { rulesForDatasheet } from './scope';
 import {
   ChannelPicker, WaTemplatePicker, TemplateVariablePreview, RecipientPicker,
+  MemberPicker, RolePicker, TaskAssigneeSourcePicker, TextWithVarsInput,
 } from './action-widgets';
 import { DatasheetFieldInput } from '@/components/data-sheet/datasheet-field-input';
 import type { MessageTemplate } from '@/services/message-templates';
@@ -68,6 +70,7 @@ export function DatasheetAutomationDrawer({
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [form, setForm] = useState<DatasheetRuleForm>(emptyForm);
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Selected template per action index → drives the read-only variable preview.
@@ -98,6 +101,7 @@ export function DatasheetAutomationDrawer({
     if (!metadata) getAutomationMetadata().then(setMetadata).catch(() => {});
     reload();
     setCreating(false);
+    setEditingId(null);
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, modelId]);
@@ -115,6 +119,15 @@ export function DatasheetAutomationDrawer({
   ) => {
     const val = action.params[p.name] ?? '';
     const set = (v: string) => setParam(idx, p.name, v);
+
+    // create_task: hide the specific-member field unless assignee_source is
+    // "specific", and hide the role field unless it's "role". Cleans up the
+    // form so users don't stare at three assignee inputs at once.
+    if (action.type === 'create_task') {
+      const src = action.params['assignee_source'] || '';
+      if (p.name === 'assignee_member_id' && src && src !== 'specific') return null;
+      if (p.name === 'role' && src && src !== 'role') return null;
+    }
 
     let control: ReactNode;
     switch (p.widget) {
@@ -149,6 +162,21 @@ export function DatasheetAutomationDrawer({
         );
         break;
       }
+      case 'member':
+        control = <MemberPicker value={val} onChange={set} />;
+        break;
+      case 'role':
+        control = <RolePicker value={val} onChange={set} />;
+        break;
+      case 'task_assignee_source':
+        control = <TaskAssigneeSourcePicker value={val} onChange={set} />;
+        break;
+      case 'text_with_vars':
+        control = <TextWithVarsInput value={val} onChange={set} fields={fields} />;
+        break;
+      case 'textarea_with_vars':
+        control = <TextWithVarsInput value={val} onChange={set} fields={fields} multiline />;
+        break;
       default:
         control = p.options && p.options.length > 0 ? (
           <select value={val} onChange={(e) => set(e.target.value)} className={`${INPUT} appearance-none`}>
@@ -173,8 +201,37 @@ export function DatasheetAutomationDrawer({
     );
   };
 
-  const startBlank = () => { setForm(emptyForm()); setCreating(true); };
-  const startRecipe = (key: string) => { setForm(applyRecipe(key, fields)); setCreating(true); };
+  const startBlank = () => { setForm(emptyForm()); setEditingId(null); setCreating(true); };
+  const startRecipe = (key: string) => { setForm(applyRecipe(key, fields)); setEditingId(null); setCreating(true); };
+
+  /** Hydrate the drawer form from an existing rule so the user can edit it. */
+  const startEdit = (rule: AutomationRule) => {
+    const cfg = (rule.trigger as Record<string, any>).config || {};
+    const event = rule.trigger.event as TriggerType;
+    const isKnownTrigger = TRIGGER_OPTIONS.some((t) => t.value === event);
+    setForm({
+      name: rule.name,
+      triggerType: isKnownTrigger ? event : 'record.created',
+      dateField: typeof cfg.date_field === 'string' ? cfg.date_field : '',
+      offsetDays: Number(cfg.offset_days) || 0,
+      direction: cfg.direction === 'after' ? 'after' : 'before',
+      conditions: (rule.conditions || []).map((c) => ({
+        field: c.field || '',
+        op: c.op || 'eq',
+        value: c.value ?? '',
+      })),
+      actions: (rule.actions && rule.actions.length > 0 ? rule.actions : [{ type: '', params: {} }]).map((a) => ({
+        type: a.type,
+        params: Object.fromEntries(
+          Object.entries(a.params || {}).map(([k, v]) => [k, v == null ? '' : String(v)]),
+        ),
+      })),
+    });
+    setEditingId(rule.id);
+    setCreating(true);
+    setError(null);
+    setTemplateByAction({});
+  };
 
   const canSave = form.name.trim() &&
     form.actions.some((a) => a.type) &&
@@ -209,15 +266,26 @@ export function DatasheetAutomationDrawer({
           params: Object.fromEntries(Object.entries(a.params).filter(([, v]) => v !== '' && v != null)),
         }));
 
-      await createAutomationRule({
-        name: form.name.trim(),
-        category: 'data',
-        trigger,
-        conditions,
-        actions,
-        is_active: true,
-      });
+      if (editingId != null) {
+        await updateAutomationRule(editingId, {
+          name: form.name.trim(),
+          category: 'data',
+          trigger,
+          conditions,
+          actions,
+        });
+      } else {
+        await createAutomationRule({
+          name: form.name.trim(),
+          category: 'data',
+          trigger,
+          conditions,
+          actions,
+          is_active: true,
+        });
+      }
       setCreating(false);
+      setEditingId(null);
       reload();
       onChanged?.();
     } catch (e) {
@@ -287,10 +355,16 @@ export function DatasheetAutomationDrawer({
                         {r.is_active ? '' : ' · inactive'}
                       </p>
                     </div>
-                    <button type="button" onClick={() => handleDelete(r.id)}
-                      className="rounded-md p-1.5 text-text-secondary hover:bg-red-500/10 hover:text-red-400" title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => startEdit(r)}
+                        className="rounded-md p-1.5 text-text-secondary hover:bg-accent/10 hover:text-accent" title="Edit">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button type="button" onClick={() => handleDelete(r.id)}
+                        className="rounded-md p-1.5 text-text-secondary hover:bg-red-500/10 hover:text-red-400" title="Delete">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -413,13 +487,13 @@ export function DatasheetAutomationDrawer({
         {/* Footer */}
         {creating && (
           <div className="flex items-center justify-between border-t border-border-color bg-bg-secondary/30 px-5 py-3.5">
-            <button type="button" onClick={() => setCreating(false)}
+            <button type="button" onClick={() => { setCreating(false); setEditingId(null); }}
               className="rounded-lg px-3 py-1.5 text-sm font-medium text-text-secondary hover:bg-bg-secondary">
               Back
             </button>
             <button type="button" onClick={handleSave} disabled={!canSave || saving}
               className="rounded-xl bg-accent px-5 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-50">
-              {saving ? 'Saving…' : 'Create automation'}
+              {saving ? 'Saving…' : editingId != null ? 'Save changes' : 'Create automation'}
             </button>
           </div>
         )}

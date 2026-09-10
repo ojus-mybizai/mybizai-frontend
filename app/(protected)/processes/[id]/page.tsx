@@ -12,6 +12,7 @@ import {
 import { listMembers, type Member } from '@/services/members';
 import BoardView from '@/components/processes/board-view';
 import ListView from '@/components/processes/list-view';
+import StageFocusPanel, { type StageViewMode } from '@/components/processes/stage-focus-panel';
 import SettingsView from '@/components/processes/settings-view';
 import ForecastView from '@/components/processes/forecast-view';
 import InsightsView from '@/components/processes/insights-view';
@@ -207,6 +208,23 @@ export default function ProcessDetailPage() {
   });
   const [showFunnel, setShowFunnel] = useState(false);
 
+  // Per-stage view mode (cards / list / calendar) — persisted per (processId, stageId)
+  const stageViewStorageKey = `processes:${processId}:stage-view`;
+  const [stageViewModes, setStageViewModes] = useState<Record<number, StageViewMode>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = window.localStorage.getItem(`processes:${processId}:stage-view`);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+  function setStageViewMode(stageId: number, mode: StageViewMode) {
+    setStageViewModes(prev => {
+      const next = { ...prev, [stageId]: mode };
+      try { window.localStorage.setItem(stageViewStorageKey, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
   // Board / list controls
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [density, setDensity] = useState<CardDensity>('standard');
@@ -237,6 +255,12 @@ export default function ProcessDetailPage() {
   }, [processId]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // When focusing on a single stage, auto-show the funnel ribbon so it doubles
+  // as a stage switcher (click another segment → jump to that stage).
+  useEffect(() => {
+    if (focusStageId !== 'all') setShowFunnel(true);
+  }, [focusStageId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -543,6 +567,26 @@ export default function ProcessDetailPage() {
                   totalValue={filteredValue}
                 />
                 {layout === 'board' ? (
+                  focusStageId !== 'all' && stages.find(s => s.id === focusStageId) ? (
+                    <StageFocusPanel
+                      process={process}
+                      stage={stages.find(s => s.id === focusStageId)!}
+                      entries={filteredEntries}
+                      totalActive={activeEntries.length}
+                      density={density}
+                      viewMode={stageViewModes[focusStageId as number] ?? 'cards'}
+                      onViewModeChange={(m) => setStageViewMode(focusStageId as number, m)}
+                      selectionMode={selectionMode}
+                      selectedIds={selectedIds}
+                      onToggleSelect={toggleSelect}
+                      onOpenEntry={(e) => setDetailEntry(e)}
+                      onQuickWhatsApp={handleQuickWhatsApp}
+                      onQuickCall={handleQuickCall}
+                      onRemoveEntry={handleRemoveEntry}
+                      onAddEntry={(stageId) => { setAddEntryInitialStage(stageId); setAddEntryOpen(true); }}
+                      onClearFocus={() => setFocusStageId('all')}
+                    />
+                  ) : (
                   <BoardView
                     process={process}
                     stages={stages}
@@ -559,7 +603,9 @@ export default function ProcessDetailPage() {
                     onQuickCall={handleQuickCall}
                     onRemoveEntry={handleRemoveEntry}
                     onAddEntry={(stageId) => { setAddEntryInitialStage(stageId); setAddEntryOpen(true); }}
+                    onFocusStage={(stageId) => setFocusStageId(stageId)}
                   />
+                  )
                 ) : (
                   <ListView
                     stages={stages}

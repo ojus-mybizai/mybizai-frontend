@@ -31,6 +31,8 @@ import {
 } from '@/services/waTemplates';
 import { listMembers, type Member } from '@/services/members';
 import { listTaskTemplates, type TaskTemplate as TaskTemplateT } from '@/services/taskTemplates';
+import { listModels, listFields, type DynamicModel, type DynamicField } from '@/services/dynamic-data';
+import { listSequences, type NurtureSequence } from '@/services/nurture';
 import { randomStageColor } from './shared';
 
 interface Props {
@@ -66,6 +68,8 @@ export default function BuilderView({ process, stages, onReload }: Props) {
   const [waWorkTemplates, setWaWorkTemplates] = useState<WaTemplate[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [taskTemplates, setTaskTemplates] = useState<TaskTemplateT[]>([]);
+  const [datasheets, setDatasheets] = useState<DynamicModel[]>([]);
+  const [sequences, setSequences] = useState<NurtureSequence[]>([]);
   const [pickersLoaded, setPickersLoaded] = useState(false);
   const [fieldOptions, setFieldOptions] = useState<ProcessFieldOptions | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -89,8 +93,10 @@ export default function BuilderView({ process, stages, onReload }: Props) {
         listMembers().then(list => list.filter(m => m.is_active && m.is_assignable)).catch(() => [] as Member[]),
         getProcessFieldOptions(process.id).catch(() => null),
         listTaskTemplates(true).catch(() => [] as TaskTemplateT[]),
+        listModels().catch(() => [] as DynamicModel[]),
+        listSequences('active').catch(() => [] as NurtureSequence[]),
       ])
-        .then(([t, e, a, chs, tpls, waTpls, waEmps, fopts, ttpls]) => {
+        .then(([t, e, a, chs, tpls, waTpls, waEmps, fopts, ttpls, dsheets, seqs]) => {
           setTemplates(t.filter(tpl => tpl.is_active));
           setEmployees(e.filter(emp => emp.is_active));
           setAutomations(a);
@@ -100,6 +106,8 @@ export default function BuilderView({ process, stages, onReload }: Props) {
           setMembers(waEmps);
           setFieldOptions(fopts);
           setTaskTemplates(ttpls);
+          setDatasheets(dsheets.filter(m => m.status === 'active'));
+          setSequences(seqs);
           setPickersLoaded(true);
         })
         .catch(() => {})
@@ -161,6 +169,8 @@ export default function BuilderView({ process, stages, onReload }: Props) {
                   waWorkTemplates={waWorkTemplates}
                   members={members}
                   taskTemplates={taskTemplates}
+                  datasheets={datasheets}
+                  sequences={sequences}
                   pickersLoaded={pickersLoaded}
                   fieldOptions={fieldOptions}
                   // Only this stage's rules — `on_enter | on_exit | on_stuck`
@@ -212,6 +222,8 @@ export default function BuilderView({ process, stages, onReload }: Props) {
           waTemplates={waTemplates}
           employees={employees}
           members={members}
+          datasheets={datasheets}
+          sequences={sequences}
           pickersLoaded={pickersLoaded}
           onReload={reloadAutomations}
         />
@@ -225,6 +237,7 @@ export default function BuilderView({ process, stages, onReload }: Props) {
 function StageCard({
   process, stage, templates, employees,
   waChannels, waTemplates, waWorkTemplates, members, taskTemplates,
+  datasheets, sequences,
   pickersLoaded, fieldOptions, stageRules,
   onReloadAutomations, onReload,
 }: {
@@ -237,6 +250,8 @@ function StageCard({
   waWorkTemplates: WaTemplate[];      // WaTemplate (simple_task / whatsapp_form / checklist)
   members: Member[];          // verified WA employees
   taskTemplates: TaskTemplateT[];     // B4e — TaskTemplate picker options
+  datasheets: DynamicModel[];
+  sequences: NurtureSequence[];
   pickersLoaded: boolean;
   fieldOptions: ProcessFieldOptions | null;
   stageRules: AutomationRule[];
@@ -636,6 +651,8 @@ function StageCard({
             waChannels={waChannels}
             waTemplates={waTemplates}
             members={members}
+            datasheets={datasheets}
+            sequences={sequences}
             pickersLoaded={pickersLoaded}
             onReload={onReloadAutomations}
           />
@@ -1330,7 +1347,7 @@ const STAGE_TRIGGERS: { key: 'on_enter' | 'on_exit' | 'on_stuck'; label: string;
 
 function StageAutomationsSection({
   process, stage, rules, employees,
-  waChannels, waTemplates, members, pickersLoaded, onReload,
+  waChannels, waTemplates, members, datasheets, sequences, pickersLoaded, onReload,
 }: {
   process: BusinessProcess;
   stage: ProcessStage;
@@ -1339,6 +1356,8 @@ function StageAutomationsSection({
   waChannels: Channel[];
   waTemplates: MessageTemplate[];
   members: Member[];
+  datasheets: DynamicModel[];
+  sequences: NurtureSequence[];
   pickersLoaded: boolean;
   onReload: () => void;
 }) {
@@ -1349,12 +1368,16 @@ function StageAutomationsSection({
   const [reassignMemberId, setReassignMemberId] = useState<number | null>(null);
   const [tagName, setTagName] = useState('');
   const [assignDraft, setAssignDraft] = useState<AssignDealDraft>(DEFAULT_ASSIGN_DEAL);
+  const [createRecordDraft, setCreateRecordDraft] = useState<CreateRecordDraft>(DEFAULT_CREATE_RECORD);
+  const [enrollSequenceId, setEnrollSequenceId] = useState<number | null>(null);
   const [conditions, setConditions] = useState<AutomationCondition[]>([]);
 
   function resetDrafts() {
     setWaDraft(DEFAULT_SEND_WA);
     setNotifyMessage(''); setReassignMemberId(null); setTagName('');
     setAssignDraft(DEFAULT_ASSIGN_DEAL);
+    setCreateRecordDraft(DEFAULT_CREATE_RECORD);
+    setEnrollSequenceId(null);
     setActionKind('send_whatsapp');
     setConditions([]);
   }
@@ -1368,6 +1391,9 @@ function StageAutomationsSection({
       reassignMemberId,
       tag: tagName,
       assign: assignDraft,
+      createRecord: createRecordDraft,
+      datasheets,
+      enrollSequenceId,
       ruleName: `Process #${process.id} stage "${stage.name}" ${adding}`,
     });
     if (!action) return;
@@ -1474,6 +1500,8 @@ function StageAutomationsSection({
                     <option value="assign_deal">🔀 Assign deal to WhatsApp employee</option>
                     <option value="reassign">👤 Reassign entry to user</option>
                     <option value="add_tag">🏷  Add tag / note on contact</option>
+                    <option value="create_record">📄 Create datasheet row (linked to contact)</option>
+                    <option value="enroll_in_sequence">📨 Enroll contact in sequence campaign</option>
                   </select>
                 </div>
 
@@ -1512,6 +1540,17 @@ function StageAutomationsSection({
                 {actionKind === 'add_tag' && (
                   <SmallField label="Tag name" value={tagName} onChange={setTagName} />
                 )}
+                {actionKind === 'create_record' && (
+                  <CreateRecordEditor draft={createRecordDraft} onChange={setCreateRecordDraft}
+                    datasheets={datasheets} />
+                )}
+                {actionKind === 'enroll_in_sequence' && (
+                  <EnrollSequenceEditor
+                    sequenceId={enrollSequenceId}
+                    onChange={setEnrollSequenceId}
+                    sequences={sequences}
+                  />
+                )}
 
                 {/* Condition filter — empty means fire for every entry. */}
                 <ConditionBuilder conditions={conditions} onChange={setConditions} />
@@ -1544,9 +1583,15 @@ function buildActionFromDrafts(opts: {
   reassignMemberId: number | null;
   tag: string;
   assign?: AssignDealDraft;
+  createRecord?: CreateRecordDraft;
+  datasheets?: DynamicModel[];
+  enrollSequenceId?: number | null;
   ruleName: string;
 }): { type: string; params: Record<string, any> } | null {
-  const { kind, wa, notify, reassignMemberId, tag, assign, ruleName } = opts;
+  const {
+    kind, wa, notify, reassignMemberId, tag, assign,
+    createRecord, datasheets, enrollSequenceId, ruleName,
+  } = opts;
   if (kind === 'assign_deal') {
     const a = assign || DEFAULT_ASSIGN_DEAL;
     if (a.method === 'specific' && !a.employee_id) {
@@ -1593,6 +1638,28 @@ function buildActionFromDrafts(opts: {
     if (!tag.trim()) { alert('Enter a tag name.'); return null; }
     return { type: 'add_note', params: { note: `[tag] ${tag.trim()}`, tag: tag.trim() } };
   }
+  if (kind === 'create_record') {
+    const cr = createRecord || DEFAULT_CREATE_RECORD;
+    if (!cr.datasheetId) { alert('Pick a datasheet.'); return null; }
+    const model = (datasheets || []).find(m => m.id === cr.datasheetId);
+    if (!model) { alert('Datasheet not found.'); return null; }
+    const field_values: Record<string, any> = {};
+    for (const m of cr.mappings) {
+      if (!m.field || !m.value) continue;
+      field_values[m.field] = m.value;
+    }
+    return {
+      type: 'create_record',
+      params: {
+        datasheet: model.name,  // engine looks up by name (ilike)
+        field_values,
+      },
+    };
+  }
+  if (kind === 'enroll_in_sequence') {
+    if (!enrollSequenceId) { alert('Pick a sequence.'); return null; }
+    return { type: 'enroll_in_sequence', params: { sequence_id: enrollSequenceId } };
+  }
   return null;
 }
 
@@ -1614,7 +1681,19 @@ function buildActionFromDrafts(opts: {
 
 type Scope = 'process' | 'stage';
 
-type ActionKind = 'send_whatsapp' | 'notify_user' | 'reassign' | 'add_tag' | 'assign_deal';
+type ActionKind =
+  | 'send_whatsapp' | 'notify_user' | 'reassign' | 'add_tag' | 'assign_deal'
+  | 'create_record' | 'enroll_in_sequence';
+
+type CreateRecordFieldMapping = { field: string; value: string };
+type CreateRecordDraft = {
+  datasheetId: number | null;
+  mappings: CreateRecordFieldMapping[];
+};
+const DEFAULT_CREATE_RECORD: CreateRecordDraft = {
+  datasheetId: null,
+  mappings: [{ field: '', value: '' }],
+};
 
 type AssignMethod = 'keep_or_round_robin' | 'round_robin' | 'least_loaded' | 'specific';
 
@@ -1732,6 +1811,11 @@ function actionSummary(action: Record<string, any>): string {
   if (t === 'notify') return `🔔 Notify: ${p.message || ''}`;
   if (t === 'assign_contact_to_employee') return `👤 Reassign → member #${p.member_id ?? '?'}`;
   if (t === 'add_note') return `🏷  Add tag: ${p.tag || p.note || ''}`;
+  if (t === 'create_record') {
+    const nFields = Object.keys(p.field_values || {}).length;
+    return `📄 Create row in "${p.datasheet || '?'}"${nFields ? ` (${nFields} field${nFields === 1 ? '' : 's'})` : ''}`;
+  }
+  if (t === 'enroll_in_sequence') return `📨 Enroll contact in sequence #${p.sequence_id ?? '?'}`;
   // Fallback
   return `${t || 'action'} ${Object.entries(p).map(([k, v]) => `${k}=${v}`).join(' ')}`;
 }
@@ -1740,7 +1824,7 @@ function actionSummary(action: Record<string, any>): string {
 // inside each StageCard above. This panel only handles cross-stage events.
 function AutomationsPanel({
   process, stages, rules,
-  waChannels, waTemplates, employees, members, pickersLoaded,
+  waChannels, waTemplates, employees, members, datasheets, sequences, pickersLoaded,
   onReload,
 }: {
   process: BusinessProcess;
@@ -1750,6 +1834,8 @@ function AutomationsPanel({
   waTemplates: MessageTemplate[];
   employees: Employee[];
   members: Member[];
+  datasheets: DynamicModel[];
+  sequences: NurtureSequence[];
   pickersLoaded: boolean;
   onReload: () => void;
 }) {
@@ -1762,6 +1848,8 @@ function AutomationsPanel({
   const [reassignMemberId, setReassignMemberId] = useState<number | null>(null);
   const [tagName, setTagName] = useState('');
   const [assignDraft, setAssignDraft] = useState<AssignDealDraft>(DEFAULT_ASSIGN_DEAL);
+  const [createRecordDraft, setCreateRecordDraft] = useState<CreateRecordDraft>(DEFAULT_CREATE_RECORD);
+  const [enrollSequenceId, setEnrollSequenceId] = useState<number | null>(null);
   const [conditions, setConditions] = useState<AutomationCondition[]>([]);
 
   // Process-wide triggers only. Stage-scoped triggers live in StageCard.
@@ -1771,6 +1859,8 @@ function AutomationsPanel({
     setWaDraft(DEFAULT_SEND_WA);
     setNotifyMessage(''); setReassignMemberId(null); setTagName('');
     setAssignDraft(DEFAULT_ASSIGN_DEAL);
+    setCreateRecordDraft(DEFAULT_CREATE_RECORD);
+    setEnrollSequenceId(null);
     setActionKind('send_whatsapp');
     setConditions([]);
   }
@@ -1783,6 +1873,9 @@ function AutomationsPanel({
       reassignMemberId,
       tag: tagName,
       assign: assignDraft,
+      createRecord: createRecordDraft,
+      datasheets,
+      enrollSequenceId,
       ruleName: `Process #${process.id} ${trigger}`,
     });
     if (!action) return;
@@ -1852,6 +1945,8 @@ function AutomationsPanel({
               <option value="assign_deal">🔀 Assign deal to WhatsApp employee</option>
               <option value="reassign">👤 Reassign entry to user</option>
               <option value="add_tag">🏷  Add tag / note on contact</option>
+              <option value="create_record">📄 Create datasheet row (linked to contact)</option>
+              <option value="enroll_in_sequence">📨 Enroll contact in sequence campaign</option>
             </select>
           </div>
 
@@ -1893,6 +1988,17 @@ function AutomationsPanel({
           )}
           {actionKind === 'add_tag' && (
             <SmallField label="Tag name" value={tagName} onChange={setTagName} />
+          )}
+          {actionKind === 'create_record' && (
+            <CreateRecordEditor draft={createRecordDraft} onChange={setCreateRecordDraft}
+              datasheets={datasheets} />
+          )}
+          {actionKind === 'enroll_in_sequence' && (
+            <EnrollSequenceEditor
+              sequenceId={enrollSequenceId}
+              onChange={setEnrollSequenceId}
+              sequences={sequences}
+            />
           )}
 
           {/* Condition filter — empty means fire for every entry. */}
@@ -2139,6 +2245,207 @@ function SmallTextarea({ label, value, onChange, placeholder }: {
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
       />
+    </div>
+  );
+}
+
+// ─── Create Record Editor ─────────────────────────────────────────────────────
+//
+// Picks a datasheet and lets the user map each field to a value (literal or a
+// variable token like `{contact.id}`). The engine's `create_record` action
+// looks up the datasheet by name (ilike) and runs `_resolve_templates` over
+// `field_values`, so the tokens below survive to runtime and get substituted
+// against the event context (contact / entry / process).
+
+const CREATE_RECORD_TOKENS: { label: string; token: string }[] = [
+  { label: 'Contact ID',      token: '{contact.id}' },
+  { label: 'Contact name',    token: '{contact.name}' },
+  { label: 'Contact phone',   token: '{contact.phone}' },
+  { label: 'Contact email',   token: '{contact.email}' },
+  { label: 'Entry ID',        token: '{entry.id}' },
+  { label: 'Entry title',     token: '{entry.title}' },
+  { label: 'Stage name',      token: '{entry.stage}' },
+  { label: 'Expected value',  token: '{entry.value}' },
+  { label: 'Process name',    token: '{process.name}' },
+];
+
+function CreateRecordEditor({ draft, onChange, datasheets }: {
+  draft: CreateRecordDraft;
+  onChange: (d: CreateRecordDraft) => void;
+  datasheets: DynamicModel[];
+}) {
+  const [fields, setFields] = useState<DynamicField[]>([]);
+  const [loadingFields, setLoadingFields] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!draft.datasheetId) { setFields([]); return; }
+    setLoadingFields(true);
+    listFields(draft.datasheetId)
+      .then(fs => { if (!cancelled) setFields(fs); })
+      .catch(() => { if (!cancelled) setFields([]); })
+      .finally(() => { if (!cancelled) setLoadingFields(false); });
+    return () => { cancelled = true; };
+  }, [draft.datasheetId]);
+
+  function updateMapping(idx: number, patch: Partial<CreateRecordFieldMapping>) {
+    const next = draft.mappings.map((m, i) => i === idx ? { ...m, ...patch } : m);
+    onChange({ ...draft, mappings: next });
+  }
+  function addRow() {
+    onChange({ ...draft, mappings: [...draft.mappings, { field: '', value: '' }] });
+  }
+  function removeRow(idx: number) {
+    const next = draft.mappings.filter((_, i) => i !== idx);
+    onChange({ ...draft, mappings: next.length ? next : [{ field: '', value: '' }] });
+  }
+
+  // Suggest a contact-relation field so the created row is actually linked
+  // back to the triggering contact — flags any field whose relation_builtin_model
+  // is "contacts" or "leads".
+  const contactLinkField = fields.find(f =>
+    f.relation_builtin_model === 'contacts' || f.relation_builtin_model === 'leads',
+  );
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <label className="text-[10px] uppercase tracking-wide text-text-secondary">Datasheet</label>
+        <select
+          value={draft.datasheetId ?? ''}
+          onChange={(e) => onChange({
+            ...draft,
+            datasheetId: e.target.value ? Number(e.target.value) : null,
+            mappings: [{ field: '', value: '' }],
+          })}
+          className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
+        >
+          <option value="">Pick a datasheet…</option>
+          {datasheets.map(ds => (
+            <option key={ds.id} value={ds.id}>{ds.display_name || ds.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {draft.datasheetId && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] uppercase tracking-wide text-text-secondary">
+              Field values {loadingFields ? '(loading…)' : ''}
+            </label>
+            <button
+              type="button"
+              onClick={addRow}
+              className="text-[10px] text-accent hover:underline"
+            >+ Add field</button>
+          </div>
+
+          {contactLinkField && !draft.mappings.some(m => m.field === contactLinkField.name) && (
+            <button
+              type="button"
+              onClick={() => {
+                const first = draft.mappings.find(m => !m.field);
+                if (first) {
+                  const idx = draft.mappings.indexOf(first);
+                  updateMapping(idx, { field: contactLinkField.name, value: '{contact.id}' });
+                } else {
+                  onChange({
+                    ...draft,
+                    mappings: [
+                      ...draft.mappings,
+                      { field: contactLinkField.name, value: '{contact.id}' },
+                    ],
+                  });
+                }
+              }}
+              className="w-full text-left text-[10px] rounded border border-dashed border-accent/50 bg-accent/5 px-2 py-1 text-accent hover:bg-accent/10"
+            >
+              ↳ Link to contact via <b>{contactLinkField.display_name || contactLinkField.name}</b>
+            </button>
+          )}
+
+          {draft.mappings.map((m, idx) => (
+            <div key={idx} className="flex items-start gap-1.5">
+              <select
+                value={m.field}
+                onChange={(e) => updateMapping(idx, { field: e.target.value })}
+                className="flex-1 min-w-0 rounded border border-border-color bg-bg-primary px-2 py-1 text-[11px]"
+              >
+                <option value="">Pick field…</option>
+                {fields.map(f => (
+                  <option key={f.id} value={f.name}>{f.display_name || f.name}</option>
+                ))}
+              </select>
+              <div className="flex-1 min-w-0 relative">
+                <input
+                  type="text"
+                  value={m.value}
+                  placeholder="Value or {contact.name}"
+                  onChange={(e) => updateMapping(idx, { value: e.target.value })}
+                  className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-[11px]"
+                />
+                <select
+                  onChange={(e) => {
+                    if (!e.target.value) return;
+                    updateMapping(idx, { value: (m.value || '') + e.target.value });
+                    e.currentTarget.value = '';
+                  }}
+                  className="absolute right-0 top-0 h-full rounded-r border-l border-border-color bg-bg-secondary px-1 text-[10px]"
+                  title="Insert variable"
+                  defaultValue=""
+                >
+                  <option value="">＋</option>
+                  {CREATE_RECORD_TOKENS.map(t => (
+                    <option key={t.token} value={t.token}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeRow(idx)}
+                className="text-text-secondary hover:text-red-500 p-1 flex-shrink-0"
+                title="Remove"
+              >×</button>
+            </div>
+          ))}
+          <p className="text-[10px] text-text-secondary/70 mt-1">
+            Values support tokens like <code>{'{contact.name}'}</code>, <code>{'{entry.title}'}</code>.
+            To link the row back to the contact, use a relation field and set its value to <code>{'{contact.id}'}</code>.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Enroll Sequence Editor ───────────────────────────────────────────────────
+//
+// One dropdown of active nurture sequences. On stage enter, the triggering
+// contact is enrolled via `nurture_enrollment_service.enroll_contact`.
+
+function EnrollSequenceEditor({ sequenceId, onChange, sequences }: {
+  sequenceId: number | null;
+  onChange: (id: number | null) => void;
+  sequences: NurtureSequence[];
+}) {
+  return (
+    <div>
+      <label className="text-[10px] uppercase tracking-wide text-text-secondary">Sequence</label>
+      <select
+        value={sequenceId ?? ''}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+        className="w-full rounded border border-border-color bg-bg-primary px-2 py-1 text-xs"
+      >
+        <option value="">Pick a sequence…</option>
+        {sequences.map(s => (
+          <option key={s.id} value={s.id}>{s.name}</option>
+        ))}
+      </select>
+      {sequences.length === 0 && (
+        <p className="text-[10px] text-text-secondary/70 mt-1">
+          No active sequences. Create one under <code>/campaigns</code> first.
+        </p>
+      )}
     </div>
   );
 }

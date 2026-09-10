@@ -85,13 +85,18 @@ function SortableChildFieldCard({
   fieldsLength,
   updateField,
   removeField,
+  allFields,
 }: {
   field: DraftField;
   index: number;
   fieldsLength: number;
   updateField: (i: number, u: Partial<DraftField>) => void;
   removeField: (i: number) => void;
+  allFields?: DraftField[];
 }) {
+  const availableDateFields = (allFields ?? [])
+    .filter((ff, i) => i !== index && ff.field_type === 'date' && ff.name)
+    .map((ff) => ({ name: ff.name, display_name: ff.display_name || ff.name }));
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(index),
@@ -227,6 +232,7 @@ function SortableChildFieldCard({
           onRelationKindChange={() => {}}
           defaultValue={field.default_value}
           onDefaultValueChange={(v) => updateField(index, { default_value: v })}
+          availableDateFields={availableDateFields}
         />
       </div>
     </div>
@@ -466,6 +472,7 @@ export function CreateChildDatasheetModal({
                         fieldsLength={fields.length}
                         updateField={updateField}
                         removeField={removeField}
+                        allFields={fields}
                       />
                     ))}
                   </div>

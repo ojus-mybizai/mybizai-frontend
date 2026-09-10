@@ -23,6 +23,8 @@ export interface WorkspaceSettings {
   timezone?: string | null;
   default_currency?: string | null;
   default_channel_id?: number | null;
+  /** Business-wide WhatsApp channel used for task dispatch; null = auto (oldest connected). */
+  task_wa_channel_id?: number | null;
   lead_auto_assign_strategy?: string | null;
   lead_assignment_lock_days: number;
   working_hours?: Record<string, any> | null;
@@ -35,6 +37,8 @@ export interface WorkspaceUpdate {
   timezone?: string;
   default_currency?: string;
   default_channel_id?: number;
+  /** 0 clears the task-channel override (falls back to auto). */
+  task_wa_channel_id?: number;
   lead_auto_assign_strategy?: string;
   lead_assignment_lock_days?: number;
   working_hours?: Record<string, any>;

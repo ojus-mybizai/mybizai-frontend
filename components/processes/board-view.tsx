@@ -27,6 +27,7 @@ interface Props {
   onQuickCall?: (entry: ProcessEntry) => void;
   onRemoveEntry: (id: number) => void;
   onAddEntry: (stageId: number) => void;
+  onFocusStage?: (stageId: number) => void;
 }
 
 // 75th-percentile value used to flag "high value" cards
@@ -64,7 +65,7 @@ function ProbabilityRing({ value, size = 22, color }: { value: number; size?: nu
 
 function StageColumn({
   stage, entries, density, selectionMode, selectedIds, valueP75, totalProcessValue, fit,
-  onToggleSelect, onSelectAllInStage, onOpen, onQuickWhatsApp, onQuickCall, onRemove, onAdd,
+  onToggleSelect, onSelectAllInStage, onOpen, onQuickWhatsApp, onQuickCall, onRemove, onAdd, onFocus,
 }: {
   stage: ProcessStage;
   entries: ProcessEntry[];
@@ -81,6 +82,7 @@ function StageColumn({
   onQuickCall?: (entry: ProcessEntry) => void;
   onRemove: (id: number) => void;
   onAdd: () => void;
+  onFocus?: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `stage:${stage.id}`, data: { type: 'stage', stage } });
 
@@ -124,7 +126,17 @@ function StageColumn({
             )}
 
             <div className="min-w-0 flex-1">
-              <h3 className="text-[15px] font-semibold text-text-primary truncate leading-tight">{stage.name}</h3>
+              {onFocus ? (
+                <button
+                  onClick={onFocus}
+                  className="text-[15px] font-semibold text-text-primary truncate leading-tight w-full text-left hover:text-accent transition-quick"
+                  title={`Focus on ${stage.name} — hide other stages`}
+                >
+                  {stage.name}
+                </button>
+              ) : (
+                <h3 className="text-[15px] font-semibold text-text-primary truncate leading-tight">{stage.name}</h3>
+              )}
               <div className="flex items-center gap-1.5 text-xs text-text-secondary mt-0.5">
                 <span className={`tabular-nums font-medium ${wipExceeded ? 'text-red-600 dark:text-red-400' : ''}`}>
                   {entries.length}{stage.wip_limit ? `/${stage.wip_limit}` : ''} {entries.length === 1 ? 'entry' : 'entries'}
@@ -144,6 +156,22 @@ function StageColumn({
                   className="text-[10px] px-1.5 py-0.5 rounded text-accent hover:bg-accent/10 font-medium"
                 >
                   All
+                </button>
+              )}
+              {onFocus && (
+                <button
+                  onClick={onFocus}
+                  className="p-1 rounded hover:bg-bg-secondary hover:text-accent transition-quick"
+                  title={`Focus on ${stage.name} — pick a per-stage view`}
+                  aria-label={`Focus on ${stage.name}`}
+                >
+                  {/* expand icon */}
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="15 3 21 3 21 9" />
+                    <polyline points="9 21 3 21 3 15" />
+                    <line x1="21" y1="3" x2="14" y2="10" />
+                    <line x1="3" y1="21" x2="10" y2="14" />
+                  </svg>
                 </button>
               )}
               <button
@@ -181,8 +209,11 @@ function StageColumn({
         </div>
       </div>
 
-      {/* Cards lane */}
-      <div className={`flex-1 ${isTerminal ? 'bg-bg-secondary/20' : 'bg-bg-secondary/40'} px-1.5 py-1.5 min-h-[100px]`}>
+      {/* Cards lane — capped height so a heavy stage doesn't stretch the page.
+          Overflow scrolls within the column; a "+N more" hint sits at the bottom. */}
+      <div
+        className={`flex-1 ${isTerminal ? 'bg-bg-secondary/20' : 'bg-bg-secondary/40'} px-1.5 py-1.5 min-h-[100px] max-h-[calc(100vh-360px)] overflow-y-auto scrollbar-thin`}
+      >
         <SortableContext items={entries.map(e => `entry:${e.id}`)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1.5">
             {entries.map(entry => (
@@ -261,7 +292,7 @@ function FlowArrow() {
 export default function BoardView({
   process, stages, entries, density, fit = false,
   selectionMode, selectedIds, onToggleSelect, onSelectAllInStage,
-  onMoveEntry, onOpenEntry, onQuickWhatsApp, onQuickCall, onRemoveEntry, onAddEntry,
+  onMoveEntry, onOpenEntry, onQuickWhatsApp, onQuickCall, onRemoveEntry, onAddEntry, onFocusStage,
 }: Props) {
   const [activeEntry, setActiveEntry] = useState<ProcessEntry | null>(null);
 
@@ -386,6 +417,7 @@ export default function BoardView({
                 onQuickCall={onQuickCall}
                 onRemove={onRemoveEntry}
                 onAdd={() => onAddEntry(stage.id)}
+                onFocus={onFocusStage ? () => onFocusStage(stage.id) : undefined}
               />
               {idx < sortedStages.length - 1 && <FlowArrow />}
             </React.Fragment>

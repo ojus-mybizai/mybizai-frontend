@@ -2,6 +2,7 @@
 
 import type { DynamicField } from '@/services/dynamic-data';
 import { DateField } from '@/components/ui/date-field';
+import { formatDate } from '@/lib/format-date';
 
 /**
  * Single source of truth for rendering an editable input for a datasheet
@@ -98,7 +99,16 @@ export function DatasheetFieldInput({
   if (type === 'relation' || type === 'image' || type === 'file') return null;
 
   if (type === 'computed') {
-    return <div className={`${cls} cursor-not-allowed text-text-secondary`}>Calculated automatically</div>;
+    const resultType = (field.config as { result_type?: string } | undefined)?.result_type;
+    let display: string;
+    if (value == null || value === '') {
+      display = 'Calculated automatically';
+    } else if (resultType === 'date') {
+      display = formatDate(String(value));
+    } else {
+      display = String(value);
+    }
+    return <div className={`${cls} cursor-not-allowed text-text-secondary`}>{display}</div>;
   }
 
   if (type === 'long_text') {

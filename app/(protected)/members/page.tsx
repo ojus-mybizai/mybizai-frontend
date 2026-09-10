@@ -12,6 +12,8 @@ import {
 } from '@/services/members';
 import { listRoles, type Role } from '@/services/roles';
 import { SessionWindowChip } from '@/components/tasks/shared/session-window-chip';
+import { listVerifiedWhatsAppChannels, whatsAppChannelLabel, type Channel as WaChannel } from '@/services/channels';
+import { getWorkspaceSettings, updateWorkspaceSettings } from '@/services/settings';
 
 // The team-WhatsApp-channel setting (`wa_employee_channel_id`) was retired
 // alongside the WaEmployee subsystem. Attaching WhatsApp to a member still
@@ -141,6 +143,17 @@ export default function MembersPage() {
   const waSetup: WaSetup = 'ready';
   const [notice, setNotice] = useState<CreateNotice>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all');
+  const [waChannels, setWaChannels] = useState<WaChannel[]>([]);
+  const [taskChannelId, setTaskChannelId] = useState<number | null>(null);
+
+  useEffect(() => {
+    Promise.all([listVerifiedWhatsAppChannels(), getWorkspaceSettings()])
+      .then(([channels, ws]) => {
+        setWaChannels(channels);
+        setTaskChannelId(ws.task_wa_channel_id ?? null);
+      })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -177,6 +190,8 @@ export default function MembersPage() {
           <Plus className="w-4 h-4" /> Add member
         </button>
       </div>
+
+      <TaskChannelSelector channels={waChannels} value={taskChannelId} onSaved={setTaskChannelId} />
 
       <div className="flex items-center gap-2 mb-4">
         <div className="relative flex-1 max-w-xs">
@@ -348,6 +363,67 @@ export default function MembersPage() {
           waSetup={waSetup}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Business-wide setting: which connected WhatsApp channel task reminders and
+ * assignments go out from. Replaces the old `wa_employee_channel_id` picker
+ * that was removed with the WaEmployee subsystem — without it, dispatch just
+ * fell back to the oldest-connected WA channel with no way to override.
+ */
+function TaskChannelSelector({ channels, value, onSaved }: {
+  channels: WaChannel[];
+  value: number | null;
+  onSaved: (id: number | null) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (channels.length === 0) {
+    return (
+      <div className="mb-4 rounded-lg border border-border-secondary bg-bg-secondary/40 px-4 py-3 text-sm text-text-secondary">
+        No WhatsApp channel connected yet — tasks can't reach members on WhatsApp until you{' '}
+        <a href="/channels" className="underline font-medium text-accent">connect one</a>.
+      </div>
+    );
+  }
+
+  async function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const id = e.target.value ? Number(e.target.value) : 0;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await updateWorkspaceSettings({ task_wa_channel_id: id });
+      onSaved(updated.task_wa_channel_id ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border-secondary bg-bg-secondary/30 px-4 py-3">
+      <MessageCircle className="w-4 h-4 text-green-600 shrink-0" />
+      <span className="text-sm font-medium text-text-primary">Task WhatsApp channel</span>
+      <select
+        value={value != null ? String(value) : ''}
+        onChange={handleChange}
+        disabled={saving}
+        className="rounded-lg border border-border-secondary bg-bg-primary px-2.5 py-1.5 text-sm text-text-primary disabled:opacity-60"
+      >
+        <option value="">Auto (oldest connected)</option>
+        {channels.map((c) => (
+          <option key={c.id} value={c.id}>{whatsAppChannelLabel(c)}</option>
+        ))}
+      </select>
+      {saving && <span className="text-xs text-text-secondary">Saving…</span>}
+      {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
+      <span className="w-full text-xs text-text-secondary">
+        Which WhatsApp number task assignments and reminders are sent from.
+      </span>
     </div>
   );
 }
