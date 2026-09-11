@@ -902,6 +902,10 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
           sessionFilter === 'open' ? true
           : sessionFilter === 'closed' ? false
           : undefined,
+        // Cap the initial page — the endpoint used to return every
+        // conversation for the business. 200 is enough to fill the visible
+        // list even on tall screens; infinite scroll can page beyond.
+        limit: 200,
       };
       return listAllConversations(filters)
         .then((list) => setConversations(list))
@@ -919,23 +923,39 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
     return () => clearInterval(id);
   }, [fetchConversations]);
 
+  // Load messages + sessions + analytics for the selected conversation in a
+  // single parallel batch. Previously each lived in its own useEffect and
+  // fired serially on every conversation switch. Analytics failures are
+  // swallowed so a slow /analytics route doesn't block the chat pane.
   useEffect(() => {
     if (!selectedId) {
       setMessages([]);
+      setSessions([]);
+      setConversationAnalytics(null);
       return;
     }
     let cancelled = false;
     setLoadingMessages(true);
-    listMessages(selectedId)
-      .then((msgs) => {
-        if (!cancelled) setMessages(msgs);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingMessages(false);
-      });
+    setLoadingSessions(true);
+    setLoadingConversationAnalytics(true);
 
-    // Silent poll every 15s so Meta delivery-receipt updates (delivered/read/
-    // failed) and incoming inbound replies show up without manual refresh.
+    Promise.all([
+      listMessages(selectedId).catch(() => [] as Message[]),
+      listConversationSessions(selectedId).catch(() => [] as ConversationSession[]),
+      getConversationAnalytics(selectedId).catch(() => null),
+    ]).then(([msgs, sess, analytics]) => {
+      if (cancelled) return;
+      setMessages(msgs);
+      setSessions(sess);
+      setConversationAnalytics(analytics);
+      setLoadingMessages(false);
+      setLoadingSessions(false);
+      setLoadingConversationAnalytics(false);
+    });
+
+    // Silent poll every 15s for messages only — sessions/analytics don't need
+    // to refresh that often. Meta delivery receipts + inbound replies still
+    // land within 15s without a full-tab refresh.
     const pollId = setInterval(() => {
       listMessages(selectedId).then((msgs) => {
         if (!cancelled) setMessages(msgs);
@@ -945,47 +965,6 @@ export function ConversationsView({ initialConversationId, agentFilter, initialV
     return () => {
       cancelled = true;
       clearInterval(pollId);
-    };
-  }, [selectedId]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setSessions([]);
-      return;
-    }
-    let cancelled = false;
-    setLoadingSessions(true);
-    listConversationSessions(selectedId)
-      .then((rows) => {
-        if (!cancelled) setSessions(rows);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingSessions(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedId]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setConversationAnalytics(null);
-      return;
-    }
-    let cancelled = false;
-    setLoadingConversationAnalytics(true);
-    getConversationAnalytics(selectedId)
-      .then((row) => {
-        if (!cancelled) setConversationAnalytics(row);
-      })
-      .catch(() => {
-        if (!cancelled) setConversationAnalytics(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingConversationAnalytics(false);
-      });
-    return () => {
-      cancelled = true;
     };
   }, [selectedId]);
 
