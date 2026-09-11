@@ -320,6 +320,9 @@ export interface ConversationListFilters {
    * undefined → no filtering.
    */
   session_active?: boolean;
+  /** Server-side pagination. Backend caps limit at 500; default 100. */
+  limit?: number;
+  offset?: number;
 }
 
 type PaginatedMessages = {
@@ -590,6 +593,8 @@ export async function listAllConversations(
   if (filters?.contact_routing_mode) params.set('contact_routing_mode', filters.contact_routing_mode);
   if (filters?.custom_filters) params.set('custom_filters', filters.custom_filters);
   if (filters?.session_active != null) params.set('session_active', String(filters.session_active));
+  if (filters?.limit != null) params.set('limit', String(filters.limit));
+  if (filters?.offset != null) params.set('offset', String(filters.offset));
   const qs = params.toString();
   const url = qs ? `/convo/?${qs}` : '/convo/';
   const convos = await apiFetch<ConvoOut[]>(url, { method: 'GET' });
