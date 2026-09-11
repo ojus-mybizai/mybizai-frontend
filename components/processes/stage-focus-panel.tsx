@@ -13,6 +13,7 @@ import ProcessCard, { type CardDensity } from './process-card';
 import { Icon, Money, Pill, EmptyState, formatNumber } from './design-system';
 import { ListView } from '@/features/data-sheet/components/list-view';
 import CalendarView from '@/features/data-sheet/components/calendar-view';
+import type { CalendarViewConfig } from '@/features/data-sheet/state/view-state';
 import {
   ENTRY_FIELDS, ENTRY_TITLE_FIELD, ENTRY_DEFAULT_DETAIL_FIELDS,
   ENTRY_CALENDAR_DATE_FIELD, ENTRY_CALENDAR_PILL_FIELDS,
@@ -291,7 +292,7 @@ function CalendarViewShell({
     return m;
   }, [entries]);
   // Local state — user can override the pill title/secondary from CalendarView's own UI.
-  const [config, setConfig] = useState({
+  const [config, setConfig] = useState<CalendarViewConfig>({
     dateField: ENTRY_CALENDAR_DATE_FIELD,
     pillFields: ENTRY_CALENDAR_PILL_FIELDS,
     titleField: 'title',
